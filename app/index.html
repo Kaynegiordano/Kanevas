@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'">
+<title>Kanevas</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="theme-light">
+<div id="app">
+  <header id="titlebar">
+    <div class="brand" title="Kanevas"><span class="brand-mark"></span></div>
+    <nav id="menubar"></nav>
+    <div class="drag-region"><span id="doc-title"></span></div>
+    <div id="workspace-actions"></div>
+  </header>
+  <div id="optionsbar"></div>
+  <div id="main">
+    <aside id="toolbar"></aside>
+    <section id="center">
+      <div id="tabs"></div>
+      <div id="viewport">
+        <canvas id="ruler-corner"></canvas>
+        <canvas id="ruler-h"></canvas>
+        <canvas id="ruler-v"></canvas>
+        <canvas id="view"></canvas>
+        <div id="overlay-ui"></div>
+        <div id="home"></div>
+      </div>
+      <footer id="statusbar"></footer>
+    </section>
+    <aside id="dock"></aside>
+  </div>
+</div>
+<div id="popups"></div>
+<div id="modals"></div>
+<div id="toasts"></div>
+<input type="file" id="file-input" multiple hidden>
+
+<script src="vendor/ag-psd.js"></script>
+<script src="js/util.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/history.js"></script>
+<script src="js/layer.js"></script>
+<script src="js/selection.js"></script>
+<script src="js/document.js"></script>
+<script src="js/adjust.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/brush.js"></script>
+<script src="js/view.js"></script>
+<script src="js/ui/widgets.js"></script>
+<script src="js/ui/colorpicker.js"></script>
+<script src="js/ui/dialogs.js"></script>
+<script src="js/tools/core.js"></script>
+<script src="js/tools/select.js"></script>
+<script src="js/tools/paint.js"></script>
+<script src="js/tools/retouch.js"></script>
+<script src="js/tools/transform.js"></script>
+<script src="js/tools/misc.js"></script>
+<script src="js/ui/panels.js"></script>
+<script src="js/ui/layers-panel.js"></script>
+<script src="js/io.js"></script>
+<script src="js/commands.js"></script>
+<script src="js/editable-adjustments.js"></script>
+<script src="js/liquify.js"></script>
+<script src="js/vector.js"></script>
+<script src="js/ui/channels.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/cmyk.js"></script>
+<script src="js/updates.js"></script>
+<script src="js/ui/menus.js"></script>
+<script src="js/recovery.js"></script>
+<script src="js/tools/brush-gesture.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
+

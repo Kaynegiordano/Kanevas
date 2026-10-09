@@ -1,0 +1,84 @@
+{
+  "name": "kanevas",
+  "productName": "Kanevas",
+  "version": "1.0.0",
+  "description": "Kanevas — éditeur d'images inspiré de Photoshop",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 --publish never",
+    "release": "electron-builder --win --x64 --publish always"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "ag-psd": "^31.0.3",
+    "electron-updater": "^6.8.9",
+    "onnxruntime-node": "^1.30.0"
+  },
+  "author": "Kane",
+  "homepage": "https://github.com/Kaynegiordano/Kanevas",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kaynegiordano/Kanevas.git"
+  },
+  "license": "UNLICENSED",
+  "build": {
+    "appId": "com.kane.kanevas",
+    "productName": "Kanevas",
+    "copyright": "Kane",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.cjs",
+      "recovery-store.cjs",
+      "app/**/*",
+      "!app/**/*.map",
+      "!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}/**",
+      "!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**"
+    ],
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Kanevas-Setup-${version}.${ext}",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kanevas",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "language": "1036"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Kaynegiordano",
+        "repo": "Kanevas",
+        "releaseType": "release"
+      }
+    ]
+  }
+}
