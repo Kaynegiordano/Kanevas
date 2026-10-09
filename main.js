@@ -1,19 +1,19 @@
-// Kanevas — processus principal Electron : la fenêtre, les boîtes de dialogue
-// de fichiers et l'accès disque. Toute l'application vit dans app/ (renderer).
+﻿// Kanevas â€” processus principal Electron : la fenÃªtre, les boÃ®tes de dialogue
+// de fichiers et l'accÃ¨s disque. Toute l'application vit dans app/ (renderer).
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 
-// Réutiliser les données existantes (préférences et modèles IA) après le changement de nom.
+// RÃ©utiliser les donnÃ©es existantes (prÃ©fÃ©rences et modÃ¨les IA) aprÃ¨s le changement de nom.
 const legacyData = ['KaneShop', 'kaneshop'].map(n => path.join(app.getPath('appData'), n)).find(p => fs.existsSync(p));
 if (legacyData) app.setPath('userData', legacyData);
 app.setName('Kanevas');
-if (process.platform === 'win32') app.setAppUserModelId('Kanevas');
+if (process.platform === 'win32') app.setAppUserModelId('com.kane.kanevas');
 
 let win = null;
 let allowClose = false;
-const pending = [];          // fichiers reçus avant que la page soit prête
+const pending = [];          // fichiers reÃ§us avant que la page soit prÃªte
 
 function filesFromArgv(argv) {
   return argv.slice(app.isPackaged ? 1 : 2).filter(a => {
@@ -54,7 +54,7 @@ function createWindow() {
   });
   if (process.platform === 'win32') {
     win.setAppDetails({
-      appId: 'Kanevas',
+      appId: 'com.kane.kanevas',
       appIconPath: path.join(__dirname, 'app', 'kanevas.ico'),
       appIconIndex: 0,
       relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${__dirname}"`,
@@ -65,7 +65,7 @@ function createWindow() {
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.loadFile(path.join(__dirname, 'app', 'index.html'));
 
-  // Pas de navigation (un fichier lâché hors zone ne doit pas remplacer l'app)
+  // Pas de navigation (un fichier lÃ¢chÃ© hors zone ne doit pas remplacer l'app)
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -121,7 +121,7 @@ ipcMain.handle('write-file', (_e, p, data) => {
 
 ipcMain.handle('get-pending', () => pending.splice(0));
 
-// Polices installées (machine + utilisateur), lues dans le registre
+// Polices installÃ©es (machine + utilisateur), lues dans le registre
 ipcMain.handle('list-fonts', () => new Promise(resolve => {
   const keys = [
     'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts',
@@ -154,11 +154,11 @@ ipcMain.on('toggle-devtools', () => { if (win) win.webContents.toggleDevTools();
 ipcMain.on('toggle-fullscreen', () => { if (win) win.setFullScreen(!win.isFullScreen()); });
 ipcMain.on('show-in-folder', (_e, p) => shell.showItemInFolder(p));
 
-/* ------------------------------------------------------------------ IA (détourage) */
-// Modèles BiRefNet (licence MIT), copies publiées par le projet rembg.
+/* ------------------------------------------------------------------ IA (dÃ©tourage) */
+// ModÃ¨les BiRefNet (licence MIT), copies publiÃ©es par le projet rembg.
 const MODELS = {
-  'birefnet-lite': { name: 'BiRefNet léger (rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
-  'birefnet': { name: 'BiRefNet complet (qualité maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
+  'birefnet-lite': { name: 'BiRefNet lÃ©ger (rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
+  'birefnet': { name: 'BiRefNet complet (qualitÃ© maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
 };
 const MODEL_URL = f => 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/' + f;
 const modelDir = () => path.join(app.getPath('userData'), 'models');
@@ -173,7 +173,7 @@ ipcMain.handle('ai-status', () => Object.entries(MODELS).map(([id, m]) => {
 }));
 
 ipcMain.handle('ai-download', async (e, id) => {
-  const m = MODELS[id]; if (!m) return { ok: false, error: 'Modèle inconnu' };
+  const m = MODELS[id]; if (!m) return { ok: false, error: 'ModÃ¨le inconnu' };
   fs.mkdirSync(modelDir(), { recursive: true });
   const part = modelPath(id) + '.part';
   try {
@@ -190,7 +190,7 @@ ipcMain.handle('ai-download', async (e, id) => {
       if (got - last > 2e6) { last = got; e.sender.send('ai-progress', { id, got, total: m.size }); }
     }
     await new Promise(r => out.end(r));
-    if (fs.statSync(part).size !== m.size) throw new Error('Téléchargement incomplet');
+    if (fs.statSync(part).size !== m.size) throw new Error('TÃ©lÃ©chargement incomplet');
     fs.renameSync(part, modelPath(id));
     return { ok: true };
   } catch (err) {
@@ -199,14 +199,14 @@ ipcMain.handle('ai-download', async (e, id) => {
   }
 });
 
-// Entrée : tenseur NCHW 1×3×1024×1024 (normalisé côté page) ; sortie : carte 1024×1024 dans [0,1]
+// EntrÃ©e : tenseur NCHW 1Ã—3Ã—1024Ã—1024 (normalisÃ© cÃ´tÃ© page) ; sortie : carte 1024Ã—1024 dans [0,1]
 ipcMain.handle('ai-segment', async (_e, id, input) => {
   try {
     const o = loadOrt();
     if (!sessions[id]) {
       let s = null;
       for (const ep of [['dml'], ['cpu']]) { try { s = await o.InferenceSession.create(modelPath(id), { executionProviders: ep, graphOptimizationLevel: 'all' }); s._ep = ep[0]; break; } catch (err) { console.warn('ORT', ep, err.message); } }
-      if (!s) throw new Error('Impossible de charger le modèle');
+      if (!s) throw new Error('Impossible de charger le modÃ¨le');
       sessions[id] = s;
     }
     const s = sessions[id];
@@ -222,7 +222,7 @@ ipcMain.handle('ai-segment', async (_e, id, input) => {
   } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
 
-// Le renderer n'accède qu'à des copies identifiées, jamais à un chemin arbitraire.
+// Le renderer n'accÃ¨de qu'Ã  des copies identifiÃ©es, jamais Ã  un chemin arbitraire.
 const recoveryStore = require('./recovery-store.cjs')(path.join(app.getPath('userData'), 'recovery'));
 const recoveryCall = fn => async (_event, ...args) => {
   try { const result = await fn(...args); return { ok: true, ...result }; }

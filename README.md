@@ -60,3 +60,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 
 ## Journal des versions
 - **1.0.0** : première version publique, installateur Windows et mises à jour GitHub.
+- **1.0.1** : correction de l'icône (multi-tailles, identifiant de barre des tâches aligné sur l'installateur).
