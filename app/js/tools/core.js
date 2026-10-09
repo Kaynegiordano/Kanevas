@@ -6,11 +6,11 @@
 
   // Disposition de la barre d'outils (groupes façon Photoshop)
   T.layout = [
-    ['move'], ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-col'], ['lasso', 'lasso-poly'], ['quick-select', 'object-select', 'wand'], ['crop'], ['eyedropper'],
+    ['move'], ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-col'], ['lasso', 'lasso-poly', 'lasso-magnetic'], ['quick-select', 'object-select', 'wand'], ['crop'], ['eyedropper'],
     null,
     ['heal-spot', 'heal'], ['brush', 'pencil'], ['clone'], ['eraser', 'eraser-magic'], ['gradient', 'bucket'], ['blur', 'sharpen', 'smudge'], ['dodge', 'burn', 'sponge'],
     null,
-    ['text'], ['pen'], ['path-select'], ['shape-rect', 'shape-round', 'shape-ellipse', 'shape-polygon', 'shape-star', 'shape-line', 'shape-arrow', 'shape-heart'],
+    ['text'], ['pen'], ['path-select'], ['shape-rect', 'shape-ellipse', 'shape-polygon', 'shape-star', 'shape-line', 'shape-arrow', 'shape-heart'],
     null,
     ['hand'], ['zoom'],
   ];
@@ -52,7 +52,7 @@
       for (const g of T.layout) {
         if (!g) { bar.appendChild(h('div.tool-sep')); continue; }
         const b = h('button.tool-btn' + (g.length > 1 ? '.has-group' : ''), { 'data-group': g[0] });
-        b.addEventListener('click', () => T.select(T.groupCurrent[g[0]] || g[0]));
+        b.addEventListener('click', () => T.select(T.byId[T.groupCurrent[g[0]]] ? T.groupCurrent[g[0]] : g[0]));
         const flyout = e => { e.preventDefault(); T.flyout(g, b); };
         b.addEventListener('contextmenu', flyout);
         let lp = 0;
@@ -79,7 +79,7 @@
     }
     KS.$$('.tool-btn[data-group]', bar).forEach(b => {
       const g = T.layout.find(gr => gr && gr[0] === b.dataset.group);
-      const id = T.groupCurrent[g[0]] || g[0], t = T.byId[id];
+      const id = T.byId[T.groupCurrent[g[0]]] ? T.groupCurrent[g[0]] : g[0], t = T.byId[id];
       if (!t) return;
       b.innerHTML = KS.icon(t.icon);
       b.dataset.tip = t.name; b.dataset.key = t.shortcut || '';

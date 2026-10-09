@@ -186,6 +186,139 @@
       V.handle(ctx, f.x, f.y, 7, true);
     },
   });
+  /* ---------------------------------------------------------------- lasso magnétique */
+  // Le tracé suit les contours : chaque segment est le chemin de moindre coût (Dijkstra)
+  // entre le dernier point d'ancrage et le contour le plus fort près du curseur.
+  const magnetic = {
+    edges(doc, all) {
+      const d = KS.sampleData(doc, all), W = doc.width, H = doc.height, p = d.data;
+      const lum = new Float32Array(W * H);
+      for (let i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = (p[j] * 0.299 + p[j + 1] * 0.587 + p[j + 2] * 0.114) * p[j + 3] / 255;
+      const g = new Float32Array(W * H);
+      let max = 1;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x;
+        const gx = lum[i - W + 1] + 2 * lum[i + 1] + lum[i + W + 1] - lum[i - W - 1] - 2 * lum[i - 1] - lum[i + W - 1];
+        const gy = lum[i + W - 1] + 2 * lum[i + W] + lum[i + W + 1] - lum[i - W - 1] - 2 * lum[i - W] - lum[i - W + 1];
+        const m = Math.hypot(gx, gy); g[i] = m; if (m > max) max = m;
+      }
+      for (let i = 0; i < g.length; i++) g[i] /= max;
+      return { W, H, g };
+    },
+    // Le pixel de contour le plus fort dans un rayon r ; le point lui-même si le contraste est trop faible
+    snap(E, p, r, contrast) {
+      const cx = Math.round(p.x), cy = Math.round(p.y);
+      let best = -1, bx = cx, by = cy;
+      for (let y = Math.max(0, cy - r); y <= Math.min(E.H - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(E.W - 1, cx + r); x++) {
+        const dx = x - cx, dy = y - cy;
+        if (dx * dx + dy * dy > r * r) continue;
+        const v = E.g[y * E.W + x] - Math.hypot(dx, dy) / (r * 40);       // a force egale, le plus proche
+        if (v > best) { best = v; bx = x; by = y; }
+      }
+      if (best < contrast) { bx = Math.min(E.W - 1, Math.max(0, cx)); by = Math.min(E.H - 1, Math.max(0, cy)); }
+      return { x: bx + 0.5, y: by + 0.5 };
+    },
+    wire(E, a, b, pad) {
+      const ax = Math.floor(a.x), ay = Math.floor(a.y), bx = Math.floor(b.x), by = Math.floor(b.y);
+      const x0 = Math.max(0, Math.min(ax, bx) - pad), y0 = Math.max(0, Math.min(ay, by) - pad);
+      const x1 = Math.min(E.W - 1, Math.max(ax, bx) + pad), y1 = Math.min(E.H - 1, Math.max(ay, by) + pad);
+      const w = x1 - x0 + 1, h = y1 - y0 + 1;
+      if (w * h > 400000) return [b];                                     // trop loin : segment droit
+      const dist = new Float32Array(w * h).fill(Infinity), prev = new Int32Array(w * h).fill(-1);
+      const heap = [], push = (k, d) => { heap.push([d, k]); let i = heap.length - 1; while (i > 0) { const q = (i - 1) >> 1; if (heap[q][0] <= heap[i][0]) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; } };
+      const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+      const s = (ay - y0) * w + (ax - x0), t = (by - y0) * w + (bx - x0);
+      dist[s] = 0; push(s, 0);
+      while (heap.length) {
+        const [d, k] = pop();
+        if (k === t) break;
+        if (d > dist[k]) continue;
+        const kx = k % w, ky = (k / w) | 0;
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const nx = kx + ox, ny = ky + oy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const n = ny * w + nx, gv = E.g[(ny + y0) * E.W + nx + x0];
+          const nd = d + (1.02 - gv) * (ox && oy ? 1.414 : 1);
+          if (nd < dist[n]) { dist[n] = nd; prev[n] = k; push(n, nd); }
+        }
+      }
+      const out = [];
+      for (let k = t; k !== -1 && k !== s; k = prev[k]) out.push({ x: (k % w) + x0 + 0.5, y: ((k / w) | 0) + y0 + 0.5 });
+      if (!out.length && t !== s) return [b];
+      return out.reverse();
+    },
+  };
+  T.register({
+    id: 'lasso-magnetic', name: 'Lasso magnétique', icon: 'lasso-magnetic', shortcut: 'L', cursor: 'crosshair',
+    defaults: { mode: 'new', feather: 0, width: 10, contrast: 10, frequency: 57, all: false },
+    options: () => selOptions([
+      { type: 'scrub', id: 'feather', label: 'Contour progressif', min: 0, max: 250, unit: 'px' },
+      { type: 'scrub', id: 'width', label: 'Largeur', min: 1, max: 256, unit: 'px' },
+      { type: 'scrub', id: 'contrast', label: 'Contraste', min: 1, max: 100, unit: '%' },
+      { type: 'scrub', id: 'frequency', label: 'Fréquence', min: 0, max: 100 },
+      { type: 'check', id: 'all', label: 'Échantillonner tous les calques' },
+    ]),
+    start(ev, doc) {
+      this.mode = modeOf(ev, this.o.mode, doc);
+      this.E = magnetic.edges(doc, this.o.all);
+      const p = magnetic.snap(this.E, ev, this.o.width, this.o.contrast / 100);
+      this.pts = [p]; this.anchors = [0]; this.live = [];
+    },
+    follow(ev) {
+      if (!this.pts) return;
+      const a = this.pts[this.anchors[this.anchors.length - 1]];
+      const p = magnetic.snap(this.E, ev, this.o.width, this.o.contrast / 100);
+      this.live = magnetic.wire(this.E, a, p, this.o.width + 4);
+      // Points d'ancrage automatiques : plus la fréquence est haute, plus ils sont rapprochés (à l'écran)
+      if (Math.hypot(p.x - a.x, p.y - a.y) * V.zoom > 12 + (100 - this.o.frequency) * 1.2) this.commit();
+      KS.requestRender();
+    },
+    commit() {
+      if (!this.live.length) return;
+      this.pts.push(...this.live); this.anchors.push(this.pts.length - 1); this.live = [];
+    },
+    down(ev, doc) {
+      if (!this.pts) { this.start(ev, doc); return; }
+      const f = this.pts[0];
+      if (this.pts.length > 2 && Math.hypot(f.x - ev.x, f.y - ev.y) * V.zoom < 8) { this.close(doc); return; }
+      this.follow(ev); this.commit();
+    },
+    move(ev) { this.follow(ev); },
+    hover(ev) { this.follow(ev); },
+    dblclick(ev, doc) { if (this.pts) this.close(doc); },
+    close(doc) {
+      if (!this.pts) return;
+      this.commit();
+      const pts = this.pts.concat(magnetic.wire(this.E, this.pts[this.pts.length - 1], this.pts[0], this.o.width + 4));
+      this.pts = null; this.live = []; this.E = null;
+      if (pts.length >= 3) KS.Hist.selection(doc, 'Lasso magnétique', () => doc.selection.polygon(pts, this.mode, this.o.feather), 'lasso-magnetic');
+      KS.requestRender();
+    },
+    key(e, doc) {
+      if (!this.pts) return false;
+      if (e.key === 'Escape') { this.cancel(); KS.requestRender(); return true; }
+      if (e.key === 'Enter') { this.close(doc); return true; }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        this.anchors.pop();
+        if (!this.anchors.length) this.cancel();
+        else { this.pts.length = this.anchors[this.anchors.length - 1] + 1; this.live = []; }
+        KS.requestRender(); return true;
+      }
+      return false;
+    },
+    cancel() { this.pts = null; this.live = []; this.E = null; },
+    deactivate(doc) { if (this.pts && doc) this.close(doc); },
+    overlay(ctx) {
+      if (!this.pts) return;
+      dashed(ctx, () => {
+        ctx.beginPath();
+        this.pts.concat(this.live).forEach((p, i) => { const s = V.toScreen(p.x, p.y); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+      });
+      for (const i of this.anchors) { const s = V.toScreen(this.pts[i].x, this.pts[i].y); V.handle(ctx, s.x, s.y, 5, i === 0); }
+    },
+  });
+
   function snap45(a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, d = Math.hypot(dx, dy);
     return { x: a.x + Math.cos(ang) * d, y: a.y + Math.sin(ang) * d };

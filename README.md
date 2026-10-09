@@ -9,7 +9,18 @@
 ## Version web
 https://kaynegiordano.github.io/Kanevas/ : le dossier `app/` publié sur GitHub Pages à chaque push sur `main`
 (`.github/workflows/pages.yml`). Ouvrir et enregistrer passent par le navigateur ; l'IA locale, les
-sauvegardes de secours, les polices système et les mises à jour restent propres à l'application de bureau.
+sauvegardes de secours et les mises à jour restent propres à l'application de bureau. Les polices du PC
+sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
+
+## Outils récents
+- **Rectangle** : un seul outil, avec ses angles réglables (un rayon pour les quatre, ou un par angle avec le
+  bouton de liaison). Ils restent modifiables après coup dans Propriétés > Angles, tant que ses points n'ont
+  été que déplacés.
+- **Lasso magnétique** (L) : cliquer, puis suivre le bord ; les points s'accrochent au contour le plus net
+  (Largeur, Contraste, Fréquence). Clic : point d'ancrage, double-clic ou Entrée : fermer, Retour arrière : annuler le point.
+- **Image dans un texte ou une forme** : Calque > Insérer une image dans le calque… (ou menu contextuel du
+  calque), ou Édition > Coller dans le calque (Ctrl+Alt+Maj+V). L'image couvre le calque actif et lui est
+  écrêtée. Alt+clic sur un calque, ou le bouton d'écrêtage sous la liste, crée ou libère un masque d'écrêtage.
 
 ## IA locale (détourage)
 « Sélectionner le sujet », « Supprimer l'arrière-plan » et l'outil « Sélection d'objet » utilisent BiRefNet

@@ -416,6 +416,33 @@
     inp.click();
   };
 
+  // Insérer une image dans le calque actif (texte, forme, pixels) : elle couvre son contenu
+  // et lui est écrêtée ; on la déplace ou la transforme ensuite à l'intérieur.
+  io.placeIntoCanvas = (doc, c, name) => {
+    const base = doc.active;
+    if (!base || base.kind === 'group' || base.kind === 'adjust') { KS.toast('Choisissez d\'abord un calque de texte, de forme ou de pixels.', 'err'); return null; }
+    const b = base.contentBounds() || base.bounds();
+    const s = Math.max(b.w / c.width, b.h / c.height);
+    const canvas = U.canvas(Math.max(1, Math.round(c.width * s)), Math.max(1, Math.round(c.height * s)));
+    const x = canvas.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, canvas.width, canvas.height);
+    const L = new KS.Layer({ name, canvas, x: Math.round(b.x + (b.w - canvas.width) / 2), y: Math.round(b.y + (b.h - canvas.height) / 2), clip: true });
+    KS.Hist.structure(doc, 'Insérer dans le calque', () => doc.addLayer(L, doc.activeIndex + 1), 'image');
+    return L;
+  };
+  io.placeInto = async () => {
+    const doc = KS.state.doc; if (!doc) return;
+    const base = doc.active;
+    if (!base || base.kind === 'group' || base.kind === 'adjust') { KS.toast('Choisissez d\'abord un calque de texte, de forme ou de pixels.', 'err'); return; }
+    if (KS.native) {
+      const files = await KS.native.openDialog({ title: 'Insérer une image dans le calque', filters: io.OPEN_FILTERS, multi: false });
+      for (const f of files) io.placeIntoCanvas(doc, await io.canvasFromEntry(f), baseName(f.name));
+      return;
+    }
+    const inp = KS.$('#file-input'); inp.accept = 'image/*,.psd,.ksp';
+    inp.onchange = async () => { for (const f of inp.files) io.placeIntoCanvas(doc, await io.canvasFromEntry({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }), baseName(f.name)); inp.value = ''; };
+    inp.click();
+  };
+
   /* ---------------------------------------------------------------- récents */
   io.thumbnail = (doc, size = 120) => {
     const c = doc.flatten(), s = Math.min(1, size / Math.max(c.width, c.height));

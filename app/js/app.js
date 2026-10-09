@@ -165,6 +165,7 @@
     'marquee-ellipse': 'Maj : cercle / ajouter · Alt : depuis le centre / soustraire',
     lasso: 'Tracer à main levée · Maj : ajouter · Alt : soustraire',
     'lasso-poly': 'Clic : sommet · double-clic ou Entrée : fermer · Retour arr. : annuler le sommet',
+    'lasso-magnetic': 'Clic puis suivre le contour · clic : point d\'ancrage · double-clic ou Entrée : fermer · Retour arr. : annuler le point',
     wand: 'Clic : sélectionner les couleurs proches · Maj : ajouter · Alt : soustraire',
     'quick-select': 'Peindre sur l\'objet · Alt : retirer · [ ] : taille',
     crop: 'Ajuster le cadre puis Entrée · Maj : garder les proportions',

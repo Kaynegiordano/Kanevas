@@ -37,7 +37,27 @@
 
   /* ---------------------------------------------------------------- texte */
   KS.FONTS = ['Outfit', 'Segoe UI', 'Segoe UI Variable Display', 'Arial', 'Arial Black', 'Bahnschrift', 'Calibri', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New', 'Franklin Gothic Medium', 'Gabriola', 'Georgia', 'Impact', 'Ink Free', 'Lucida Console', 'Palatino Linotype', 'Segoe Print', 'Segoe Script', 'Sitka Text', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
-  if (KS.native && KS.native.listFonts) KS.native.listFonts().then(list => { if (list && list.length) { KS.FONTS = [...new Set(['Outfit', ...list])]; if (T.current?.id === 'text') T.renderOptions(); } }).catch(() => {});
+  const setFonts = list => { if (list && list.length) { KS.FONTS = [...new Set(['Outfit', ...list])]; if (T.current?.id === 'text') T.renderOptions(); KS.emit('fonts'); } };
+  if (KS.native && KS.native.listFonts) KS.native.listFonts().then(setFonts).catch(() => {});
+  else if ('queryLocalFonts' in window) {
+    // Version web (Chrome, Edge) : les polices installées sur le PC, après autorisation du navigateur.
+    // La demande doit venir d'un clic ; si l'autorisation est déjà accordée, elles sont chargées d'emblée.
+    KS.webFonts = {
+      loaded: false,
+      async ask(silent) {
+        try {
+          const fonts = await window.queryLocalFonts();
+          const families = [...new Set(fonts.map(f => f.family))].sort((a, b) => a.localeCompare(b, 'fr'));
+          if (!families.length) throw new Error('aucune police');
+          this.loaded = true; setFonts(families);
+          if (!silent) KS.toast(`${families.length} polices du PC disponibles.`);
+        } catch (e) {
+          if (!silent) KS.toast('Le navigateur a refusé l\'accès aux polices du PC (autorisation « Polices » du site).', 'err');
+        }
+      },
+    };
+    navigator.permissions?.query({ name: 'local-fonts' }).then(p => { if (p.state === 'granted') KS.webFonts.ask(true); }).catch(() => {});
+  }
 
   const textTool = T.register({
     id: 'text', name: 'Texte horizontal', icon: 'text', shortcut: 'T', cursor: 'text',
@@ -52,8 +72,10 @@
           b.addEventListener('click', () => { b.classList.toggle('on'); this.setStyle({ [k]: b.classList.contains('on') }); });
           return b;
         }));
+      const pcFonts = KS.webFonts && !KS.webFonts.loaded ? ui.btn('Polices du PC', () => KS.webFonts.ask(), '.small', 'text') : null;
+      if (pcFonts) pcFonts.dataset.tip = 'Charger les polices installées sur ce PC (le navigateur demande l\'autorisation)';
       return [
-        { type: 'custom', render: () => h('div.opt-group', fam, styleSeg) },
+        { type: 'custom', render: () => h('div.opt-group', fam, styleSeg, ...(pcFonts ? [pcFonts] : [])) },
         { type: 'custom', render: () => h('div.opt-group', ui.scrub({ label: 'Corps', value: o.size, min: 1, max: 2000, unit: 'px', log: true, onInput: v => this.setStyle({ size: v }) })) },
         { type: 'custom', render: () => h('div.opt-group', ui.seg([['left', 'text-left', 'Aligner à gauche'], ['center', 'text-center', 'Centrer'], ['right', 'text-right', 'Aligner à droite']], o.align, v => this.setStyle({ align: v }))) },
         { type: 'custom', render: () => h('div.opt-group', ui.scrub({ label: 'Interligne', value: o.leading, min: 0.5, max: 4, step: 0.05, onInput: v => this.setStyle({ leading: v }) }), ui.scrub({ label: 'Approche', value: o.tracking, min: -50, max: 200, unit: 'px', onInput: v => this.setStyle({ tracking: v }) })) },
@@ -167,7 +189,7 @@
   KS.drawShape = (ctx, kind, g, o) => {
     ctx.beginPath();
     const { x, y, w, h: hh } = g.r;
-    if (kind === 'rect') ctx.rect(x, y, w, hh);
+    if (kind === 'rect') ctx.roundRect(x, y, w, hh, KS.rectRadii(Math.abs(w), Math.abs(hh), o.radii));
     else if (kind === 'round') ctx.roundRect(x, y, w, hh, Math.min(o.radius, Math.abs(w) / 2, Math.abs(hh) / 2));
     else if (kind === 'ellipse') ctx.ellipse(x + w / 2, y + hh / 2, Math.abs(w / 2), Math.abs(hh / 2), 0, 0, Math.PI * 2);
     else if (kind === 'polygon' || kind === 'star') {
@@ -203,15 +225,30 @@
     if (o.fill || kind === 'line' || kind === 'arrow') { ctx.fillStyle = o.fillColor; if (o.fill || kind === 'line' || kind === 'arrow') ctx.fill(); }
     if (o.stroke && o.strokeWidth > 0) { ctx.lineWidth = o.strokeWidth; ctx.strokeStyle = o.strokeColor; ctx.lineJoin = 'round'; ctx.stroke(); }
   };
+  // Angles du rectangle : un seul rayon pour les quatre (liés), ou un rayon par angle
+  const radiiOf = o => o.rLink ? [o.radius, o.radius, o.radius, o.radius] : [o.rTL, o.rTR, o.rBR, o.rBL];
+  const cornerOptions = tool => {
+    const o = tool.o;
+    const link = ui.iconBtn('link', o.rLink ? 'Angles liés : cliquer pour régler chaque angle' : 'Un rayon par angle : cliquer pour les lier', () => {
+      if (o.rLink) for (const k of ['rTL', 'rTR', 'rBR', 'rBL']) T.setOpt(tool, k, o.radius);
+      else T.setOpt(tool, 'radius', Math.max(o.rTL, o.rTR, o.rBR, o.rBL));
+      T.setOpt(tool, 'rLink', !o.rLink); T.renderOptions();
+    });
+    if (o.rLink) link.classList.add('active');
+    const r = { min: 0, max: 2000, unit: 'px' };
+    return [{ type: 'sep' }, { type: 'custom', render: () => h('div.opt-group', link) },
+      ...(o.rLink ? [{ type: 'scrub', id: 'radius', label: 'Angles', ...r }]
+        : [{ type: 'scrub', id: 'rTL', label: '↖', ...r }, { type: 'scrub', id: 'rTR', label: '↗', ...r }, { type: 'scrub', id: 'rBR', label: '↘', ...r }, { type: 'scrub', id: 'rBL', label: '↙', ...r }])];
+  };
   const SHAPES = [
-    ['shape-rect', 'Rectangle', 'rect'], ['shape-round', 'Rectangle arrondi', 'round'], ['shape-ellipse', 'Ellipse', 'ellipse'],
+    ['shape-rect', 'Rectangle', 'rect'], ['shape-ellipse', 'Ellipse', 'ellipse'],
     ['shape-polygon', 'Polygone', 'polygon'], ['shape-star', 'Étoile', 'star'], ['shape-line', 'Trait', 'line'], ['shape-arrow', 'Flèche', 'arrow'], ['shape-heart', 'Cœur', 'heart'],
   ];
   for (const [id, name, kind] of SHAPES) {
     const lineLike = kind === 'line' || kind === 'arrow';
     T.register({
       id, name, icon: id, shortcut: 'U', cursor: 'crosshair',
-      defaults: { fill: true, fillColor: '#3d7cf0', stroke: false, strokeColor: '#000000', strokeWidth: 4, radius: 32, sides: kind === 'star' ? 5 : 6, inner: 45, weight: 8 },
+      defaults: { fill: true, fillColor: '#3d7cf0', stroke: false, strokeColor: '#000000', strokeWidth: 4, radius: 0, rLink: true, rTL: 0, rTR: 0, rBR: 0, rBL: 0, sides: kind === 'star' ? 5 : 6, inner: 45, weight: 8 },
       options() {
         const useFg = ui.iconBtn('palette', 'Utiliser la couleur de premier plan', () => { T.setOpt(this, 'fillColor', U.hex(KS.state.fg)); T.renderOptions(); });
         return [
@@ -221,7 +258,7 @@
           { type: 'sep' },
           lineLike ? { type: 'scrub', id: 'weight', label: 'Épaisseur', min: 1, max: 500, unit: 'px' } : null,
           { type: 'check', id: 'stroke', label: 'Contour' }, { type: 'color', id: 'strokeColor' }, { type: 'scrub', id: 'strokeWidth', min: 0, max: 300, unit: 'px' },
-          kind === 'round' ? { type: 'scrub', id: 'radius', label: 'Rayon', min: 0, max: 2000, unit: 'px' } : null,
+          ...(kind === 'rect' ? cornerOptions(this) : []),
           kind === 'polygon' || kind === 'star' ? { type: 'scrub', id: 'sides', label: kind === 'star' ? 'Branches' : 'Côtés', min: 3, max: 64 } : null,
           kind === 'star' ? { type: 'scrub', id: 'inner', label: 'Creux', min: 5, max: 95, unit: '%' } : null,
         ];
@@ -245,8 +282,9 @@
         this.on = false;
         const g = this.geom();
         if ((lineLike ? U.dist(g.a, g.b) : Math.min(g.r.w, g.r.h)) < 2) return;
-        const o = this.o;
+        const o = { ...this.o, radii: radiiOf(this.o) };
         const L = KS.newShapeLayer(doc, doc.newLayerName(name), KS.shapeSubpaths(kind, g, o), { fill: lineLike ? true : o.fill, fillColor: o.fillColor, stroke: o.stroke, strokeColor: o.strokeColor, strokeWidth: o.strokeWidth });
+        if (kind === 'rect') L.shape.live = { kind: 'rect', ...g.r, radii: o.radii };
         KS.Hist.structure(doc, name, () => doc.addLayer(L, doc.activeIndex + 1), id);
       },
       cancel() { this.on = false; },
@@ -254,7 +292,7 @@
         if (!this.on) return;
         const g = this.geom();
         ctx.globalAlpha = 0.85;
-        V.docPath(ctx, c => KS.drawShape(c, kind, g, this.o));
+        V.docPath(ctx, c => KS.drawShape(c, kind, g, { ...this.o, radii: radiiOf(this.o) }));
         ctx.globalAlpha = 1;
         V.docPath(ctx, c => { c.lineWidth = 1 / V.zoom; c.strokeStyle = V.colors.accent; c.setLineDash([4 / V.zoom, 3 / V.zoom]); c.strokeRect(g.r.x, g.r.y, g.r.w, g.r.h); });
       },

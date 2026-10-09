@@ -48,11 +48,43 @@
     s.pts.splice(i + 1, 0, { x: m.x, y: m.y, ix: r0.x, iy: r0.y, ox: r1.x, oy: r1.y });
   };
 
+  // Rayons des angles [haut-gauche, haut-droit, bas-droit, bas-gauche], réduits ensemble
+  // si deux angles voisins dépassent le côté (comme border-radius).
+  KS.rectRadii = (w, hh, radii) => {
+    const r = (radii || [0, 0, 0, 0]).map(v => Math.max(0, +v || 0));
+    const f = Math.min(1, w / (r[0] + r[1] || 1), w / (r[3] + r[2] || 1), hh / (r[0] + r[3] || 1), hh / (r[1] + r[2] || 1));
+    return r.map(v => v * f);
+  };
+  KS.roundRectSubpaths = (x, y, w, hh, radii) => {
+    const [a, b, c, d] = KS.rectRadii(w, hh, radii), pts = [];
+    const add = (px, py, ix = px, iy = py, ox = px, oy = py) => pts.push({ x: px, y: py, ix, iy, ox, oy });
+    if (a) add(x + a, y, x + a - a * K, y); else add(x, y);
+    if (b) { add(x + w - b, y, x + w - b, y, x + w - b + b * K, y); add(x + w, y + b, x + w, y + b - b * K); } else add(x + w, y);
+    if (c) { add(x + w, y + hh - c, x + w, y + hh - c, x + w, y + hh - c + c * K); add(x + w - c, y + hh, x + w - c + c * K, y + hh); } else add(x + w, y + hh);
+    if (d) { add(x + d, y + hh, x + d, y + hh, x + d - d * K, y + hh); add(x, y + hh - d, x, y + hh - d + d * K); } else add(x, y + hh);
+    if (a) add(x, y + a, x, y + a, x, y + a - a * K);
+    return [{ closed: true, pts }];
+  };
+  // Rectangle « dynamique » d'un calque de forme : ses angles restent modifiables tant que
+  // ses points n'ont été que déplacés. Renvoie la géométrie à jour, ou null.
+  KS.liveRect = L => {
+    const live = L && L.kind === 'shape' && L.shape && L.shape.live;
+    if (!live || live.kind !== 'rect' || L.shape.subpaths.length !== 1) return null;
+    const cur = L.shape.subpaths[0].pts, gen = KS.roundRectSubpaths(live.x, live.y, live.w, live.h, live.radii)[0].pts;
+    if (cur.length !== gen.length) return null;
+    const dx = cur[0].x - gen[0].x, dy = cur[0].y - gen[0].y, eq = (p, q) => Math.abs(p - q) < 0.01;
+    for (let i = 0; i < cur.length; i++) {
+      const p = cur[i], q = gen[i];
+      if (!eq(p.x, q.x + dx) || !eq(p.y, q.y + dy) || !eq(p.ix, q.ix + dx) || !eq(p.iy, q.iy + dy) || !eq(p.ox, q.ox + dx) || !eq(p.oy, q.oy + dy)) return null;
+    }
+    return { ...live, x: live.x + dx, y: live.y + dy, radii: live.radii.slice() };
+  };
+
   // Formes de base en tracés (rectangle, ellipse, étoile…)
   KS.shapeSubpaths = (kind, g, o) => {
     const { x, y, w, h: hh } = g.r;
     const poly = list => [{ closed: true, pts: list.map(([px, py]) => P(px, py)) }];
-    if (kind === 'rect') return poly([[x, y], [x + w, y], [x + w, y + hh], [x, y + hh]]);
+    if (kind === 'rect') return KS.roundRectSubpaths(x, y, w, hh, o && o.radii);
     if (kind === 'ellipse') {
       const cx = x + w / 2, cy = y + hh / 2, rx = w / 2, ry = hh / 2;
       return [{ closed: true, pts: [

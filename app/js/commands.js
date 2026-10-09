@@ -21,6 +21,7 @@
   C.exportAs = withDoc(d => KS.io.exportAs(d));
   C.quickExport = withDoc(d => KS.io.quickExport(d));
   C.place = () => KS.io.place();
+  C.placeInto = () => KS.io.placeInto();
   C.close = withDoc(d => KS.closeDoc(d));
   C.closeAll = async () => { for (const d of KS.state.docs.slice()) { if (!(await KS.closeDoc(d))) return; } };
   C.revert = withDoc(async d => {
@@ -137,6 +138,7 @@
     const L = new KS.Layer({ name: d.newLayerName('Calque'), canvas: U.copyCanvas(c), x: at.x, y: at.y });
     KS.Hist.structure(d, 'Coller', () => d.addLayer(L, d.activeIndex + 1), 'paste');
   };
+  C.pasteInto = withDoc(async d => { const c = await C.readClipboardImage(); if (c) KS.io.placeIntoCanvas(d, c, 'Image collée'); else KS.toast('Rien à coller', 'err'); });
   C.paste = async (inPlace) => { const c = await C.readClipboardImage(); if (c) C.pasteCanvas(c, inPlace); else KS.toast('Rien à coller', 'err'); };
   C.clear = withDoc(d => {
     const L = T.pixelLayer(d); if (!L) return;

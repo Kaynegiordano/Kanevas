@@ -26,6 +26,7 @@
         ui.iconBtn('fx', 'Ajouter un style de calque', e => { const r = e.currentTarget.getBoundingClientRect(); ui.menu(KS.menus.fxMenu(), r.left, r.top - 200); }, '.sm'),
         ui.iconBtn('mask', 'Ajouter un masque de fusion (Alt : masquer)', e => KS.cmd.addMask(e.altKey ? 'hide' : null), '.sm'),
         ui.iconBtn('adjust', 'Nouveau calque de réglage', e => { const r = e.currentTarget.getBoundingClientRect(); ui.menu(KS.menus.adjustLayerMenu(), r.left, r.top - 420); }, '.sm'),
+        ui.iconBtn('clip', 'Masque d\'écrêtage : le calque n\'apparaît que dans celui du dessous (Ctrl+Alt+G, ou Alt+clic sur le calque)', () => KS.cmd.toggleClip(), '.sm'),
         ui.iconBtn('group', 'Nouveau groupe à partir des calques sélectionnés (Ctrl+G)', () => KS.cmd.groupLayers(), '.sm'),
         ui.iconBtn('duplicate', 'Dupliquer le calque', () => KS.cmd.duplicateLayer(), '.sm'),
         ui.iconBtn('new-layer', 'Nouveau calque', () => KS.cmd.newLayer(), '.sm'),
@@ -65,7 +66,7 @@
         eye.addEventListener('click', e => { e.stopPropagation(); if (e.altKey) KS.cmd.soloLayer(L); else KS.cmd.toggleVisible(L); });
         eye.addEventListener('pointerdown', e => e.stopPropagation());
         row.appendChild(eye);
-        if (L.clip) row.appendChild(h('span.link', { html: KS.icon('arrow-down'), 'data-tip': "Masque d'écrêtage" }));
+        if (L.clip) row.appendChild(h('span.link', { html: KS.icon('clip'), 'data-tip': "Masque d'écrêtage (Alt+clic pour libérer)" }));
         let thumb;
         if (L.kind === 'group') {
           const caret = h('button.eye', { html: KS.icon(L.collapsed ? 'chevron-right' : 'chevron-down'), 'data-tip': 'Déplier / replier' });
@@ -115,6 +116,8 @@
         row.appendChild(badges);
         row.addEventListener('click', e => {
           if (row._dragged) { row._dragged = false; return; }
+          // Alt+clic : écrête ce calque à celui du dessous (comme Photoshop)
+          if (e.altKey && !e.ctrlKey && !e.shiftKey) { doc.setActive(L); KS.cmd.toggleClip(); return; }
           if (e.ctrlKey || e.metaKey) {
             // ajout / retrait de la sélection multiple
             if (doc.selectedIds.has(L.id) && doc.selectedIds.size > 1) { doc.selectedIds.delete(L.id); if (doc.activeId === L.id) doc.activeId = [...doc.selectedIds][0]; KS.emit('layers', doc); KS.emit('active-layer', doc); }

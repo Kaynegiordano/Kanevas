@@ -216,6 +216,26 @@
               ui.scrub({ value: sh.strokeWidth, min: 0, max: 300, unit: 'px', onChange: v => set({ strokeWidth: v, stroke: v > 0 || sh.stroke }) })),
             h('div.note', { text: 'Modifiez les points avec la Sélection directe (A) ou ajoutez-en avec la Plume (P).' }),
             h('div.form-row', ui.btn('Pixelliser', () => KS.cmd.rasterize(), '.small', 'rasterize'), ui.btn('Tracé → sélection', () => KS.cmd.pathToSelection(), '.small', 'select-all')))));
+        // Rectangle : ses angles restent réglables tant que ses points n'ont pas été modifiés
+        const lr = KS.liveRect(L);
+        if (lr) {
+          const linked = lr.linked ?? lr.radii.every(v => v === lr.radii[0]);
+          const setRadii = (radii, lk = linked) => KS.Hist.structure(doc, 'Angles du rectangle', () => {
+            const g = KS.liveRect(L) || lr;
+            L.shape.live = { ...g, radii, linked: lk };
+            L.shape.subpaths = KS.roundRectSubpaths(g.x, g.y, g.w, g.h, radii);
+            L.renderShape();
+          }, 'shape-rect');
+          const r = { min: 0, max: Math.ceil(Math.min(lr.w, lr.h) / 2), unit: 'px' };
+          const link = ui.iconBtn('link', linked ? 'Angles liés : cliquer pour régler chaque angle' : 'Un rayon par angle : cliquer pour les lier',
+            () => { setRadii(linked ? lr.radii : lr.radii.map(() => Math.max(...lr.radii)), !linked); this.render(); });
+          if (linked) link.classList.add('active');
+          const one = (i, label) => ui.scrub({ label, value: Math.round(lr.radii[i]), ...r, onChange: v => setRadii(lr.radii.map((x, j) => j === i ? v : x)) });
+          el.appendChild(sec('Angles',
+            linked
+              ? h('div.form-row', link, ui.scrub({ label: 'Rayon', value: Math.round(lr.radii[0]), ...r, onChange: v => setRadii([v, v, v, v]) }))
+              : h('div.form-col', h('div.form-row', link), h('div.prop-grid', one(0, '↖'), one(1, '↗'), one(3, '↙'), one(2, '↘')))));
+        }
       }
       // transformation
       const b = L.contentBounds() || L.bounds();
