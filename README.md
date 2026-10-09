@@ -6,6 +6,11 @@
 - `Kanevas.vbs`, ou `Lancer Kanevas.cmd`.
 - Un fichier passé en argument (ou glissé sur la fenêtre) est ouvert.
 
+## Version web
+https://kaynegiordano.github.io/Kanevas/ : le dossier `app/` publié sur GitHub Pages à chaque push sur `main`
+(`.github/workflows/pages.yml`). Ouvrir et enregistrer passent par le navigateur ; l'IA locale, les
+sauvegardes de secours, les polices système et les mises à jour restent propres à l'application de bureau.
+
 ## IA locale (détourage)
 « Sélectionner le sujet », « Supprimer l'arrière-plan » et l'outil « Sélection d'objet » utilisent BiRefNet
 (licence MIT) via onnxruntime-node (DirectML sinon processeur). Le modèle est téléchargé au premier usage,
