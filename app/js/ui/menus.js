@@ -10,7 +10,7 @@
   const adjItems = () => [
     ['brightness', 'Luminosité/Contraste…'], ['levels', 'Niveaux…', 'Ctrl+L'], ['curves', 'Courbes…', 'Ctrl+M'], ['exposure', 'Exposition…'], null,
     ['vibrance', 'Vibrance…'], ['hueSat', 'Teinte/Saturation…', 'Ctrl+U'], ['colorBalance', 'Balance des couleurs…', 'Ctrl+B'], ['blackWhite', 'Noir et blanc…', 'Ctrl+Alt+Maj+B'], ['photoFilter', 'Filtre photo…'], ['channelMixer', 'Mélangeur de couches…'], null,
-    ['invert', 'Négatif', 'Ctrl+I'], ['posterize', 'Postérisation…'], ['threshold', 'Seuil…'], ['gradientMap', 'Courbe de transfert de dégradé…'], ['sepia', 'Sépia…'],
+    ['invert', 'Négatif', 'Ctrl+I'], ['posterize', 'Postérisation…'], ['threshold', 'Seuil…'], ['gradientMap', 'Courbe de transfert de dégradé…'], ['selectiveColor', 'Correction sélective…'], ['sepia', 'Sépia…'],
   ].map(a => a ? { label: a[1], kb: a[2], icon: KS.Adjust.defs[a[0]].icon, action: () => C.adjust(a[0]), disabled: noDoc } : { sep: true });
 
   M.adjustLayerMenu = () => KS.ADJ_LIST.map(id => ({ label: KS.Adjust.defs[id].name + '…', icon: KS.Adjust.defs[id].icon, action: () => C.newAdjustLayer(id), disabled: noDoc }));
@@ -34,7 +34,7 @@
     { label: L.clip ? 'Libérer le masque d\'écrêtage' : 'Créer un masque d\'écrêtage', kb: 'Ctrl+Alt+G', action: C.toggleClip },
     { label: 'Insérer une image dans ce calque…', icon: 'image', action: C.placeInto, disabled: L.kind === 'group' || L.kind === 'adjust' },
     { sep: true },
-    { label: L.kind === 'shape' ? 'Pixelliser la forme' : 'Pixelliser le texte', icon: 'rasterize', action: C.rasterize, disabled: L.kind !== 'text' && L.kind !== 'shape' },
+    { label: L.kind === 'shape' ? 'Pixelliser la forme' : L.kind === 'fill' ? 'Pixelliser le remplissage' : 'Pixelliser le texte', icon: 'rasterize', action: C.rasterize, disabled: L.kind !== 'text' && L.kind !== 'shape' && L.kind !== 'fill' },
     { label: 'Grouper les calques', kb: 'Ctrl+G', icon: 'group', action: C.groupLayers },
     { label: 'Dissocier les calques', kb: 'Ctrl+Maj+G', action: C.ungroup, disabled: L.kind !== 'group' },
     { label: 'Rogner le calque à son contenu', icon: 'trim', action: C.trimLayer, disabled: L.kind !== 'raster' },
@@ -86,6 +86,7 @@
       label: 'Édition', items: [
         { label: () => 'Annuler ' + (D()?.history.canUndo ? D().history.items[D().history.pos].name : ''), kb: 'Ctrl+Z', icon: 'undo', action: C.undo, disabled: () => !D()?.history.canUndo },
         { label: () => 'Rétablir ' + (D()?.history.canRedo ? D().history.items[D().history.pos + 1].name : ''), kb: 'Ctrl+Maj+Z', icon: 'redo', action: C.redo, disabled: () => !D()?.history.canRedo },
+        { label: () => C.canFade() ? 'Atténuer : ' + D().fade.name + '…' : 'Atténuer…', kb: 'Ctrl+Maj+F', action: C.fade, disabled: () => !C.canFade() },
         { sep: true },
         { label: 'Couper', kb: 'Ctrl+X', icon: 'cut', action: C.cut, disabled: noSel },
         { label: 'Copier', kb: 'Ctrl+C', icon: 'copy', action: () => C.copy(false), disabled: noDoc },
@@ -157,7 +158,7 @@
         { label: 'Sélectionner tous les calques', kb: 'Ctrl+Alt+A', action: C.selectAllLayers, disabled: noDoc },
         { sep: true },
         { label: 'Style de calque', icon: 'fx', sub: M.fxMenu, disabled: noDoc },
-        { label: 'Nouveau calque de remplissage', disabled: noDoc, sub: [{ label: 'Couleur unie…', icon: 'fill', action: C.newFillLayer }] },
+        { label: 'Nouveau calque de remplissage', disabled: noDoc, sub: [{ label: 'Couleur unie…', icon: 'fill', action: () => C.newFillLayer('solid') }, { label: 'Dégradé…', icon: 'gradient', action: () => C.newFillLayer('gradient') }, { label: 'Motif…', icon: 'grid', action: () => C.newFillLayer('pattern') }] },
         { label: 'Nouveau calque de réglage', icon: 'adjust', sub: M.adjustLayerMenu, disabled: noDoc },
         { sep: true },
         { label: 'Masque de fusion', icon: 'mask', disabled: noDoc, sub: [
@@ -194,6 +195,8 @@
         { label: 'Intervertir', kb: 'Ctrl+Maj+I', icon: 'select-invert', action: C.invertSelection, disabled: noDoc },
         { sep: true },
         { label: 'Sujet', icon: 'sparkles', action: C.selectSubject, disabled: noDoc },
+        { label: 'Agrandir', action: () => C.growSelection(false), disabled: () => !D()?.selection.active },
+        { label: 'Sélection similaire', action: () => C.growSelection(true), disabled: () => !D()?.selection.active },
         { label: 'Plage de couleurs…', icon: 'palette', action: C.colorRange, disabled: noDoc },
         { label: 'Sélectionner et masquer…', kb: 'Ctrl+Alt+R', action: C.refineEdge, disabled: noSel },
         { label: 'Modifier', disabled: noSel, sub: [
@@ -210,7 +213,8 @@
     },
     {
       label: 'Filtre', items: () => [
-        { label: KS.state.lastFilter ? 'Dernier filtre : ' + KS.Filters.defs[KS.state.lastFilter].name : 'Dernier filtre', kb: 'Ctrl+Alt+F', action: C.lastFilter, disabled: () => noDoc() || !KS.state.lastFilter },
+        { label: KS.state.lastFilter ? 'Dernier filtre : ' + KS.Filters.defs[KS.state.lastFilter].name : 'Dernier filtre', kb: 'Ctrl+F', action: C.repeatFilter, disabled: () => noDoc() || !KS.state.lastFilter },
+        { label: 'Dernier filtre, avec ses réglages…', kb: 'Ctrl+Alt+F', action: C.lastFilter, disabled: () => noDoc() || !KS.state.lastFilter },
         { sep: true },
         { label: 'Filtre Camera Raw…', kb: 'Ctrl+Maj+A', icon: 'camera', action: C.cameraRaw, disabled: noDoc },
         { label: 'Fluidité…', kb: 'Ctrl+Maj+X', icon: 'liquify', action: () => KS.liquify && KS.liquify(), disabled: noDoc },

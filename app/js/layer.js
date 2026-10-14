@@ -13,6 +13,7 @@
       this.parent = o.parent;                    // id du groupe parent (undefined = à déduire à l'insertion)
       this.collapsed = !!o.collapsed;            // groupes : replié dans le panneau
       this.shape = o.shape || null;              // calque de forme vectorielle
+      this.fill = o.fill || null;                // calque de remplissage : { type, params, w, h } (fill-layers.js)
       this.canvas = o.canvas || U.canvas(o.w || 1, o.h || 1);
       this.ctx = this.canvas.getContext('2d');
       this.x = o.x || 0; this.y = o.y || 0;
@@ -55,21 +56,23 @@
         visible: this.visible, lockAll: this.lockAll, lockAlpha: this.lockAlpha, clip: this.clip,
         mask: this.mask, maskState: this.mask ? { x: this.mask.x, y: this.mask.y, enabled: this.mask.enabled, linked: this.mask.linked } : null,
         text: clone(this.text), adjust: clone(this.adjust), effects: clone(this.effects), editMask: this.editMask,
-        parent: this.parent ?? null, collapsed: this.collapsed, shape: clone(this.shape),
+        parent: this.parent ?? null, collapsed: this.collapsed, shape: clone(this.shape), fill: clone(this.fill),
       };
     }
     setProps(p) {
       const textChanged = JSON.stringify(p.text) !== JSON.stringify(this.text);
       const shapeChanged = JSON.stringify(p.shape) !== JSON.stringify(this.shape);
+      const fillChanged = JSON.stringify(p.fill) !== JSON.stringify(this.fill);
       Object.assign(this, {
         name: p.name, kind: p.kind, x: p.x, y: p.y, opacity: p.opacity, blend: p.blend, visible: p.visible,
         lockAll: p.lockAll, lockAlpha: p.lockAlpha, clip: p.clip, mask: p.mask,
         text: clone(p.text), adjust: clone(p.adjust), effects: clone(p.effects), editMask: p.editMask && !!p.mask,
-        parent: p.parent ?? null, collapsed: !!p.collapsed, shape: clone(p.shape),
+        parent: p.parent ?? null, collapsed: !!p.collapsed, shape: clone(p.shape), fill: clone(p.fill),
       });
       if (this.mask && p.maskState) Object.assign(this.mask, p.maskState);
       if (this.kind === 'text' && this.text && textChanged) this.renderText();
       if (this.kind === 'shape' && this.shape && shapeChanged) this.renderShape();
+      if (this.kind === 'fill' && this.fill && fillChanged && KS.renderFill) KS.renderFill(this);
       this.touch();
     }
 
@@ -180,7 +183,7 @@
       return { x: this.x + t._pad, y: this.y + t._pad, w: t._w, h: t._h };
     }
     rasterize() {
-      this.kind = 'raster'; this.text = null; this.shape = null; this.touch();
+      this.kind = 'raster'; this.text = null; this.shape = null; this.fill = null; this.touch();
     }
 
     /* ------------------------------------------------ forme vectorielle */
@@ -283,6 +286,7 @@
       });
       if (this.text) { L.text = clone(this.text); }
       if (this.shape) { L.shape = clone(this.shape); }
+      if (this.fill) { L.fill = clone(this.fill); }
       if (this.mask) {
         L.mask = { ...this.mask, canvas: U.copyCanvas(this.mask.canvas), alpha: null };
         L.mask.ctx = L.mask.canvas.getContext('2d');

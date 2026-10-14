@@ -329,9 +329,26 @@
   };
 
   // Interface de paramètres d'un réglage ou d'un filtre (boîtes et panneau Propriétés)
+  // Correction sélective : une gamme de couleurs choisie, ses quatre encres, et la méthode
+  const SELECTIVE_RANGES = [['reds', 'Rouges'], ['yellows', 'Jaunes'], ['greens', 'Verts'], ['cyans', 'Cyans'], ['blues', 'Bleus'], ['magentas', 'Magentas'], ['whites', 'Blancs'], ['neutrals', 'Neutres'], ['blacks', 'Noirs']];
+  function selectiveEditor(values, onInput) {
+    let range = 'reds';
+    const el = h('div', { style: { minWidth: '380px' } });
+    const inks = [['c', 'Cyan', 'linear-gradient(90deg,#ff3b30,#e8e8e8,#00c2e0)'], ['m', 'Magenta', 'linear-gradient(90deg,#34c759,#e8e8e8,#e0007a)'], ['y', 'Jaune', 'linear-gradient(90deg,#3d7cf0,#e8e8e8,#f5d000)'], ['k', 'Noir', 'linear-gradient(90deg,#ffffff,#808080,#000000)']];
+    const rows = inks.map(([k, label, gradient]) => ui.paramRow({ id: k, label, min: -100, max: 100, unit: '%', gradient }, (values[range] || {})[k] || 0, v => {
+      values[range] = { c: 0, m: 0, y: 0, k: 0, ...values[range], [k]: v };
+      onInput(values);
+    }));
+    const pick = ui.select(SELECTIVE_RANGES, range, v => { range = v; rows.forEach((r, i) => r.set((values[range] || {})[inks[i][0]] || 0)); });
+    const method = ui.seg([['relative', 'Relative'], ['absolute', 'Absolue']], values.method || 'relative', v => { values.method = v; onInput(values); });
+    el.append(h('div.param.wide', h('span.pl', { text: 'Couleurs' }), pick), ...rows, h('div.param.wide', h('span.pl', { text: 'Méthode' }), method));
+    el.refresh = () => rows.forEach((r, i) => r.set((values[range] || {})[inks[i][0]] || 0));
+    return el;
+  }
   KS.buildParamUI = (def, values, onInput, opts = {}) => {
     if (def.custom === 'curves') return ui.curvesEditor(values, onInput, opts.histo);
     if (def.custom === 'levels') return ui.levelsEditor(values, onInput, opts.histo, opts.auto);
+    if (def.custom === 'selective') return selectiveEditor(values, onInput);
     const el = h('div', { style: { minWidth: opts.width || '380px' } });
     const rows = [];
     for (const p of def.params) {

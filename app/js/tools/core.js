@@ -8,7 +8,7 @@
   T.layout = [
     ['move'], ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-col'], ['lasso', 'lasso-poly', 'lasso-magnetic'], ['quick-select', 'object-select', 'wand'], ['crop'], ['eyedropper'],
     null,
-    ['heal-spot', 'heal'], ['brush', 'pencil'], ['clone'], ['eraser', 'eraser-magic'], ['gradient', 'bucket'], ['blur', 'sharpen', 'smudge'], ['dodge', 'burn', 'sponge'],
+    ['heal-spot', 'heal', 'patch'], ['brush', 'pencil'], ['clone'], ['eraser', 'eraser-magic'], ['gradient', 'bucket'], ['blur', 'sharpen', 'smudge'], ['dodge', 'burn', 'sponge'],
     null,
     ['text'], ['pen'], ['path-select'], ['shape-rect', 'shape-ellipse', 'shape-polygon', 'shape-star', 'shape-line', 'shape-arrow', 'shape-heart'],
     null,
@@ -199,8 +199,8 @@
     if (L.editMask && L.mask && allowMaskEdit) return L;
     if (L.kind === 'adjust') return say('Calque de réglage : sélectionnez son masque ou un calque de pixels');
     if (L.kind === 'group') return say("Sélectionnez un calque à l'intérieur du groupe");
-    if (L.kind === 'text' || L.kind === 'shape') {
-      KS.confirm(L.kind === 'text' ? 'Ce calque de texte doit être pixellisé avant de continuer. Son texte ne sera plus modifiable.' : 'Ce calque de forme doit être pixellisé avant de continuer. La forme ne sera plus vectorielle.', { ok: 'Pixelliser' })
+    if (L.kind === 'text' || L.kind === 'shape' || L.kind === 'fill') {
+      KS.confirm(L.kind === 'text' ? 'Ce calque de texte doit être pixellisé avant de continuer. Son texte ne sera plus modifiable.' : L.kind === 'fill' ? 'Ce calque de remplissage doit être pixellisé avant de continuer. Ses réglages ne seront plus modifiables.' : 'Ce calque de forme doit être pixellisé avant de continuer. La forme ne sera plus vectorielle.', { ok: 'Pixelliser' })
         .then(ok => { if (ok) KS.cmd.rasterize(); });
       return null;
     }

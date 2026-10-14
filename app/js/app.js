@@ -173,6 +173,7 @@
     pencil: '[ ] : taille · Alt : pipette · Maj+clic : ligne droite',
     eraser: '[ ] : taille · Maj+clic : ligne droite',
     clone: 'Alt+clic : définir la source, puis peindre',
+    patch: 'Entourer la zone, puis la faire glisser · Source : réparée depuis l\'endroit d\'arrivée · Destination : recopiée',
     heal: 'Alt+clic : définir la source, puis peindre',
     'heal-spot': 'Peindre sur le défaut à corriger',
     gradient: 'Glisser pour tracer · Maj : angles de 45°',

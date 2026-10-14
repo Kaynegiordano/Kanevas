@@ -178,6 +178,20 @@
       return { undo: () => structRestore(doc, before), redo: () => structRestore(doc, a) };
     },
     structSnap,
+    // Instantanés (panneau Historique) : copie complète du document, que l'on peut rétablir
+    // plus tard, même après de nombreuses étapes ; le retour est lui-même annulable.
+    snapshot(doc, name) {
+      const s = { id: U.uid(), name, snap: fullSnap(doc), w: doc.width, h: doc.height };
+      doc.snapshots = (doc.snapshots || []).concat(s);
+      KS.emit('history', doc);
+      return s;
+    },
+    restoreSnapshot(doc, s) {
+      const before = fullSnap(doc);
+      fullRestore(doc, s.snap);
+      doc.history.push({ name: 'Instantané : ' + s.name, icon: 'camera', undo: () => fullRestore(doc, before), redo: () => fullRestore(doc, s.snap) });
+      KS.emit('layers', doc); KS.emit('selection', doc); KS.emit('docsize', doc);
+    },
     combine(name, icon, parts) {
       return { name, icon, undo: () => { for (let i = parts.length - 1; i >= 0; i--) parts[i].undo(); }, redo: () => parts.forEach(p => p.redo()) };
     },

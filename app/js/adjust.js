@@ -292,6 +292,47 @@
         for (let i = 0; i < px.length; i += 4) { const c = T[(px[i] * 77 + px[i + 1] * 150 + px[i + 2] * 29) >> 8]; px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; }
       },
     },
+    // Correction sélective (Photoshop) : pour chaque gamme de couleurs, on ajoute ou retire
+    // de l'encre cyan, magenta, jaune et noire. Relative : en proportion de l'encre déjà
+    // présente ; absolue : en valeur fixe. Le poids d'un pixel dans une gamme vient de
+    // l'écart entre ses composantes (couleurs) ou de sa luminosité (blancs, neutres, noirs).
+    selectiveColor: {
+      name: 'Correction sélective', icon: 'palette', custom: 'selective',
+      params: [
+        { id: 'method', def: 'relative' },
+        ...['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whites', 'neutrals', 'blacks'].map(id => ({ id, def: { c: 0, m: 0, y: 0, k: 0 } })),
+      ],
+      apply(d, p) {
+        const R = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whites', 'neutrals', 'blacks'].map(id => p[id] || { c: 0, m: 0, y: 0, k: 0 });
+        if (R.every(a => !a.c && !a.m && !a.y && !a.k)) return;
+        const rel = p.method !== 'absolute', px = d.data, w = new Float32Array(9);
+        for (let i = 0; i < px.length; i += 4) {
+          const r = px[i], g = px[i + 1], b = px[i + 2];
+          const mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b), md = r + g + b - mx - mn;
+          w.fill(0);
+          // couleurs primaires : la composante dominante ; secondaires : les deux plus fortes
+          if (mx !== mn) {
+            if (r === mx) w[0] = mx - md; else if (g === mx) w[2] = mx - md; else w[4] = mx - md;
+            if (b === mn) w[1] = md - mn; else if (r === mn) w[3] = md - mn; else w[5] = md - mn;
+          }
+          if (mn > 128) w[6] = (mn - 128) * 2;
+          if (mx < 128) w[8] = (128 - mx) * 2;
+          w[7] = Math.max(0, 255 - (Math.abs(mx - 128) + Math.abs(mn - 128)));
+          for (let ch = 0; ch < 3; ch++) {
+            const v = px[i + ch] / 255, ink = 1 - v;
+            let delta = 0;
+            for (let k = 0; k < 9; k++) {
+              if (!w[k]) continue;
+              const a = R[k], cmy = (ch === 0 ? a.c : ch === 1 ? a.m : a.y) / 100, kk = a.k / 100;
+              let dv = rel ? (cmy * ink + kk * ink) : (cmy + kk);
+              delta += dv * w[k] / 255;
+            }
+            const ni = ink + delta;
+            px[i + ch] = (1 - (ni < 0 ? 0 : ni > 1 ? 1 : ni)) * 255;
+          }
+        }
+      },
+    },
     sepia: {
       name: 'Sépia', icon: 'photo-filter',
       params: [{ id: 'amount', label: 'Intensité', min: 0, max: 100, def: 80, unit: '%' }],

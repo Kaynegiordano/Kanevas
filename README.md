@@ -21,6 +21,31 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - **Image dans un texte ou une forme** : Calque > Insérer une image dans le calque… (ou menu contextuel du
   calque), ou Édition > Coller dans le calque (Ctrl+Alt+Maj+V). L'image couvre le calque actif et lui est
   écrêtée. Alt+clic sur un calque, ou le bouton d'écrêtage sous la liste, crée ou libère un masque d'écrêtage.
+- **Pièce** (J, avec les correcteurs) : entourer la zone, puis la faire glisser. Source : la zone est réparée avec
+  la texture de l'endroit d'arrivée ; Destination : elle y est recopiée. La texture se fond dans la lumière locale.
+- **Calques de remplissage** dynamiques (Calque > Nouveau calque de remplissage) : couleur unie, dégradé (linéaire,
+  radial, angle, réfléchi, losange), motif (damier, rayures, pois, grille, diagonales, grain). Réglables à tout
+  moment dans Propriétés ; « Pixelliser » en fait un calque de pixels.
+- **Correction sélective** (Image > Réglages, ou calque de réglage) : cyan, magenta, jaune, noir par gamme de
+  couleurs (rouges… noirs), méthode relative ou absolue.
+- **Atténuer** (Édition, Ctrl+Maj+F) juste après un filtre ou un réglage : opacité et mode de fusion du résultat.
+  **Ctrl+F** répète le dernier filtre avec ses réglages, **Ctrl+Alt+F** le rouvre avec sa boîte.
+- **Instantanés** (bouton appareil photo du panneau Historique) : figer un état, le rétablir plus tard (annulable).
+- **Sélection > Agrandir / Sélection similaire** : ajoute les couleurs proches de la sélection (tolérance de la
+  baguette magique), contiguës ou dans toute l'image.
+
+## Performances (grandes images)
+- Seule la zone modifiée est recomposée (élargie de la portée des styles de calque), par tuiles de 512 px dans de
+  petits canevas de travail. Un réglage dépendant du voisinage (Camera Raw : clarté, voile…) recompose tout.
+- Affichage progressif façon Photoshop : quand une recomposition serait longue (réglages sur une grande image,
+  opacité ou visibilité d'un calque…), l'écran montre aussitôt un aperçu basse résolution (copies réduites des
+  calques, en cache) ; la pleine résolution est calculée par tranches pendant les pauses. Export, pipette et
+  échantillonnage utilisent toujours la composition exacte.
+- Pinceau : l'aperçu et le report sur le calque ne touchent que les nouvelles touches ; l'historique ne garde
+  que le rectangle modifié.
+- Banc d'essai : `tools/bench.js` (à charger dans la page de `app/` servie avec le dossier racine), qui vérifie
+  aussi que la composition partielle égale une composition complète. Sur 6000×4000 px à 5 calques (réglage
+  Teinte/Saturation, ombre portée) : pinceau 787 → 3 ms par mouvement, curseur d'un réglage > 1 s → 20 ms.
 
 ## IA locale (détourage)
 « Sélectionner le sujet », « Supprimer l'arrière-plan » et l'outil « Sélection d'objet » utilisent BiRefNet

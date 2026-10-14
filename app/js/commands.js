@@ -55,6 +55,7 @@
     C.blendResult(d, tgt.canvas, res, tgt.x, tgt.y, opts.ignoreSelection);
     if (mask) L.maskChanged(); else L.touch();
     KS.Hist.commitPixels(d, name, tok, d.selection.active && !opts.ignoreSelection ? U.rectIntersect({ x: d.selection.bounds.x - tgt.x, y: d.selection.bounds.y - tgt.y, w: d.selection.bounds.w, h: d.selection.bounds.h }, { x: 0, y: 0, w: tgt.canvas.width, h: tgt.canvas.height }) : null, icon);
+    if (opts.fadeable !== false) C.rememberFade(d, L, mask ? 'mask' : 'canvas', tok.before.canvas, name);
     KS.emit('layer-pixels', d);
     d.changed();
     return true;
@@ -94,6 +95,7 @@
         const x = tgt.canvas.getContext('2d'); x.clearRect(0, 0, tgt.canvas.width, tgt.canvas.height); x.drawImage(last, 0, 0);
         if (mask) L.maskChanged(); else L.touch();
         KS.Hist.commitPixels(d, name, tok, null, icon);
+        C.rememberFade(d, L, mask ? 'mask' : 'canvas', src, name);
         KS.emit('layer-pixels', d); d.changed();
       },
     };
@@ -544,7 +546,7 @@
       d.layers = [L]; d.activeId = L.id;
     }, 'merge');
   });
-  C.rasterize = withDoc(d => { const L = d.active; if (L && (L.kind === 'text' || L.kind === 'shape')) KS.Hist.structure(d, L.kind === 'text' ? 'Pixelliser le texte' : 'Pixelliser la forme', () => L.rasterize(), 'rasterize'); });
+  C.rasterize = withDoc(d => { const L = d.active; if (L && (L.kind === 'text' || L.kind === 'shape' || L.kind === 'fill')) KS.Hist.structure(d, L.kind === 'text' ? 'Pixelliser le texte' : L.kind === 'fill' ? 'Pixelliser le remplissage' : 'Pixelliser la forme', () => L.rasterize(), 'rasterize'); });
   C.toggleVisible = (L) => { const d = D(); if (!d) return; KS.Hist.structure(d, L.visible ? 'Masquer le calque' : 'Afficher le calque', () => { L.visible = !L.visible; }, L.visible ? 'eye-off' : 'eye'); };
   C.selectAllLayers = withDoc(d => { d.selectedIds = new Set(d.layers.filter(l => !l.parent).map(l => l.id)); KS.emit('layers', d); });
   C.soloLayer = (L) => {
@@ -831,7 +833,94 @@
       apply: v => { KS.prefs.filterVals = { ...(KS.prefs.filterVals || {}), [id]: { ...v } }; KS.prefs.save(); pv.update((c, info) => run(c, v, info)); pv.commit(def.name, 'filter'); },
     });
   });
+  // Sélection > Agrandir / Sélection similaire (Photoshop) : ajoute les pixels dont la couleur est
+  // proche de celles déjà sélectionnées (tolérance de la baguette magique) ; Agrandir ne garde que
+  // ceux qui touchent la sélection, Sélection similaire les prend dans toute l'image.
+  C.growSelection = withDoc((d, similar = false) => {
+    const sel = d.selection;
+    if (!sel.active) { KS.toast('Faites d\'abord une sélection.', 'err'); return; }
+    const wand = T.byId.wand, tol = (wand?.o.tolerance ?? 32), W = d.width, H = d.height;
+    const px = KS.sampleData(d, wand?.o.all).data, m = U.getData(sel.mask).data;
+    // plage de couleurs sélectionnées (2e–98e centiles par canal), élargie de la tolérance
+    const hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+    let n = 0;
+    for (let i = 0; i < m.length; i += 4) if (m[i + 3] > 127) { hist[0][px[i]]++; hist[1][px[i + 1]]++; hist[2][px[i + 2]]++; n++; }
+    if (!n) return;
+    const range = hist.map(hh => { let lo = 0, hi = 255, a = 0; for (; lo < 255; lo++) { a += hh[lo]; if (a > n * 0.02) break; } a = 0; for (; hi > 0; hi--) { a += hh[hi]; if (a > n * 0.02) break; } return [Math.max(0, lo - tol), Math.min(255, hi + tol)]; });
+    const ok = i => px[i] >= range[0][0] && px[i] <= range[0][1] && px[i + 1] >= range[1][0] && px[i + 1] <= range[1][1] && px[i + 2] >= range[2][0] && px[i + 2] <= range[2][1];
+    const out = new Uint8Array(W * H);
+    if (similar) { for (let p = 0; p < W * H; p++) if (m[p * 4 + 3] > 127 || ok(p * 4)) out[p] = 1; }
+    else {
+      // diffusion depuis la sélection vers les voisins de couleur proche
+      const stack = new Int32Array(W * H); let sp = 0;
+      for (let p = 0; p < W * H; p++) if (m[p * 4 + 3] > 127) { out[p] = 1; stack[sp++] = p; }
+      while (sp) {
+        const p = stack[--sp], x = p % W, y = (p / W) | 0;
+        for (const q of [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, y > 0 ? p - W : -1, y < H - 1 ? p + W : -1]) {
+          if (q < 0 || out[q] || !ok(q * 4)) continue;
+          out[q] = 1; stack[sp++] = q;
+        }
+      }
+    }
+    const c = U.canvas(W, H), img = new ImageData(W, H);
+    for (let p = 0; p < W * H; p++) if (out[p]) img.data[p * 4 + 3] = 255;
+    U.putData(c, img);
+    KS.Hist.selection(d, similar ? 'Sélection similaire' : 'Agrandir', () => sel.combineCanvas(c, 'add'), 'select-all');
+  });
   C.lastFilter = () => { if (KS.state.lastFilter) C.filter(KS.state.lastFilter); };
+  // Ctrl+F : répète le dernier filtre avec les mêmes réglages, sans boîte de dialogue
+  C.repeatFilter = withDoc(d => {
+    const id = KS.state.lastFilter, def = id && KS.Filters.defs[id];
+    if (!def) return;
+    const vals = Object.fromEntries(def.params.filter(p => p.id).map(p => [p.id, (KS.prefs.filterVals?.[id] || {})[p.id] ?? p.def]));
+    KS.busy(() => C.applyPixels(d, def.name, 'filter', (c, info) => def.apply(c, vals, { ...info, fg: KS.state.fg, bg: KS.state.bg })));
+  });
+
+  /* ---------------------------------------------------------------- atténuer */
+  // Ctrl+Maj+F, juste après un filtre ou un réglage : mélange le résultat avec l'état d'avant
+  // (opacité et mode de fusion), comme Édition > Atténuer de Photoshop.
+  C.rememberFade = (d, L, which, before, name) => {
+    const tgt = which === 'mask' ? L.mask : L;
+    d.fade = { L, which, before, after: U.copyCanvas(tgt.canvas), x: tgt.x, y: tgt.y, name, pos: d.history.pos };
+  };
+  C.canFade = () => {
+    const d = D(), f = d && d.fade;
+    if (!f || f.pos !== d.history.pos || !d.layers.includes(f.L)) return false;
+    const tgt = f.which === 'mask' ? f.L.mask : f.L;
+    return !!tgt && tgt.canvas.width === f.after.width && tgt.canvas.height === f.after.height && tgt.x === f.x && tgt.y === f.y;
+  };
+  C.fade = withDoc(d => {
+    if (!C.canFade()) { KS.toast("Rien à atténuer : appliquez d'abord un filtre ou un réglage.", "err"); return; }
+    const f = d.fade, L = f.L, mask = f.which === 'mask', tgt = mask ? L.mask : L;
+    const tok = KS.Hist.begin(L, f.which);
+    let op = 100, mode = 'normal';
+    const paint = () => {
+      const x = tgt.canvas.getContext('2d');
+      x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+      x.clearRect(0, 0, tgt.canvas.width, tgt.canvas.height);
+      x.drawImage(f.before, 0, 0);
+      x.globalAlpha = op / 100; x.globalCompositeOperation = KS.blendOp(mode);
+      x.drawImage(f.after, 0, 0);
+      x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+      if (mask) L.maskChanged(); else L.touch();
+      d.changed();
+    };
+    const live = U.throttle(paint, 40);
+    const o = ui.scrub({ value: op, min: 0, max: 100, unit: '%', onInput: v => { op = v; live(); } });
+    const b = KS.blendSelect(mode, v => { mode = v; paint(); });
+    KS.modal({
+      title: 'Atténuer : ' + f.name, width: 380, seeThrough: true,
+      body: h('div.form-grid', h('label.l', { text: 'Opacité' }), o, h('label.l', { text: 'Mode' }), b),
+      buttons: [{ label: 'Annuler', value: null }, { label: 'OK', primary: true, value: 'ok' }],
+      onClose: v => {
+        if (v !== 'ok') { op = 100; mode = 'normal'; paint(); return; }
+        paint();
+        KS.Hist.commitPixels(d, 'Atténuer : ' + f.name, tok, null, 'filter');
+        d.fade = null;
+        KS.emit('layer-pixels', d);
+      },
+    });
+  });
   C.cameraRaw = () => C.adjust('cameraRaw');
 
   /* ================================================================ affichage */

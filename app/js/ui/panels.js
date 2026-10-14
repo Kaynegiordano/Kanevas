@@ -205,6 +205,7 @@
           h('div.form-row', ui.btn('Dissocier', () => KS.cmd.ungroup(), '.small', 'group'), ui.btn('Fusionner le groupe', () => KS.cmd.mergeDown(), '.small', 'merge')));
         return;
       }
+      if (L.kind === 'fill' && L.fill && KS.fillProperties) el.appendChild(KS.fillProperties(doc, L, sec));
       if (L.kind === 'shape') {
         const sh = L.shape;
         const set = patch => KS.Hist.structure(doc, 'Modifier la forme', () => { Object.assign(L.shape, patch); L.renderShape(); }, 'shape-star');
@@ -283,7 +284,7 @@
   }
 
   /* ---------------------------------------------------------------- réglages */
-  const ADJ_LIST = ['brightness', 'levels', 'curves', 'exposure', 'vibrance', 'hueSat', 'colorBalance', 'blackWhite', 'photoFilter', 'channelMixer', 'invert', 'posterize', 'threshold', 'gradientMap'];
+  const ADJ_LIST = ['brightness', 'levels', 'curves', 'exposure', 'vibrance', 'hueSat', 'colorBalance', 'blackWhite', 'photoFilter', 'channelMixer', 'invert', 'posterize', 'threshold', 'gradientMap', 'selectiveColor'];
   KS.ADJ_LIST = ADJ_LIST;
   P.register('adjustments', {
     title: 'Réglages',

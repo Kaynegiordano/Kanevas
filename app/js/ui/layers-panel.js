@@ -84,6 +84,7 @@
           thumb = h('div.thumb' + (L.mask && !L.editMask && L.id === doc.activeId ? '.sel' : ''), cv);
           L.drawThumb(cv, doc);
           if (L.kind === 'shape') thumb.appendChild(h('span.kind-badge', { html: KS.icon('shape-star') }));
+          if (L.kind === 'fill') thumb.appendChild(h('span.kind-badge', { html: KS.icon(KS.FillLayers?.DEFS[L.fill?.type]?.icon || 'fill') }));
           row._cv = cv;
         }
         thumb.addEventListener('click', e => {
@@ -221,6 +222,16 @@
       const el = this.el, doc = KS.state.doc;
       el.innerHTML = '';
       if (!doc) { el.appendChild(h('div.empty-note', { text: 'Aucun document' })); return; }
+      // instantanés en tête (clic : rétablir ; double-clic : renommer), puis les étapes
+      const snaps = h('div', { style: { padding: '4px 4px 0' } });
+      for (const s of doc.snapshots || []) {
+        const r = h('div.hist-row', { html: KS.icon('camera'), title: 'Rétablir cet état (annulable)' }, h('span', { text: s.name }));
+        r.addEventListener('click', () => KS.Hist.restoreSnapshot(doc, s));
+        r.addEventListener('dblclick', async () => { const n = await KS.prompt("Renommer l'instantané", 'Nom', s.name); if (n) { s.name = n; this.render(); } });
+        r.addEventListener('contextmenu', e => { e.preventDefault(); ui.menu([{ label: "Supprimer l'instantané", icon: 'trash', action: () => { doc.snapshots = doc.snapshots.filter(x => x !== s); this.render(); } }], e.clientX, e.clientY); });
+        snaps.appendChild(r);
+      }
+      if (snaps.children.length) { snaps.appendChild(h('div', { style: { borderBottom: '1px solid var(--border)', margin: '4px 0' } })); el.appendChild(snaps); }
       const box = h('div', { style: { padding: '4px' } });
       const H = doc.history;
       H.items.forEach((it, i) => {
@@ -229,6 +240,8 @@
         box.appendChild(r);
       });
       el.appendChild(box);
+      el.appendChild(h('div.layers-bottom',
+        ui.iconBtn('camera', "Nouvel instantané de l'état actuel", () => KS.Hist.snapshot(doc, 'Instantané ' + ((doc.snapshots || []).length + 1)), '.sm')));
       const cur = box.children[H.pos];
       if (cur) cur.scrollIntoView({ block: 'nearest' });
     },

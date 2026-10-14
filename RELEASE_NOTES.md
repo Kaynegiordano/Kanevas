@@ -1,5 +1,7 @@
-Rectangle : angles reglables un par un (le rectangle arrondi disparait), modifiables apres coup dans Proprietes.
-Lasso magnetique.
-Inserer une image dans un texte ou une forme (Calque > Inserer une image dans le calque, Coller dans le calque, Alt+clic pour l'ecretage).
-Version web : polices du PC dans Chrome et Edge.
-Pictos d'outils redessines (deplacement, lassos, selection rapide, selection d'objet, degrade, densite +).
+Beaucoup plus rapide sur les grandes images : pinceau, annuler, reglages et opacite des calques restent fluides (affichage progressif facon Photoshop).
+Outil Piece (reparer une zone en la faisant glisser).
+Calques de remplissage dynamiques : couleur unie, degrade, motif.
+Correction selective.
+Edition > Attenuer (Ctrl+Maj+F) ; Ctrl+F repete le dernier filtre.
+Instantanes dans le panneau Historique.
+Selection > Agrandir et Selection similaire.

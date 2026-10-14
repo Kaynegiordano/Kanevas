@@ -14,6 +14,7 @@
     crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/>',
     eyedropper: '<path d="M14.5 4.5l5 5"/><path d="M17 3.5a2.1 2.1 0 0 1 3 3L17.5 9l-3-3z"/><path d="M15.5 7.5L6 17l-2 3 3-2 9.5-9.5"/>',
     'heal-spot': '<rect x="3.5" y="8.5" width="17" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10 12h4M12 10v4"/><path d="M19 3l.5 1.5L21 5l-1.5.5L19 7l-.5-1.5L17 5l1.5-.5z"/>',
+    patch: '<rect x="4.5" y="4.5" width="15" height="15" rx="3" transform="rotate(-15 12 12)"/><rect x="8" y="8" width="8" height="8" rx="1" transform="rotate(-15 12 12)" stroke-dasharray="1.8 1.8"/>',
     heal: '<rect x="3.5" y="8.5" width="17" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10 12h4M12 10v4"/>',
     brush: '<path d="M9.5 14.5L19.5 4.5a1.4 1.4 0 0 1 2 2l-10 10"/><path d="M8.5 14c-2.2 0-3.5 1.6-3.5 3.5 0 1.3-.8 2.1-2 2.5 1 .6 2.4 1 3.8 1C9.5 21 11 19 11 16.6"/>',
     pencil: '<path d="M4 20l1-5L16 4l4 4L9 19z"/><path d="M14 6l4 4M4 20l5-1"/>',

@@ -159,6 +159,73 @@
   healTool('heal-spot', 'Correcteur localisé', 'heal-spot', true);
   healTool('heal', 'Correcteur', 'heal', false);
 
+  /* ---------------------------------------------------------------- pièce */
+  // Outil Pièce (Photoshop) : on entoure une zone, puis on la fait glisser.
+  // Source : la zone entourée est réparée avec la texture de l'endroit où on la dépose.
+  // Destination : la zone entourée est recopiée là où on la dépose.
+  // Dans les deux cas la texture est fondue dans la couleur et la lumière d'arrivée (cicatrisation).
+  T.register({
+    id: 'patch', name: 'Pièce', icon: 'patch', shortcut: 'J', cursor: 'crosshair',
+    defaults: { pmode: 'source' },
+    options: () => [
+      { type: 'select', id: 'pmode', label: 'Pièce', options: [['source', 'Source'], ['dest', 'Destination']] },
+      { type: 'custom', render: () => KS.h('span.opt-label', { text: 'Entourez la zone, puis faites-la glisser' }) },
+    ],
+    down(ev, doc) {
+      const sel = doc.selection;
+      if (sel.active && sel.contains(ev.x, ev.y)) { this.drag = { x0: ev.x, y0: ev.y, dx: 0, dy: 0 }; return; }
+      this.pts = [{ x: ev.x, y: ev.y }];
+    },
+    move(ev) {
+      if (this.drag) { this.drag.dx = Math.round(ev.x - this.drag.x0); this.drag.dy = Math.round(ev.y - this.drag.y0); KS.requestRender(); return; }
+      if (!this.pts) return;
+      const l = this.pts[this.pts.length - 1];
+      if (Math.hypot(ev.x - l.x, ev.y - l.y) * V.zoom > 1.5) this.pts.push({ x: ev.x, y: ev.y });
+      KS.requestRender();
+    },
+    up(ev, doc) {
+      if (this.pts) {
+        const pts = this.pts; this.pts = null;
+        if (pts.length >= 3) KS.Hist.selection(doc, 'Pièce : zone', () => doc.selection.polygon(pts, 'new', 0), 'patch');
+        else if (doc.selection.active) KS.Hist.selection(doc, 'Désélectionner', () => doc.selection.clear(), 'select-none');
+        return;
+      }
+      const g = this.drag; this.drag = null;
+      if (!g || (!g.dx && !g.dy)) { KS.requestRender(); return; }
+      const target = T.paintTarget(doc, { allowMaskEdit: false });
+      if (!target || target.gray) return;
+      const sel = doc.selection, dest = this.o.pmode === 'dest';
+      const sx = dest ? g.dx : 0, sy = dest ? g.dy : 0;          // décalage de la zone à réparer
+      const mask = U.canvas(target.canvas.width, target.canvas.height);
+      mask.getContext('2d').drawImage(sel.mask, -target.ox + sx, -target.oy + sy);
+      const b = sel.bounds;
+      const rect = U.rectIntersect({ x: b.x - target.ox + sx, y: b.y - target.oy + sy, w: b.w, h: b.h }, { x: 0, y: 0, w: target.canvas.width, h: target.canvas.height });
+      if (!rect) return;
+      const token = T.beginHist(target), snap = U.copyCanvas(target.canvas);
+      const R = KS.heal(target.canvas, snap, mask, rect, dest ? { dx: -g.dx, dy: -g.dy } : { dx: g.dx, dy: g.dy });
+      target.layer.touch();
+      T.commitHist(doc, target, token, R, 'Pièce', 'patch');
+      if (dest) { sel.translate(g.dx, g.dy); KS.emit('selection', doc); }
+      doc.changed();
+    },
+    cancel() { this.pts = null; this.drag = null; },
+    overlay(ctx, v, doc) {
+      if (this.pts) {
+        ctx.save(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath();
+        this.pts.forEach((p, i) => { const s = V.toScreen(p.x, p.y); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+        ctx.stroke(); ctx.strokeStyle = '#000'; ctx.setLineDash([4, 4]); ctx.stroke(); ctx.restore();
+      }
+      if (this.drag && doc.selection.edges) {
+        // contour de la zone à son point d'arrivée
+        ctx.save();
+        ctx.setTransform(V.dpr * V.zoom, 0, 0, V.dpr * V.zoom, V.dpr * (V.ox + this.drag.dx * V.zoom), V.dpr * (V.oy + this.drag.dy * V.zoom));
+        ctx.lineWidth = 2 / V.zoom; ctx.strokeStyle = V.colors.accent; ctx.setLineDash([5 / V.zoom, 4 / V.zoom]);
+        ctx.stroke(doc.selection.edges);
+        ctx.restore();
+      }
+    },
+  });
+
   /* ---------------------------------------------------------------- outils à empreintes directes */
   function dabTool(cfg) {
     return T.register({

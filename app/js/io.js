@@ -76,7 +76,7 @@
     const idx = new Map(doc.layers.map((L, i) => [L.id, i]));
     const layers = doc.layers.map(L => ({
       name: L.name, kind: L.kind, x: L.x, y: L.y, opacity: L.opacity, blend: L.blend, visible: L.visible, lockAll: L.lockAll, lockAlpha: L.lockAlpha, clip: L.clip,
-      text: L.text, adjust: L.adjust, effects: L.effects, shape: L.shape, collapsed: L.collapsed,
+      text: L.text, adjust: L.adjust, effects: L.effects, shape: L.shape, fill: L.fill, collapsed: L.collapsed,
       parent: L.parent && idx.has(L.parent) ? idx.get(L.parent) : -1,
       png: L.kind === 'adjust' || L.kind === 'group' ? null : toDataURL(L.canvas),
       mask: L.mask ? { x: L.mask.x, y: L.mask.y, enabled: L.mask.enabled, linked: L.mask.linked, outside: L.mask.outside, png: toDataURL(L.mask.canvas) } : null,
@@ -97,6 +97,7 @@
       const L = new KS.Layer({ name: l.name, kind: l.kind, canvas: l.png ? await load(l.png) : undefined, x: l.x, y: l.y, opacity: l.opacity, blend: l.blend, visible: l.visible, lockAll: l.lockAll, lockAlpha: l.lockAlpha, clip: l.clip, adjust: l.adjust, effects: l.effects, collapsed: l.collapsed, parent: null });
       if (l.text) { L.text = l.text; }
       if (l.shape) { L.shape = l.shape; }
+      if (l.fill) { L.fill = l.fill; }
       if (l.mask) { const c = await load(l.mask.png); L.mask = { canvas: c, ctx: c.getContext('2d'), x: l.mask.x, y: l.mask.y, enabled: l.mask.enabled, linked: l.mask.linked, outside: l.mask.outside ?? 255, alpha: null }; L.maskChanged(); }
       doc.layers.push(L);
     }
