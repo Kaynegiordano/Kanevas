@@ -78,8 +78,11 @@
       },
       afterDab(doc) {
         const st = this.stroke;
-        if (st.direct) { if (st.dirtyMove) { this.target.after(st.dirtyMove); st.dirtyMove = null; } doc.changed(); }
-        else { this.needPreview = true; doc.changed(); }
+        // seule la zone des nouvelles touches est recomposée
+        const r = st.takeDirty();
+        if (st.direct && st.dirtyMove) { this.target.after(st.dirtyMove); st.dirtyMove = null; }
+        if (r) { if (!st.direct) this.needPreview = true; doc.changed(r); }
+        else KS.requestRender();
       },
       preRender() {
         if (this.stroke && this.needPreview && !this.stroke.direct) { this.target.layer.override = this.stroke.preview(); this.needPreview = false; }
@@ -91,10 +94,11 @@
         const rect = st.commit();
         if (st.direct) this.target.after(st.dirtyMove || rect);
         if (this.target.layer) { this.target.layer.override = null; this.target.layer.touch(); }
-        T.commitHist(doc, this.target, this.token, rect, cfg.histName, cfg.icon);
+        const t = this.target;
+        T.commitHist(doc, t, this.token, rect, cfg.histName, cfg.icon);
         this.lastPoint = { x: ev.x, y: ev.y, pressure: ev.pressure }; this.lastDoc = doc;
         this.stroke = null; this.target = null;
-        doc.changed();
+        doc.changed(rect ? { x: rect.x + t.ox, y: rect.y + t.oy, w: rect.w, h: rect.h } : undefined);
       },
       cancel() { if (this.target && this.target.layer) { this.target.layer.override = null; this.target.layer.touch(); } this.stroke = null; },
       key(e) { return brushKeys(this, e); },

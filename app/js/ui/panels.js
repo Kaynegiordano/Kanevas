@@ -320,7 +320,7 @@
         const x = cv.getContext('2d');
         x.fillStyle = U.checkerPattern(x, 4); x.fillRect(0, 0, cv.width, cv.height);
         x.imageSmoothingQuality = 'medium';
-        x.drawImage(doc.composite(), 0, 0, cv.width, cv.height);
+        x.drawImage(doc.previewSource(), 0, 0, cv.width, cv.height);
         const r = { x: -V.ox / V.zoom * s, y: -V.oy / V.zoom * s, w: V.w / V.zoom * s, h: V.h / V.zoom * s };
         x.strokeStyle = '#ff3b30'; x.lineWidth = 2; x.strokeRect(r.x, r.y, r.w, r.h);
         geo = { s };
@@ -354,7 +354,7 @@
       const draw = U.throttle(() => {
         const doc = KS.state.doc;
         if (!doc || !P.isVisible('histogram')) return;
-        const c = doc.composite(), s = Math.min(1, 512 / Math.max(c.width, c.height));
+        const c = doc.previewSource(), s = Math.min(1, 512 / Math.max(c.width, c.height));
         const t = U.canvas(c.width * s, c.height * s); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
         const hh = KS.Adjust.hist(U.getData(t));
         cv.width = cv.clientWidth || 280;

@@ -140,7 +140,7 @@
     },
     thumbs(force) {
       const d = D(); if (!d || !this.rows || (!force && !KS.panels.isVisible('channels'))) return;
-      const comp = d.composite(), s = Math.min(38 / d.width, 34 / d.height), w = Math.max(1, Math.round(d.width * s)), hh = Math.max(1, Math.round(d.height * s));
+      const comp = d.previewSource(), s = Math.min(38 / d.width, 34 / d.height), w = Math.max(1, Math.round(d.width * s)), hh = Math.max(1, Math.round(d.height * s));
       const small = U.canvas(w, hh); small.getContext('2d').drawImage(comp, 0, 0, w, hh);
       const data = U.getData(small).data;
       for (const row of this.rows) {

@@ -123,6 +123,7 @@
         for (let i = 0; i < px.length; i += 4) { px[i + 3] = px[i]; px[i] = px[i + 1] = px[i + 2] = 0; }
         m.alpha.getContext('2d').putImageData(d, r.x, r.y);
       }
+      m._v = KS.maskSerial = (KS.maskSerial || 0) + 1;     // invalide le masque placé mis en cache (_decorate)
       this.touch();
     }
     ensureMaskCovers(r) {
@@ -203,6 +204,21 @@
     }
 
     /* ------------------------------------------------ rendu (masque + styles) */
+    // Copie réduite (facteur k < 1) de l'image du calque, pour l'aperçu basse résolution du
+    // document ; w, h restent la taille en coordonnées document. Mise en cache par version.
+    imageScaled(k) {
+      const im = this.image();
+      if (k >= 1) return im;
+      const cache = !this.override;
+      if (cache && this._sc && this._sc.v === this.version && this._sc.k === k && this._sc.src === im.canvas) return this._sc.r;
+      const w = im.canvas.width, h = im.canvas.height;
+      const c = U.canvas(Math.max(1, Math.ceil(w * k)), Math.max(1, Math.ceil(h * k))), x = c.getContext('2d');
+      x.imageSmoothingQuality = 'medium';
+      x.drawImage(im.canvas, 0, 0, c.width, c.height);
+      const r = { canvas: c, x: im.x, y: im.y, w: c.width / k, h: c.height / k };
+      if (cache) this._sc = { v: this.version, k, src: im.canvas, r };
+      return r;
+    }
     image() {
       if (this.override) return this._decorate(this.override, false);
       if (this._img && this._img.v === this.version) return this._img.r;
@@ -214,14 +230,23 @@
       let img = base;
       const m = this.mask;
       if (m && m.enabled && m.alpha) {
-        const c = U.canvas(img.canvas.width, img.canvas.height), x = c.getContext('2d');
+        // Canevas réutilisés : le masque placé n'est refait que s'il a changé ou si le calque a bougé
+        const W = img.canvas.width, H = img.canvas.height;
+        const key = `${m._v || 0}|${m.x - img.x}|${m.y - img.y}|${W}|${H}|${m.outside ?? 255}`;
+        if (!this._mk || this._mk.key !== key) {
+          const mk = this._mk && this._mk.c.width === W && this._mk.c.height === H ? this._mk.c : U.canvas(W, H), mx = mk.getContext('2d');
+          mx.clearRect(0, 0, W, H);
+          if ((m.outside ?? 255) > 0) { mx.globalAlpha = (m.outside ?? 255) / 255; mx.fillRect(0, 0, W, H); mx.globalAlpha = 1; }
+          mx.clearRect(m.x - img.x, m.y - img.y, m.canvas.width, m.canvas.height);
+          mx.drawImage(m.alpha, m.x - img.x, m.y - img.y);
+          this._mk = { key, c: mk };
+        }
+        const c = this._deco && this._deco.width === W && this._deco.height === H ? this._deco : (this._deco = U.canvas(W, H)), x = c.getContext('2d');
+        x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, W, H);
         x.drawImage(img.canvas, 0, 0);
-        const mk = U.canvas(c.width, c.height), mx = mk.getContext('2d');
-        if ((m.outside ?? 255) > 0) { mx.globalAlpha = (m.outside ?? 255) / 255; mx.fillRect(0, 0, c.width, c.height); mx.globalAlpha = 1; }
-        mx.clearRect(m.x - img.x, m.y - img.y, m.canvas.width, m.canvas.height);
-        mx.drawImage(m.alpha, m.x - img.x, m.y - img.y);
         x.globalCompositeOperation = 'destination-in';
-        x.drawImage(mk, 0, 0);
+        x.drawImage(this._mk.c, 0, 0);
+        x.globalCompositeOperation = 'source-over';
         img = { canvas: c, x: img.x, y: img.y };
       }
       const fx = this.effects;

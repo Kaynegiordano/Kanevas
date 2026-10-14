@@ -120,7 +120,9 @@
     ctx.fillStyle = V.checker;
     ctx.fillRect(rx, ry, rw, rh);
 
-    const comp = d.display();
+    // affichage progressif : les tuiles pas encore recalculées viennent de l'aperçu basse résolution
+    const st = d.channelView ? { comp: d.display(), pending: null } : d.frame();
+    const comp = st.comp;
     // ne dessiner que la partie visible (zooms très forts)
     const vis = U.rectIntersect({ x: 0, y: 0, w: W, h: H }, { x: -V.ox / z, y: -V.oy / z, w: V.w / z, h: V.h / z });
     ctx.imageSmoothingEnabled = z < 1;
@@ -128,6 +130,22 @@
     if (vis) {
       const sx = Math.floor(vis.x), sy = Math.floor(vis.y), sw = Math.min(W - sx, Math.ceil(vis.x + vis.w) - sx + 1), sh = Math.min(H - sy, Math.ceil(vis.y + vis.h) - sy + 1);
       ctx.drawImage(comp, sx, sy, sw, sh, rx + sx * z, ry + sy * z, sw * z, sh * z);
+      if (st.pending) {
+        // un seul dessin de l'aperçu, découpé aux tuiles en attente (pas de joints entre tuiles)
+        const S = KS.Doc.TILE, k = st.k;
+        ctx.save();
+        ctx.beginPath();
+        for (const key of st.pending) {
+          const [tx, ty] = key.split(',').map(Number);
+          const T = U.rectIntersect({ x: tx, y: ty, w: S, h: S }, { x: sx, y: sy, w: sw, h: sh });
+          if (T) ctx.rect(rx + T.x * z, ry + T.y * z, T.w * z, T.h * z);
+        }
+        ctx.clip();
+        ctx.fillStyle = V.checker; ctx.fillRect(rx + sx * z, ry + sy * z, sw * z, sh * z);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(st.proxy, sx * k, sy * k, sw * k, sh * k, rx + sx * z, ry + sy * z, sw * z, sh * z);
+        ctx.restore();
+      }
       if (d.quickMask) ctx.drawImage(d.quickMask.overlay, sx, sy, sw, sh, rx + sx * z, ry + sy * z, sw * z, sh * z);
       const ach = d.alphaEdit && !d.quickMask && d.alphas.find(a => a.id === d.alphaEdit);
       if (ach && ach.overlay) ctx.drawImage(ach.overlay, sx, sy, sw, sh, rx + sx * z, ry + sy * z, sw * z, sh * z);

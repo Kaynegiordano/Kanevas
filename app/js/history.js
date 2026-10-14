@@ -19,27 +19,28 @@
       while (this.items.length - 1 > max) { this.items.splice(1, 1); this.pos--; }
       this.doc.dirty = true;
       this.doc.revision++;
-      this.doc.changed();
+      this.doc.changed(entry.dirty);
       KS.emit('history', this.doc);
     }
     get canUndo() { return this.pos > 0; }
     get canRedo() { return this.pos < this.items.length - 1; }
-    undo() { if (!this.canUndo) return; KS.cancelActiveOps && KS.cancelActiveOps(); this.items[this.pos].undo(); this.pos--; this._after(); }
-    redo() { if (!this.canRedo) return; KS.cancelActiveOps && KS.cancelActiveOps(); this.pos++; this.items[this.pos].redo(); this._after(); }
+    undo() { if (!this.canUndo) return; KS.cancelActiveOps && KS.cancelActiveOps(); const it = this.items[this.pos]; it.undo(); this.pos--; this._after(it.dirty); }
+    redo() { if (!this.canRedo) return; KS.cancelActiveOps && KS.cancelActiveOps(); this.pos++; const it = this.items[this.pos]; it.redo(); this._after(it.dirty); }
     goto(i) {
       KS.cancelActiveOps && KS.cancelActiveOps();
       while (this.pos > i) { this.items[this.pos].undo(); this.pos--; }
       while (this.pos < i) { this.pos++; this.items[this.pos].redo(); }
       this._after();
     }
-    _after() {
+    // dirty : zone touchée par une entrée de pixels (le reste du document n'a pas bougé)
+    _after(dirty) {
       const d = this.doc;
       d.dirty = true;
       d.revision++;
       if (!d.layers.some(l => l.id === d.activeId) && d.layers.length) d.activeId = d.layers[d.layers.length - 1].id;
-      d.layers.forEach(l => l.touch());
+      if (!dirty) d.layers.forEach(l => l.touch());
       d.selection.refresh();
-      d.changed();
+      d.changed(dirty);
       KS.emit('history', d);
       KS.emit('layers', d);
       KS.emit('selection', d);
@@ -122,17 +123,20 @@
           layer.canvas.getContext('2d').putImageData(a, r.x, r.y); layer.touch();
         }
       }
-      const after = grab(layer, which);
+      const src = which === 'mask' ? layer.mask : layer;
       let entry;
-      const same = before.canvas.width === after.canvas.width && before.canvas.height === after.canvas.height && before.x === after.x && before.y === after.y;
+      const same = before.canvas.width === src.canvas.width && before.canvas.height === src.canvas.height && before.x === src.x && before.y === src.y;
       if (same && rect) {
-        let r = U.rectIntersect(U.rectInt(rect), { x: 0, y: 0, w: after.canvas.width, h: after.canvas.height });
+        // seul le rectangle modifié est copié (avant et après), pas le calque entier
+        let r = U.rectIntersect(U.rectInt(rect), { x: 0, y: 0, w: src.canvas.width, h: src.canvas.height });
         if (!r) { return; }
-        const full = { w: after.canvas.width, h: after.canvas.height };
+        const full = { w: src.canvas.width, h: src.canvas.height };
         const b = { canvas: U.copyCanvas(before.canvas, r), x: before.x, y: before.y, full };
-        const a = { canvas: U.copyCanvas(after.canvas, r), x: after.x, y: after.y, full };
-        entry = { name, icon, undo: () => put(layer, which, b, r), redo: () => put(layer, which, a, r) };
+        const a = { canvas: U.copyCanvas(src.canvas, r), x: src.x, y: src.y, full };
+        // effets de calque : la zone redessinée déborde du rectangle, c'est la composition qui l'élargit
+        entry = { name, icon, undo: () => put(layer, which, b, r), redo: () => put(layer, which, a, r), dirty: { x: r.x + src.x, y: r.y + src.y, w: r.w, h: r.h } };
       } else {
+        const after = grab(layer, which);
         const full0 = { w: -1, h: -1 };
         const b = { ...before, full: full0 }, a = { ...after, full: full0 };
         entry = { name, icon, undo: () => put(layer, which, b), redo: () => put(layer, which, a) };

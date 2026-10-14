@@ -91,21 +91,20 @@ U.fitCanvas = (c, w, h) => { if (c.width !== w || c.height !== h) { c.width = w;
 U.getData = (c, r) => r ? c.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h) : c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
 U.putData = (c, d, x = 0, y = 0) => c.getContext('2d').putImageData(d, x, y);
 // Boîte englobante des pixels non transparents (null si vide)
+// Une seule lecture du canevas, puis chaque bord est cherché depuis l'extérieur : on s'arrête au
+// premier pixel visible (un calque plein ne parcourt que ses bords, pas tout l'intérieur).
 U.alphaBounds = (c, threshold = 0) => {
   const w = c.width, h = c.height;
   if (w * h === 0) return null;
-  const d = U.getData(c).data;
-  let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y++) {
-    let row = y * w * 4 + 3;
-    for (let x = 0; x < w; x++, row += 4) {
-      if (d[row] > threshold) {
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (y < y0) y0 = y; y1 = y;
-      }
-    }
-  }
-  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  const d = U.getData(c).data, th = threshold;
+  const rowHit = y => { for (let i = y * w * 4 + 3, e = i + w * 4; i < e; i += 4) if (d[i] > th) return true; return false; };
+  let top = 0; while (top < h && !rowHit(top)) top++;
+  if (top === h) return null;
+  let bot = h - 1; while (bot > top && !rowHit(bot)) bot--;
+  const colHit = x => { for (let y = top, i = (top * w + x) * 4 + 3; y <= bot; y++, i += w * 4) if (d[i] > th) return true; return false; };
+  let left = 0; while (left < w - 1 && !colHit(left)) left++;
+  let right = w - 1; while (right > left && !colHit(right)) right--;
+  return { x: left, y: top, w: right - left + 1, h: bot - top + 1 };
 };
 U.blobFromCanvas = (c, type = 'image/png', quality) => new Promise(res => c.toBlob(res, type, quality));
 U.loadImage = src => new Promise((res, rej) => {

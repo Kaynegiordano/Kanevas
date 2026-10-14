@@ -92,6 +92,9 @@
       if (this.aliased) { dx = Math.round(dx); dy = Math.round(dy); }
       const box = { x: Math.floor(dx) - 1, y: Math.floor(dy) - 1, w: Math.ceil(size) + 3, h: Math.ceil(size) + 3 };
       this.rect = U.rectUnion(this.rect, box);
+      // zones touchées depuis le dernier aperçu / la dernière recomposition (coordonnées du calque)
+      this.dirtyPreview = U.rectUnion(this.dirtyPreview, box);
+      this.dirtyChange = U.rectUnion(this.dirtyChange, box);
       if (this.mode === 'clone') return this._dabClone(tx, ty, size, alpha, dx, dy);
       const tp = tip(this.aliased ? Math.round(size) : size, this.hardness, this.css, this.aliased);
       const ctx = this.direct ? this.t.canvas.getContext('2d') : this.bctx;
@@ -127,32 +130,64 @@
       this.bctx.globalAlpha = 1;
       void dx; void dy;
     }
-    // Tampon rogné à la sélection
-    _clippedBuffer() {
+    // Zone modifiée depuis le dernier appel, en coordonnées document (null : rien)
+    takeDirty() {
+      const r = this.direct ? this.dirtyMove : this.dirtyChange;
+      this.dirtyChange = null;
+      return r ? { x: r.x + this.t.ox, y: r.y + this.t.oy, w: r.w, h: r.h } : null;
+    }
+    // Tampon rogné à la sélection (sur la zone r seulement, si donnée)
+    _clippedBuffer(r) {
       if (!this.sel) return this.buffer;
-      const s = U.fitCanvas(this.sbuf, this.buffer.width, this.buffer.height), x = s.getContext('2d');
+      const s = this.sbuf, x = s.getContext('2d');
+      if (s.width !== this.buffer.width || s.height !== this.buffer.height) { s.width = this.buffer.width; s.height = this.buffer.height; }
+      const z = r || { x: 0, y: 0, w: s.width, h: s.height };
+      x.save(); x.beginPath(); x.rect(z.x, z.y, z.w, z.h); x.clip();
+      x.clearRect(z.x, z.y, z.w, z.h);
       x.drawImage(this.buffer, 0, 0);
       x.globalCompositeOperation = 'destination-in';
       x.drawImage(this.sel, -this.t.ox, -this.t.oy);
-      x.globalCompositeOperation = 'source-over';
+      x.restore();
       return s;
     }
-    _applyTo(ctx) {
+    _applyTo(ctx, r) {
       ctx.globalAlpha = this.opacity;
       ctx.globalCompositeOperation = this.mode === 'erase' ? 'destination-out' : this.lockAlpha ? 'source-atop' : 'source-over';
-      ctx.drawImage(this._clippedBuffer(), 0, 0);
+      ctx.drawImage(this._clippedBuffer(r), 0, 0);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
-    // Aperçu : copie du calque + tampon
+    // Aperçu : copie du calque + tampon. La copie est faite une fois ; ensuite seules les
+    // zones touchées depuis le dernier aperçu sont refaites (calque d'origine + tampon).
     preview() {
       if (this.direct) return null;
-      const c = U.fitCanvas(this.tmp, this.t.canvas.width, this.t.canvas.height), x = c.getContext('2d');
-      x.drawImage(this.t.canvas, 0, 0);
-      this._applyTo(x);
+      const W = this.t.canvas.width, H = this.t.canvas.height, c = this.tmp, x = c.getContext('2d');
+      if (!this._pv || c.width !== W || c.height !== H) {
+        U.fitCanvas(c, W, H);
+        x.drawImage(this.t.canvas, 0, 0);
+        this._applyTo(x);
+        this._pv = true;
+      } else {
+        const r = this.dirtyPreview && U.rectIntersect(this.dirtyPreview, { x: 0, y: 0, w: W, h: H });
+        if (r) {
+          x.save(); x.beginPath(); x.rect(r.x, r.y, r.w, r.h); x.clip();
+          x.clearRect(r.x, r.y, r.w, r.h);
+          x.drawImage(this.t.canvas, 0, 0);
+          this._applyTo(x, r);
+          x.restore();
+        }
+      }
+      this.dirtyPreview = null;
       return { canvas: c, x: this.t.ox, y: this.t.oy };
     }
     commit() {
-      if (!this.direct) this._applyTo(this.t.canvas.getContext('2d'));
+      // seul le rectangle du coup de pinceau est reporté sur le calque
+      const r = this.rect && U.rectIntersect(this.rect, { x: 0, y: 0, w: this.t.canvas.width, h: this.t.canvas.height });
+      if (!this.direct && r) {
+        const x = this.t.canvas.getContext('2d');
+        x.save(); x.beginPath(); x.rect(r.x, r.y, r.w, r.h); x.clip();
+        this._applyTo(x, r);
+        x.restore();
+      }
       return this.rect;
     }
   }
