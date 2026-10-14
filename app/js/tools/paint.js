@@ -137,24 +137,33 @@
       if (!target || target.gray) return;
       if (!this.offset || !this.o.aligned) this.offset = { dx: this.src.x - ev.x, dy: this.src.y - ev.y };
       const L = target.layer;
-      const source = this.o.sample === 'all' ? { canvas: U.copyCanvas(doc.composite()), ox: 0, oy: 0 } : { canvas: U.copyCanvas(L.canvas), ox: L.x, oy: L.y };
+      // le calque n'est modifié qu'au relâchement : il sert de source tel quel, sans copie
+      const source = this.o.sample === 'all' ? { canvas: U.copyCanvas(doc.composite()), ox: 0, oy: 0 } : { canvas: L.canvas, ox: L.x, oy: L.y };
       this.target = target;
-      this.token = T.beginHist(target);
+      const cv = doc.channelView;
+      this.token = cv && !(cv.r && cv.g && cv.b) ? T.beginHist(target) : null;
       this.stroke = new KS.Brush.Stroke({
         doc, target, size: this.o.size, hardness: this.o.hardness / 100, opacity: this.o.opacity / 100, flow: this.o.flow / 100, spacing: 0.08,
         mode: 'clone', cloneSource: source, cloneOffset: this.offset, pressureSize: this.o.pressureSize, pressureOpacity: this.o.pressureOpacity, lockAlpha: L.lockAlpha,
       });
       this.stroke.start({ x: ev.x, y: ev.y, pressure: ev.pressure });
-      this.need = true; doc.changed();
+      this.changed(doc);
     },
-    move(ev, doc) { if (this.stroke) { this.stroke.move({ x: ev.x, y: ev.y, pressure: ev.pressure }); this.need = true; doc.changed(); } },
+    move(ev, doc) { if (this.stroke) { this.stroke.move({ x: ev.x, y: ev.y, pressure: ev.pressure }); this.changed(doc); } },
+    // seule la zone des nouvelles touches est recomposée
+    changed(doc) { const r = this.stroke.takeDirty(); if (r) { this.need = true; doc.changed(r); } else KS.requestRender(); },
     preRender() { if (this.stroke && this.need) { this.target.layer.override = this.stroke.preview(); this.need = false; } },
     up(ev, doc) {
       if (!this.stroke) return;
-      const rect = this.stroke.commit();
-      this.target.layer.override = null; this.target.layer.touch();
-      T.commitHist(doc, this.target, this.token, rect, 'Tampon de duplication', 'clone');
-      this.stroke = null; this.target = null; doc.changed();
+      const st = this.stroke, t = this.target;
+      const cr = !this.token && st.rect && U.rectIntersect(U.rectInt(st.rect), { x: 0, y: 0, w: t.canvas.width, h: t.canvas.height });
+      const before = cr ? U.copyCanvas(t.canvas, cr) : null;
+      const rect = st.commit();
+      t.layer.override = null; t.layer.touch();
+      if (this.token) T.commitHist(doc, t, this.token, rect, 'Tampon de duplication', 'clone');
+      else if (cr) { KS.Hist.commitRect(doc, 'Tampon de duplication', t.layer, cr, before, 'clone'); KS.emit('layer-pixels', doc); }
+      this.stroke = null; this.target = null;
+      doc.changed(rect ? { x: rect.x + t.ox, y: rect.y + t.oy, w: rect.w, h: rect.h } : undefined);
     },
     cancel() { if (this.target) { this.target.layer.override = null; this.target.layer.touch(); } this.stroke = null; },
     key(e) { return brushKeys(this, e); },

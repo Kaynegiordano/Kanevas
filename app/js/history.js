@@ -144,6 +144,26 @@
       if (extra) entry = KS.Hist.combine(name, icon, [entry, extra]);
       doc.history.push(entry);
     },
+    // Sauvegarde paresseuse pour les outils qui modifient le calque au fil du trait (flou, densité…) :
+    // chaque tuile est copiée juste avant sa première retouche, au lieu du calque entier au départ.
+    lazyBackup(canvas, S = 256) {
+      const tiles = new Map();
+      return {
+        save(box) {
+          for (let ty = Math.floor(box.y / S) * S; ty < box.y + box.h; ty += S) for (let tx = Math.floor(box.x / S) * S; tx < box.x + box.w; tx += S) {
+            const k = tx + ',' + ty;
+            if (tiles.has(k)) continue;
+            const r = U.rectIntersect({ x: tx, y: ty, w: S, h: S }, { x: 0, y: 0, w: canvas.width, h: canvas.height });
+            if (r) tiles.set(k, { x: r.x, y: r.y, c: U.copyCanvas(canvas, r) });
+          }
+        },
+        crop(r) {
+          const c = U.canvas(r.w, r.h), x = c.getContext('2d');
+          for (const t of tiles.values()) x.drawImage(t.c, t.x - r.x, t.y - r.y);
+          return c;
+        },
+      };
+    },
     // Retouche de pixels dont on a gardé seulement le rectangle d'avant (pinceaux : le calque
     // n'est modifié qu'au relâchement, inutile de le copier en entier au début du trait)
     commitRect(doc, name, layer, r, before, icon = 'brush') {

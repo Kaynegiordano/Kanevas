@@ -134,7 +134,10 @@
     }
     _dabClone(tx, ty, size, alpha, dx, dy) {
       const src = this.cloneSource, off = this.cloneOffset;
-      const S = Math.ceil(size) + 2, small = U.canvas(S, S), sx = small.getContext('2d');
+      const S = Math.ceil(size) + 2;
+      if (!this._cs || this._cs.width !== S) this._cs = U.canvas(S, S);
+      const small = this._cs, sx = small.getContext('2d');
+      sx.globalCompositeOperation = 'source-over'; sx.clearRect(0, 0, S, S);
       // position source en coordonnées du canevas source
       const docX = tx + this.t.ox + off.dx, docY = ty + this.t.oy + off.dy;
       sx.drawImage(src.canvas, -(docX - src.ox - S / 2), -(docY - src.oy - S / 2));

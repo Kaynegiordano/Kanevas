@@ -49,6 +49,11 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   aussi que la composition partielle égale une composition complète. Sur 6000×4000 px à 5 calques (réglage
   Teinte/Saturation, ombre portée), mesuré dans Electron jusqu'à la fin du travail du GPU : pinceau 787 → 19 ms
   par mouvement, curseur d'un réglage > 1 s → 21 ms, affichage en zoom arrière 63 → 16 ms.
+- Retouche (tampon, correcteurs, pièce, flou, netteté, doigt, densité, éponge) : recomposition limitée aux
+  touches, le calque sert de source sans copie, l'historique ne sauvegarde que la zone touchée (par tuiles de
+  256 px pour les outils qui modifient le calque au fil du trait). Les grands canevas sont lus au travers d'une
+  copie de la zone, pour rester sur la carte graphique. `tools/bench-retouch.js` : en usage réel sur 6000×4000,
+  tampon 20 → 99 images/s, correcteur localisé 21 → 107, goutte d'eau 11 → 33.
 
 ## IA locale (détourage)
 « Sélectionner le sujet », « Supprimer l'arrière-plan » et l'outil « Sélection d'objet » utilisent BiRefNet

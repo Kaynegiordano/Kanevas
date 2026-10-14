@@ -101,7 +101,17 @@ U.reduced = (c, s) => {
 };
 U.clearCanvas = c => c.getContext('2d').clearRect(0, 0, c.width, c.height);
 U.fitCanvas = (c, w, h) => { if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else U.clearCanvas(c); return c; };
-U.getData = (c, r) => r ? c.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h) : c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);
+// Lecture de pixels. Un grand canevas (calque, composition) est lu au travers d'une copie de la
+// zone : relu directement plusieurs fois, Chrome le passe du GPU au processeur, et chaque dessin
+// de ce calque devient alors un envoi complet vers la carte graphique.
+U.getData = (c, r) => {
+  const R = r || { x: 0, y: 0, w: c.width, h: c.height };
+  if (c.width * c.height < 4e6) return c.getContext('2d', { willReadFrequently: true }).getImageData(R.x, R.y, R.w, R.h);
+  const t = document.createElement('canvas'); t.width = Math.max(1, R.w); t.height = Math.max(1, R.h);
+  const x = t.getContext('2d', { willReadFrequently: true });
+  x.drawImage(c, R.x, R.y, R.w, R.h, 0, 0, R.w, R.h);
+  return x.getImageData(0, 0, R.w, R.h);
+};
 U.putData = (c, d, x = 0, y = 0) => c.getContext('2d').putImageData(d, x, y);
 // Boîte englobante des pixels non transparents (null si vide)
 // Une seule lecture du canevas, puis chaque bord est cherché depuis l'extérieur : on s'arrête au

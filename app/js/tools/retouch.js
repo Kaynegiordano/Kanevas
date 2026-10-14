@@ -42,7 +42,7 @@
   // Cicatrise `dst` (canevas cible) dans la zone du masque (alpha, coord. cible).
   // src : canevas source (coord. cible), décalé de off ; s'il manque, on cherche
   // automatiquement la meilleure zone voisine (correcteur localisé).
-  KS.heal = (dst, src, mask, rect, off) => {
+  KS.heal = (dst, src, mask, rect, off, beforeWrite) => {
     const ring = Math.max(3, Math.round(Math.min(rect.w, rect.h) * 0.15));
     const R = U.rectIntersect({ x: rect.x - ring, y: rect.y - ring, w: rect.w + ring * 2, h: rect.h + ring * 2 }, { x: 0, y: 0, w: dst.width, h: dst.height });
     if (!R) return null;
@@ -95,6 +95,7 @@
       for (let c = 0; c < 3; c++) { const v = S[q + c] + diff[i * 3 + c]; o[q + c] = D[q + c] + (v - D[q + c]) * m; }
       o[q + 3] = D[q + 3] + (Math.max(D[q + 3], S[q + 3]) - D[q + 3]) * m;
     }
+    if (beforeWrite) beforeWrite(R);
     dst.getContext('2d').putImageData(out, R.x, R.y);
     KS._healPad = null;
     return R;
@@ -110,25 +111,24 @@
         if (!spot && (!this.src || this.src.doc !== doc)) { KS.toast('Alt + clic pour définir la source', 'err'); return; }
         const target = T.paintTarget(doc, { allowMaskEdit: false });
         if (!target || target.gray) return;
-        this.target = target; this.token = T.beginHist(target);
-        this.snap = U.copyCanvas(target.canvas);
+        // le calque n'est réécrit qu'au relâchement : il sert de source tel quel, et seule la zone
+        // réparée est sauvegardée pour l'historique
+        this.target = target; this.token = null;
         if (!spot) { if (!this.offset) this.offset = { dx: this.src.x - ev.x, dy: this.src.y - ev.y }; }
-        const opts = { doc, target, size: this.o.size, hardness: this.o.hardness / 100, opacity: 1, flow: 1, spacing: 0.1 };
+        const opts = { doc, target, size: this.o.size, hardness: this.o.hardness / 100, flow: 1, spacing: 0.1 };
         this.stroke = spot
-          ? new KS.Brush.Stroke({ ...opts, color: { r: 20, g: 20, b: 20 }, mode: 'paint' })
-          : new KS.Brush.Stroke({ ...opts, mode: 'clone', cloneSource: { canvas: this.snap, ox: target.ox, oy: target.oy }, cloneOffset: this.offset });
+          ? new KS.Brush.Stroke({ ...opts, opacity: 0.45, color: { r: 20, g: 20, b: 20 }, mode: 'paint' })
+          : new KS.Brush.Stroke({ ...opts, opacity: 1, mode: 'clone', cloneSource: { canvas: target.canvas, ox: target.ox, oy: target.oy }, cloneOffset: this.offset });
         this.stroke.start({ x: ev.x, y: ev.y, pressure: 1 });
-        this.need = true; doc.changed();
+        this.changed(doc);
       },
-      move(ev, doc) { if (this.stroke) { this.stroke.move({ x: ev.x, y: ev.y, pressure: 1 }); this.need = true; doc.changed(); } },
+      move(ev, doc) { if (this.stroke) { this.stroke.move({ x: ev.x, y: ev.y, pressure: 1 }); this.changed(doc); } },
+      changed(doc) { const r = this.stroke.takeDirty(); if (r) { this.need = true; doc.changed(r); } else KS.requestRender(); },
       preRender() {
         if (!this.stroke || !this.need) return;
         this.need = false;
-        if (spot) {
-          const t = this.target, c = U.fitCanvas(this.stroke.tmp, t.canvas.width, t.canvas.height), x = c.getContext('2d');
-          x.drawImage(t.canvas, 0, 0); x.globalAlpha = 0.45; x.drawImage(this.stroke.buffer, 0, 0); x.globalAlpha = 1;
-          t.layer.override = { canvas: c, x: t.ox, y: t.oy };
-        } else this.target.layer.override = this.stroke.preview();
+        // aperçu incrémental (localisé : la zone peinte, assombrie, à 45 %)
+        this.target.layer.override = this.stroke.preview();
       },
       up(ev, doc) {
         if (!this.stroke) return;
@@ -138,12 +138,11 @@
         let mask = st.buffer;
         if (doc.selection.mask) { mask = U.copyCanvas(st.buffer); doc.selection.clip(mask, t.ox, t.oy); }
         const rect = st.rect && U.rectIntersect(U.rectInt(st.rect), { x: 0, y: 0, w: t.canvas.width, h: t.canvas.height });
-        let done = null;
-        if (rect) done = KS.heal(t.canvas, this.snap, mask, rect, spot ? null : { dx: this.offset.dx, dy: this.offset.dy });
+        let done = null, before = null;
+        if (rect) done = KS.heal(t.canvas, t.canvas, mask, rect, spot ? null : { dx: this.offset.dx, dy: this.offset.dy }, R => { before = U.copyCanvas(t.canvas, R); });
         t.layer.touch();
-        T.commitHist(doc, t, this.token, done, name, icon);
-        this.snap = null;
-        doc.changed();
+        if (done && before) { KS.Hist.commitRect(doc, name, t.layer, done, before, icon); KS.emit('layer-pixels', doc); }
+        doc.changed(done ? { x: done.x + t.ox, y: done.y + t.oy, w: done.w, h: done.h } : undefined);
       },
       cancel() { if (this.target) { this.target.layer.override = null; this.target.layer.touch(); } this.stroke = null; },
       key(e) { return KS.brushKeys(this, e); },
@@ -201,12 +200,12 @@
       const b = sel.bounds;
       const rect = U.rectIntersect({ x: b.x - target.ox + sx, y: b.y - target.oy + sy, w: b.w, h: b.h }, { x: 0, y: 0, w: target.canvas.width, h: target.canvas.height });
       if (!rect) return;
-      const token = T.beginHist(target), snap = U.copyCanvas(target.canvas);
-      const R = KS.heal(target.canvas, snap, mask, rect, dest ? { dx: -g.dx, dy: -g.dy } : { dx: g.dx, dy: g.dy });
+      let before = null;
+      const R = KS.heal(target.canvas, target.canvas, mask, rect, dest ? { dx: -g.dx, dy: -g.dy } : { dx: g.dx, dy: g.dy }, Z => { before = U.copyCanvas(target.canvas, Z); });
       target.layer.touch();
-      T.commitHist(doc, target, token, R, 'Pièce', 'patch');
+      if (R && before) { KS.Hist.commitRect(doc, 'Pièce', target.layer, R, before, 'patch'); KS.emit('layer-pixels', doc); }
       if (dest) { sel.translate(g.dx, g.dy); KS.emit('selection', doc); }
-      doc.changed();
+      doc.changed(R ? { x: R.x + target.ox, y: R.y + target.oy, w: R.w, h: R.h } : undefined);
     },
     cancel() { this.pts = null; this.drag = null; },
     overlay(ctx, v, doc) {
@@ -235,7 +234,10 @@
       down(ev, doc) {
         const target = T.paintTarget(doc, { allowMaskEdit: false });
         if (!target || target.gray) return;
-        this.target = target; this.token = T.beginHist(target); this.rect = null;
+        this.target = target; this.rect = null;
+        const cv = doc.channelView;
+        this.token = cv && !(cv.r && cv.g && cv.b) ? T.beginHist(target) : null;
+        this.backup = this.token ? null : KS.Hist.lazyBackup(target.canvas);
         this.sel = doc.selection.mask ? U.getData(doc.selection.mask).data : null;
         this.last = { x: ev.x, y: ev.y };
         this.state = {};
@@ -264,14 +266,20 @@
           w[j * box.w + i] = v;
         }
         cfg.dab.call(this, img, w, box, { cx, cy, r, t });
+        if (this.backup) this.backup.save(box);
         t.canvas.getContext('2d').putImageData(img, box.x, box.y);
         this.rect = U.rectUnion(this.rect, box);
-        t.layer.touch(); doc.changed();
+        t.layer.touch(); doc.changed({ x: box.x + t.ox, y: box.y + t.oy, w: box.w, h: box.h });
       },
       up(ev, doc) {
         if (!this.target) return;
-        T.commitHist(doc, this.target, this.token, this.rect, cfg.name, cfg.icon);
-        this.target = null; this.sel = null;
+        const t = this.target;
+        if (this.token) T.commitHist(doc, t, this.token, this.rect, cfg.name, cfg.icon);
+        else if (this.rect) {
+          const r = U.rectIntersect(U.rectInt(this.rect), { x: 0, y: 0, w: t.canvas.width, h: t.canvas.height });
+          if (r) { KS.Hist.commitRect(doc, cfg.name, t.layer, r, this.backup.crop(r), cfg.icon); KS.emit('layer-pixels', doc); }
+        }
+        this.target = null; this.sel = null; this.backup = null;
       },
       key(e) { return KS.brushKeys(this, e); },
       overlay(ctx) { T.drawBrushCursor(ctx, this.o.size); },
