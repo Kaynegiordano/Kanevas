@@ -106,3 +106,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.0** : première version publique, installateur Windows et mises à jour GitHub.
 - **1.0.1** : correction de l'icône (multi-tailles, identifiant de barre des tâches aligné sur l'installateur).
 - **1.0.2** : rectangle à angles réglables, lasso magnétique, image insérée dans un texte ou une forme, pictos d'outils redessinés, polices du PC dans la version web.
+- **1.0.3** : grandes images bien plus fluides (composition par zones, affichage progressif, pyramide de zoom), outil Pièce, calques de remplissage dynamiques, Correction sélective, Atténuer, Ctrl+F, instantanés, Agrandir / Sélection similaire.
