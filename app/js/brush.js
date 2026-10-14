@@ -48,6 +48,21 @@
     return a * a * (3 - 2 * a);
   }
 
+  // Tampons réutilisés d'un coup de pinceau à l'autre : allouer deux canevas de la taille du
+  // calque (des dizaines de mégapixels) à chaque trait coûtait plus que le trait lui-même.
+  const pool = { buffer: null, tmp: null, sbuf: null, last: null };
+  function takeBuffers(W, H, needSel) {
+    if (!pool.buffer || pool.buffer.width !== W || pool.buffer.height !== H) {
+      pool.buffer = U.canvas(W, H); pool.tmp = U.canvas(1, 1); pool.sbuf = null;
+    } else if (pool.last && pool.last.rect) {
+      const r = pool.last.rect, x = pool.buffer.getContext('2d');
+      x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+      x.clearRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4);
+    }
+    if (needSel && (!pool.sbuf || pool.sbuf.width !== W || pool.sbuf.height !== H)) pool.sbuf = U.canvas(W, H);
+    return pool;
+  }
+
   class Stroke {
     // o : { doc, target, size, hardness, opacity, flow, spacing, color, mode, aliased,
     //       pressureSize, pressureOpacity, direct, cloneSource, cloneOffset, lockAlpha }
@@ -59,10 +74,11 @@
       this.rest = 0;
       this.sel = o.doc.selection.mask && !o.ignoreSelection ? o.doc.selection.mask : null;
       if (!this.direct) {
-        this.buffer = U.canvas(this.t.canvas.width, this.t.canvas.height);
-        this.bctx = this.buffer.getContext('2d');
-        this.tmp = U.canvas(1, 1);
-        this.sbuf = this.sel ? U.canvas(this.t.canvas.width, this.t.canvas.height) : null;
+        const P = takeBuffers(this.t.canvas.width, this.t.canvas.height, !!this.sel);
+        P.last = this;
+        this.buffer = P.buffer; this.bctx = this.buffer.getContext('2d');
+        this.tmp = P.tmp;
+        this.sbuf = this.sel ? P.sbuf : null;
       }
       this.css = this.mode === 'erase' ? '#000000' : U.hex(this.color || { r: 0, g: 0, b: 0 });
     }

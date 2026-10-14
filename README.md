@@ -42,10 +42,13 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   calques, en cache) ; la pleine résolution est calculée par tranches pendant les pauses. Export, pipette et
   échantillonnage utilisent toujours la composition exacte.
 - Pinceau : l'aperçu et le report sur le calque ne touchent que les nouvelles touches ; l'historique ne garde
-  que le rectangle modifié.
+  que le rectangle modifié, copié au relâchement ; les tampons du pinceau sont réutilisés d'un trait à l'autre.
+- Zoom arrière : l'écran, le navigateur et l'histogramme lisent une pyramide de copies réduites (1/2, 1/4…)
+  de la composition, mise à jour par zones ; vignettes des calques réduites par moitiés successives.
 - Banc d'essai : `tools/bench.js` (à charger dans la page de `app/` servie avec le dossier racine), qui vérifie
   aussi que la composition partielle égale une composition complète. Sur 6000×4000 px à 5 calques (réglage
-  Teinte/Saturation, ombre portée) : pinceau 787 → 3 ms par mouvement, curseur d'un réglage > 1 s → 20 ms.
+  Teinte/Saturation, ombre portée), mesuré dans Electron jusqu'à la fin du travail du GPU : pinceau 787 → 19 ms
+  par mouvement, curseur d'un réglage > 1 s → 21 ms, affichage en zoom arrière 63 → 16 ms.
 
 ## IA locale (détourage)
 « Sélectionner le sujet », « Supprimer l'arrière-plan » et l'outil « Sélection d'objet » utilisent BiRefNet

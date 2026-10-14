@@ -144,6 +144,15 @@
       if (extra) entry = KS.Hist.combine(name, icon, [entry, extra]);
       doc.history.push(entry);
     },
+    // Retouche de pixels dont on a gardé seulement le rectangle d'avant (pinceaux : le calque
+    // n'est modifié qu'au relâchement, inutile de le copier en entier au début du trait)
+    commitRect(doc, name, layer, r, before, icon = 'brush') {
+      if (!r || !before) return;
+      const full = { w: layer.canvas.width, h: layer.canvas.height };
+      const b = { canvas: before, x: layer.x, y: layer.y, full };
+      const a = { canvas: U.copyCanvas(layer.canvas, r), x: layer.x, y: layer.y, full };
+      doc.history.push({ name, icon, undo: () => put(layer, 'canvas', b, r), redo: () => put(layer, 'canvas', a, r), dirty: { x: r.x + layer.x, y: r.y + layer.y, w: r.w, h: r.h } });
+    },
     structure(doc, name, fn, icon = 'layers') {
       const b = structSnap(doc);
       const r = fn();

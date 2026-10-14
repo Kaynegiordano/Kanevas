@@ -267,13 +267,13 @@
         x.fillStyle = `rgb(${this.mask.outside},${this.mask.outside},${this.mask.outside})`;
         x.fillRect(ox, oy, doc.width * s, doc.height * s);
         x.beginPath(); x.rect(ox, oy, doc.width * s, doc.height * s); x.clip();
-        x.drawImage(this.mask.canvas, ox + this.mask.x * s, oy + this.mask.y * s, this.mask.canvas.width * s, this.mask.canvas.height * s);
+        x.drawImage(U.reduced(this.mask.canvas, s), ox + this.mask.x * s, oy + this.mask.y * s, this.mask.canvas.width * s, this.mask.canvas.height * s);
       } else {
         x.fillStyle = KS.thumbChecker || (KS.thumbChecker = U.checkerPattern(x, 3));
         x.fillRect(ox, oy, doc.width * s, doc.height * s);
         x.beginPath(); x.rect(ox, oy, doc.width * s, doc.height * s); x.clip();
         x.imageSmoothingQuality = 'medium';
-        x.drawImage(this.canvas, ox + this.x * s, oy + this.y * s, this.canvas.width * s, this.canvas.height * s);
+        x.drawImage(U.reduced(this.canvas, s), ox + this.x * s, oy + this.y * s, this.canvas.width * s, this.canvas.height * s);
       }
       x.restore();
     }

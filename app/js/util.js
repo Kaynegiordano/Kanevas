@@ -86,6 +86,19 @@ U.copyCanvas = (src, r) => {
   c.getContext('2d').drawImage(src, 0, 0);
   return c;
 };
+// Copie réduite par moitiés successives (filtre bilinéaire exact à 1/2), jusqu'à environ
+// deux fois l'échelle s demandée : réduire d'un coup un canevas de dizaines de mégapixels
+// en haute qualité oblige le GPU à en recalculer tous les niveaux à chaque fois.
+U.reduced = (c, s) => {
+  let cur = c;
+  while (s * 4 <= cur.width / c.width && cur.width > 2 && cur.height > 2) {
+    const n = U.canvas(Math.ceil(cur.width / 2), Math.ceil(cur.height / 2)), x = n.getContext('2d');
+    x.imageSmoothingQuality = 'low';
+    x.drawImage(cur, 0, 0, n.width, n.height);
+    cur = n;
+  }
+  return cur;
+};
 U.clearCanvas = c => c.getContext('2d').clearRect(0, 0, c.width, c.height);
 U.fitCanvas = (c, w, h) => { if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } else U.clearCanvas(c); return c; };
 U.getData = (c, r) => r ? c.getContext('2d', { willReadFrequently: true }).getImageData(r.x, r.y, r.w, r.h) : c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height);

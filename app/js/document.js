@@ -156,6 +156,7 @@
         this.composeInto(c.getContext('2d'), this.layers);
         this.pending = null;
         R = this.rect;
+        this._mipTouch(R);
       } else this._composeTiles(c, R);
       const mp = R.w * R.h / 1e6;
       if (mp > 0.25) { const v = (performance.now() - t0) / mp; this._msPerMP = this._msPerMP ? this._msPerMP * 0.5 + v * 0.5 : v; }
@@ -201,7 +202,10 @@
     // la pleine résolution n'est pas terminée, sans forcer le calcul complet.
     previewSource() {
       const f = this.frame();
-      return f.pending ? f.proxy : f.comp;
+      if (f.pending) return f.proxy;
+      // grande image : une copie réduite (environ 1 Mpx) suffit aux vignettes
+      let m = 1; while (m > 1 / 64 && this.width * this.height * m * m > 1.5e6) m /= 2;
+      return m < 1 ? this.mip(m) : f.comp;
     }
     _updateProxy() {
       const W = this.width, H = this.height, k = Math.min(1, Math.sqrt(Doc.PROXY_PX / (W * H)));
@@ -264,6 +268,37 @@
           x.drawImage(t, T.x, T.y);
         }
       }
+      this._mipTouch(R);
+    }
+    // Copie réduite de la composition (facteur m = 1/2, 1/4…), tenue à jour par zones : l'écran
+    // en zoom arrière dessine depuis elle, au lieu de réduire des dizaines de mégapixels à chaque image.
+    mip(m) {
+      this._mips = this._mips || new Map();
+      let M = this._mips.get(m);
+      if (!M || M.w !== this.width || M.h !== this.height) {
+        M = { m, w: this.width, h: this.height, canvas: U.canvas(Math.ceil(this.width * m), Math.ceil(this.height * m)), dirty: this.rect };
+        this._mips.set(m, M);
+      }
+      if (M.dirty) { const R = M.dirty; M.dirty = null; this._mipUpdate(M, R); }
+      return M.canvas;
+    }
+    _mipTouch(R) { if (this._mips) for (const M of this._mips.values()) M.dirty = M.dirty ? U.rectUnion(M.dirty, R) : R; }
+    _mipUpdate(M, R) {
+      // zone alignée sur la grille réduite, puis divisée par deux autant de fois que nécessaire
+      const step = Math.round(1 / M.m), x0 = Math.floor(R.x / step) * step, y0 = Math.floor(R.y / step) * step;
+      const x1 = Math.min(this.width, Math.ceil((R.x + R.w) / step) * step), y1 = Math.min(this.height, Math.ceil((R.y + R.h) / step) * step);
+      if (x1 <= x0 || y1 <= y0) return;
+      let cur = U.canvas(x1 - x0, y1 - y0);
+      cur.getContext('2d').drawImage(this.compositeCanvas, x0, y0, x1 - x0, y1 - y0, 0, 0, x1 - x0, y1 - y0);
+      for (let s = 1; s < step; s *= 2) {
+        const nx = U.canvas(Math.max(1, Math.ceil(cur.width / 2)), Math.max(1, Math.ceil(cur.height / 2))), c = nx.getContext('2d');
+        c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'low';
+        c.drawImage(cur, 0, 0, nx.width, nx.height);
+        cur = nx;
+      }
+      const dx = x0 / step, dy = y0 / step, mc = M.canvas.getContext('2d');
+      mc.clearRect(dx, dy, cur.width, cur.height);
+      mc.drawImage(cur, dx, dy);
     }
     // Portée maximale des styles de calque visibles (px) ; Infinity si un réglage est spatial
     _effectsReach() {

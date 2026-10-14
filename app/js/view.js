@@ -129,7 +129,12 @@
     ctx.imageSmoothingQuality = 'high';
     if (vis) {
       const sx = Math.floor(vis.x), sy = Math.floor(vis.y), sw = Math.min(W - sx, Math.ceil(vis.x + vis.w) - sx + 1), sh = Math.min(H - sy, Math.ceil(vis.y + vis.h) - sy + 1);
-      ctx.drawImage(comp, sx, sy, sw, sh, rx + sx * z, ry + sy * z, sw * z, sh * z);
+      // zoom arrière : depuis la copie réduite la plus proche (1/2, 1/4…) plutôt que la pleine résolution
+      const lv = d.channelView ? 0 : Math.floor(Math.log2(1 / Math.max(1e-6, z * V.dpr)));
+      if (lv >= 1) {
+        const m = Math.pow(2, -Math.min(lv, 6)), mip = d.mip(m);
+        ctx.drawImage(mip, sx * m, sy * m, sw * m, sh * m, rx + sx * z, ry + sy * z, sw * z, sh * z);
+      } else ctx.drawImage(comp, sx, sy, sw, sh, rx + sx * z, ry + sy * z, sw * z, sh * z);
       if (st.pending) {
         // un seul dessin de l'aperçu, découpé aux tuiles en attente (pas de joints entre tuiles)
         const S = KS.Doc.TILE, k = st.k;

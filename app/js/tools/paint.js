@@ -55,7 +55,9 @@
         if (mode === 'erase' && (target.gray || (L && L.lockAlpha))) { mode = 'paint'; color = target.gray ? U.gray(KS.state.bg) : KS.state.bg; }
         const aliased = cfg.aliased || (cfg.mode === 'erase' && this.o.emode === 'pencil');
         this.target = target;
-        this.token = T.beginHist(target);
+        // calque de pixels : l'état d'avant n'est copié qu'au relâchement, sur le seul rectangle peint
+        const cv = doc.channelView, lazy = !target.gray && !(cv && !(cv.r && cv.g && cv.b));
+        this.token = lazy ? null : T.beginHist(target);
         this.stroke = new KS.Brush.Stroke({
           doc, target, size: this.o.size, hardness: aliased ? 1 : (this.o.hardness ?? 100) / 100, opacity: this.o.opacity / 100, flow: this.o.flow / 100,
           spacing: this.o.spacing / 100, color, mode, aliased, pressureSize: this.o.pressureSize, pressureOpacity: this.o.pressureOpacity,
@@ -91,11 +93,14 @@
         if (!this.stroke) return;
         const st = this.stroke;
         if (this.o.smoothing > 0) st.move({ x: ev.x, y: ev.y, pressure: this.lazy.pressure });
+        const t0 = this.target, cr = !this.token && st.rect && U.rectIntersect(U.rectInt(st.rect), { x: 0, y: 0, w: t0.canvas.width, h: t0.canvas.height });
+        const beforeRect = cr ? U.copyCanvas(t0.canvas, cr) : null;
         const rect = st.commit();
         if (st.direct) this.target.after(st.dirtyMove || rect);
         if (this.target.layer) { this.target.layer.override = null; this.target.layer.touch(); }
         const t = this.target;
-        T.commitHist(doc, t, this.token, rect, cfg.histName, cfg.icon);
+        if (this.token) T.commitHist(doc, t, this.token, rect, cfg.histName, cfg.icon);
+        else if (cr) { KS.Hist.commitRect(doc, cfg.histName, t.layer, cr, beforeRect, cfg.icon); KS.emit('layer-pixels', doc); }
         this.lastPoint = { x: ev.x, y: ev.y, pressure: ev.pressure }; this.lastDoc = doc;
         this.stroke = null; this.target = null;
         doc.changed(rect ? { x: rect.x + t.ox, y: rect.y + t.oy, w: rect.w, h: rect.h } : undefined);
