@@ -113,3 +113,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.2** : rectangle à angles réglables, lasso magnétique, image insérée dans un texte ou une forme, pictos d'outils redessinés, polices du PC dans la version web.
 - **1.0.3** : grandes images bien plus fluides (composition par zones, affichage progressif, pyramide de zoom), outil Pièce, calques de remplissage dynamiques, Correction sélective, Atténuer, Ctrl+F, instantanés, Agrandir / Sélection similaire.
 - **1.0.4** : retouche fluide sur les grandes images (tampon de duplication, correcteurs, pièce, flou, netteté, doigt, densité, éponge).
+- **1.0.5** : Electron 44.7.2 (correctifs de sécurité de Chromium).
