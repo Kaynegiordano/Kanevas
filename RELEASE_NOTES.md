@@ -1,6 +1,6 @@
-Kanevas 1.3.0 - Le Studio IA devient la page de Forge
-- Memes onglets que Forge : txt2img, img2img, Extras, PNG Info, Train LoRA, ImgCut, Settings.
-- Memes reglages, memes noms, meme ordre : Sampling, Preset, Hires. fix, Refiner, Shift, CFG, Seed, ADetailer, scripts (X/Y/Z plot...).
-- Barre Checkpoint / VAE / Text Encoder / Diffusion in Low Bits, onglets Lora et Checkpoints en cartes.
-- img2img, Sketch, Inpaint, Inpaint sketch, Inpaint upload, Batch : l'image est le document Kanevas, le masque se peint dessus.
-- Images enregistrees par Forge dans ses dossiers output, boutons Send to comme dans Forge.
+Kanevas 1.4.0 - Edition et Studio IA relies
+- img2img (Sketch, Inpaint, Batch...) passe dans l'Edition : panneau Forge a cote de la toile.
+- Envoi dans les deux sens : du Studio vers l'Edition, et "Envoyer au Studio IA" depuis l'Edition.
+- Refiner retire.
+- LoRA personnalisables comme dans Forge : bouton de fiche (activation text, poids, negatif, apercu), poids dans l'invite.
+- Train LoRA refait comme l'onglet de Forge : import, legendes, preset, entrainement suivi en direct, essai dans txt2img.

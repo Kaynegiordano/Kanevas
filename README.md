@@ -75,6 +75,27 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
+## Édition ⇄ Studio IA, LoRA, Train LoRA (1.4.0)
+- **img2img passe dans l'Édition** : le panneau IA de l'Édition est remplacé par le panneau **img2img** de Forge (mêmes
+  réglages que dans le Studio : Resize mode, Inpaint, Soft inpainting, Denoising, ADetailer, MultiDiffusion, scripts…),
+  avec ses modes img2img / Sketch / Inpaint / Inpaint sketch / Inpaint upload / Batch, juste à côté de la toile.
+  L'onglet img2img du Studio est retiré.
+- **Envoi dans les deux sens** : du Studio, 🖼️ / 🎨 ouvrent l'image dans l'Édition (panneau img2img ou Inpaint) ;
+  de l'Édition, « Envoyer au Studio IA » (panneau img2img et menu IA) renvoie le document tel qu'il est vers la sortie
+  de txt2img (✨ hires, 💾, Send to…), Extras ou PNG Info, ou ses paramètres vers txt2img.
+- **Refiner** retiré.
+- **LoRA personnalisables comme dans Forge** : bouton 🛠️ sur chaque carte (Description, Stable Diffusion version,
+  Activation text, Preferred weight, Negative prompt, Notes, aperçu à partir d'une image générée ou du document),
+  écrit dans le même `<lora>.json` que Forge ; le negative text s'ajoute à l'invite négative ; étiquettes des LoRA
+  actifs sous l'invite avec leur poids ; Ctrl+↑ / Ctrl+↓ dans l'invite change le poids comme dans Forge.
+- **Train LoRA refait** : l'Atelier LoRA devient un onglet du Studio qui reprend l'onglet de Forge carte par carte
+  (Project, Preset, Captions, Training settings, Free VRAM, Start / Stop / Refresh progress, extinction du PC),
+  import d'un dossier source, légendes modifiables, progression en direct, LoRA produits à essayer dans txt2img ;
+  les générations attendent la fin d'un entraînement (comme Forge).
+- Menu IA de l'Édition simplifié : les commandes en double avec le Studio sont retirées (nouvelle image, image → image,
+  agrandir et détailler, IA en direct) ; restent les outils de retouche (remplissage génératif, suppression, développement,
+  super résolution, harmoniser).
+
 ## Studio IA = la page de Forge (1.3.0)
 - Le Studio IA reprend l'interface de Forge (thème Modern UI de Kane OS) : rail à gauche (txt2img, img2img, Extras,
   PNG Info, Train LoRA, ImgCut, Settings), barre Checkpoint / VAE / Text Encoder / Diffusion in Low Bits / VRAM,
@@ -226,5 +247,6 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.
 - **1.0.7** : génération Forge corrigée : invites en français traduites en anglais sur le PC (fini les filles au hasard), réglages adaptés au modèle anima, force 85 %, invite envoyée affichée ; jointure du développement génératif plus douce.
 - **1.1.0** : Studio Forge : nouvelle image dans un nouveau document, image → image, ADetailer (et retouche seule), agrandir et détailler (MultiDiffusion), Shift, aperçu en direct, PNG Info, IA en direct, atelier LoRA (entraîneur de Forge), découpe pour les réseaux (carrousel, grille du profil), menu IA.
+- **1.4.0** : img2img dans l'Édition (panneau de Forge), envoi Édition ⇄ Studio IA, Refiner retiré, fiches LoRA (🛠️) et poids, Train LoRA refait comme l'onglet de Forge.
 - **1.3.0** : le Studio IA devient la page de Forge : mêmes onglets, réglages, noms et ordre ; img2img / Sketch / Inpaint sur la toile Kanevas ; Extras, PNG Info, scripts.
 - **1.2.0** : Studio IA autonome : moteur de Forge démarré par Kanevas, espace Studio IA (Créer, Transformer, Retoucher la zone peinte, Croquis, Agrandir), hires fix, refiner, lots, graine de variation, options de retouche, soft inpainting, Never OOM, galerie et enregistrement automatique.

@@ -337,6 +337,7 @@ ipcMain.handle('forge-txt2img', forgeHandler(async (base, payload, firstpass) =>
 // Catalogue pour le panneau IA (« mini Forge ») : modèles, VAE / encodeurs, échantillonneurs, LoRA avec
 // leurs aperçus et fiches (.png / .json posés à côté par Forge), préréglages d'échantillonnage de Forge.
 const loraPreview = new Map();       // chemin → { t, jpg }
+const loraPaths = new Map();         // nom du LoRA → fichier (vu au dernier catalogue)
 function sidecar(file, exts) {
   const stem = file.replace(/\.[^.\\/]+$/, '');
   for (const e of exts) { const q = stem + e; if (fs.existsSync(q)) return q; }
@@ -359,10 +360,15 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
     return root;
   })();
   for (const l of loras || []) {
-    let trigger = '', weight = 1, preview = null;
+    let trigger = '', weight = 1, preview = null, negative = '', description = '', notes = '', sdVersion = 'Unknown';
+    loraPaths.set(l.name, l.path);
     try {
       const j = sidecar(l.path, ['.json']);
-      if (j) { const m = JSON.parse(fs.readFileSync(j, 'utf8')); trigger = String(m['activation text'] || '').trim(); weight = +m['preferred weight'] || 1; }
+      if (j) {
+        const m = JSON.parse(fs.readFileSync(j, 'utf8'));
+        trigger = String(m['activation text'] || '').trim(); weight = +m['preferred weight'] || 1;
+        negative = String(m['negative text'] || ''); description = String(m.description || ''); notes = String(m.notes || ''); sdVersion = String(m['sd version'] || 'Unknown');
+      }
     } catch { /* fiche illisible */ }
     try {
       const img = sidecar(l.path, ['.preview.png', '.png', '.preview.jpg', '.jpg', '.jpeg', '.webp']);
@@ -375,7 +381,7 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
     const md = l.metadata || {};
     let rel = '', mtime = 0;
     try { rel = loraRoot ? path.relative(loraRoot, path.dirname(l.path)) : ''; mtime = fs.statSync(l.path).mtimeMs; } catch { /* fichier disparu */ }
-    outLoras.push({ name: l.name, alias: l.alias, folder: path.basename(path.dirname(l.path)), rel, mtime, base: md.ss_base_model_version || '', trigger, weight, preview });
+    outLoras.push({ name: l.name, alias: l.alias, folder: path.basename(path.dirname(l.path)), rel, mtime, base: md.ss_base_model_version || '', trigger, weight, preview, negative, description, notes, sdVersion });
   }
   let presets = {};
   try { if (flags && flags.data_dir) presets = JSON.parse(fs.readFileSync(path.join(flags.data_dir, 'style_presets.json'), 'utf8')); } catch { /* aucun */ }
@@ -551,6 +557,36 @@ ipcMain.handle('open-forge-output', async (_e, sub) => {
   let d = path.join(data, 'output', allowed.includes(sub) ? sub : '');
   if (!fs.existsSync(d)) d = path.join(data, 'output');
   if (fs.existsSync(d)) shell.openPath(d);
+});
+// Fiche d'un LoRA, au même format que l'éditeur de Forge (<lora>.json à côté du fichier), et son aperçu
+ipcMain.handle('lora-meta-write', async (_e, name, meta, preview) => {
+  try {
+    const file = loraPaths.get(String(name));
+    if (!file || !fs.existsSync(file)) throw new Error('LoRA introuvable : relisez la liste');
+    const stem = file.replace(/\.[^.\\/]+$/, '');
+    let cur = {};
+    try { cur = JSON.parse(fs.readFileSync(stem + '.json', 'utf8')); } catch { /* pas encore de fiche */ }
+    const m = meta || {};
+    const out = { ...cur, description: String(m.description ?? cur.description ?? ''), 'sd version': String(m.sdVersion ?? cur['sd version'] ?? 'Unknown'),
+      'activation text': String(m.trigger ?? cur['activation text'] ?? ''), 'preferred weight': +(m.weight ?? cur['preferred weight'] ?? 0) || 0,
+      'negative text': String(m.negative ?? cur['negative text'] ?? ''), notes: String(m.notes ?? cur.notes ?? '') };
+    await fs.promises.writeFile(stem + '.json', JSON.stringify(out, null, 4), 'utf8');
+    if (preview) {
+      const target = fs.existsSync(stem + '.preview.png') ? stem + '.preview.png' : stem + '.png';
+      for (const e of ['.jpg', '.jpeg', '.webp', '.preview.jpg']) if (fs.existsSync(stem + e)) await fs.promises.rename(stem + e, stem + e + '.old').catch(() => {});
+      await fs.promises.writeFile(target, Buffer.from(preview));
+    }
+    return { ok: true };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// « Éteindre le PC quand l'entraînement est terminé » (comme l'onglet Train LoRA de Forge) : shutdown /s différé, annulable
+ipcMain.handle('lora-shutdown', async (_e, on, message) => {
+  const args = on ? ['/s', '/t', '120', '/c', String(message || 'Kanevas : entraînement LoRA terminé. Le PC s\'éteint dans 2 minutes (shutdown /a pour annuler).').slice(0, 500)] : ['/a'];
+  return new Promise(res => require('child_process').execFile('shutdown', args, { windowsHide: true }, err => res({ ok: !err || !on, error: err ? String(err.message) : '' })));
+});
+ipcMain.handle('pick-folder', async (_e, title) => {
+  const r = await dialog.showOpenDialog(win, { title: title || 'Dossier', properties: ['openDirectory'] });
+  return r.canceled || !r.filePaths[0] ? '' : r.filePaths[0];
 });
 ipcMain.handle('forge-skip', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/skip', {}, 4000); return {}; }));
 ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/interrupt', {}, 4000); return {}; }));

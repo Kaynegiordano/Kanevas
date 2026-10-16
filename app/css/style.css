@@ -883,6 +883,73 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-dropzone.over, .fx-dropzone:hover { border-color: var(--fx-accent); }
 .fx-dropzone img { max-width: 100%; max-height: 52vh; border-radius: 8px; }
 .fx-settings { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+/* LoRA actifs sous l'invite, bouton 🛠 des cartes, fiche d'un LoRA */
+.fx-lchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fx-lchips:empty { display: none; }
+.fx-lchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 4px; border: 1px solid rgba(255, 122, 48, .45); border-radius: 9px; background: var(--fx-accent-soft); font-size: 12px; }
+.fx-lchip img { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
+.fx-lchip .fx-num { width: 58px; height: 22px; }
+.fx-lchip.missing { border-color: var(--danger); background: transparent; }
+.fx-ebtn.sm { min-width: 24px; height: 22px; padding: 0 4px; font-size: 12px; }
+.fx-card-edit { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 7px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 13px; cursor: pointer; opacity: 0; transition: opacity .15s; z-index: 1; }
+.fx-card:hover .fx-card-edit { opacity: 1; }
+.fx-card-edit:hover { background: var(--fx-accent); }
+.fx-meta { display: flex; flex-direction: column; gap: 10px; }
+.fx-meta-top { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: start; }
+.fx-lpv { width: 150px; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--raised); }
+.fx-lpv img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fx-md { font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
+.fx-md:empty { display: none; }
+.fx-md code { font: 11.5px var(--mono); background: var(--raised); padding: 0 4px; border-radius: 4px; }
+/* img2img dans l'espace Édition : le panneau du dock */
+.fx-dock { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
+.fx-dock-head { display: flex; align-items: center; gap: 6px; }
+.fx-dock-head .fx-eng { padding-bottom: 0; }
+.fx-toprow.fx-compact { display: flex; flex-direction: column; gap: 6px; }
+.fx-dock .fx-ta.fx-prompt { min-height: 60px; padding-right: 60px; }
+.fx-dock .fx-generate, .fx-dock .fx-interrupt, .fx-dock .fx-skip { height: 44px; font-size: 15px; }
+.fx-dock .fx-tabs button { padding: 5px 8px; font-size: 11.5px; }
+.fx-dock .fx-panel { padding: 9px; gap: 9px; }
+.fx-dock .fx-row3, .fx-dock .fx-dims { grid-template-columns: minmax(0, 1fr); }
+.fx-dock .fx-row2 { gap: 8px 10px; }
+.fx-dock .fx-mid { flex-direction: row; }
+.fx-dock .fx-cards { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+.fx-dock .fx-strip .fx-thumbs img { width: 48px; height: 48px; }
+.fx-dock .fx-strip-prog img { height: 80px; }
+.fx-dock .fx-preset { flex-wrap: wrap; }
+/* Train LoRA */
+.fx-train { display: flex; flex-direction: column; gap: 12px; max-width: 1280px; }
+.lt-intro { font-size: 12.5px; line-height: 1.55; color: var(--text-2); }
+.lt-card .fx-h { margin-bottom: 2px; }
+.lt-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.lt-row > .fx-field { flex: 1; min-width: 220px; }
+.lt-row > .fx-md { flex: 1; }
+.lt-grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 14px; align-items: end; }
+.lt-grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px 14px; align-items: end; }
+.lt-drop { min-height: 90px; }
+.lt-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; max-height: 300px; overflow: auto; }
+.lt-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--raised); }
+.lt-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lt-x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border: 0; border-radius: 6px; background: rgba(0, 0, 0, .6); color: #fff; cursor: pointer; opacity: 0; }
+.lt-cell:hover .lt-x { opacity: 1; }
+.lt-x:hover { background: var(--danger); }
+.lt-caps { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; max-height: 460px; overflow: auto; }
+.lt-caprow { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; }
+.lt-caprow img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; }
+.lt-acc > summary { list-style: none; }
+.lt-acc > summary::-webkit-details-marker { display: none; }
+.lt-acc > summary::after { content: '◀'; font-size: 10px; color: var(--muted); }
+.lt-acc[open] > summary::after { content: '▼'; }
+.lt-go .fx-btn2 { height: 42px; }
+.lt-start { flex: 2; font-size: 14px; }
+.lt-bar { height: 6px; border-radius: 3px; background: var(--border-2); overflow: hidden; }
+.lt-bar > i { display: block; height: 100%; background: var(--fx-accent); transition: width .4s; }
+.lt-log { max-height: 150px; overflow: auto; margin: 0; padding: 8px; border-radius: 8px; background: var(--field); font: 11px var(--mono); white-space: pre-wrap; color: var(--text-2); }
+.lt-samples { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.lt-samples img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.lt-results { display: flex; flex-direction: column; gap: 6px; }
+.lt-results:empty { display: none; }
+.lt-ck { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font: 12px var(--mono); }
 .gp-studio { gap: 8px; }
 #studio-bar { display: none; flex-direction: column; gap: 6px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
 body.studio #studio-bar { display: flex; }

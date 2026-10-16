@@ -146,12 +146,13 @@ def cmd_info(a):
         "sd_scripts": str(t.find_sd_scripts() or ""),
         "tagger": ok, "tagger_error": why,
         "presets": {k: {"label": v["label"], "hint": v.get("hint", "")} for k, v in p.PRESETS.items()},
-        "scopes": {k: v.get("label", k) for k, v in LIB.scopes.SCOPES.items()},
+        "scopes": {k: {"label": v.get("label", k), "hint": v.get("hint", ""), "summary": LIB.scopes.summary(k)} for k, v in LIB.scopes.SCOPES.items()},
+        "scope_default": LIB.scopes.DEFAULT, "fewshot_max": p.FEWSHOT_MAX, "fewshot_resolutions": p.FEWSHOT_RESOLUTIONS,
         "optimizers": t.OPTIMIZERS,
         "dits": [{"path": c, "name": Path(c).name, "kind": t.dit_kind(c), "note": t.dit_note(c)} for c in cands],
         "dit": t.pick_default(cands), "vae": vae, "qwen3": qwen,
         "running": {"project": running["project"], "run": str(running["run_file"].parent), "pid": running["pid"]} if running else None,
-        "resolutions": [512, 768, 1024, 1536],
+        "resolutions": [512, 640, 768, 1024],
     }
 
 
@@ -199,7 +200,8 @@ def cmd_load(a):
             runs.append(run_state(rf))
         except Exception:
             pass
-    return {"manifest": m, "images": images, "dir": str(s.dir_for(name)), "runs": runs}
+    note = LIB.presets.fewshot_note(m.get("lora_type", "style"), len(images)) if images else ""
+    return {"manifest": m, "images": images, "dir": str(s.dir_for(name)), "runs": runs, "note": note}
 
 
 def cmd_save(a):
@@ -216,6 +218,20 @@ def cmd_save(a):
 
 def cmd_add(a):
     return {"added": LIB.store.add_images(a["name"], a.get("paths") or [])}
+
+
+def cmd_import(a):
+    s = LIB.store
+    folder = (a.get("folder") or "").strip().strip('"')
+    paths = a.get("paths") or []
+    if not folder and not paths:
+        raise ValueError("Indiquez un dossier, ou choisissez des images.")
+    name = s.sanitize(a.get("new_name") or "") or a.get("name") or (s.sanitize(Path(folder).name) if folder else "") or s.unique_name("project")
+    added = s.import_folder(name, folder) if folder else s.add_images(name, paths)
+    if not added and not s.images_of(name):
+        raise ValueError("aucune image prise en charge")
+    s.save(name, s.load(name))
+    return {"name": name, "added": added, "count": len(s.images_of(name))}
 
 
 def cmd_remove(a):
@@ -275,8 +291,21 @@ def cmd_preset(a):
              caption_dropout_rate=r["caption_dropout_rate"])
     s.save(name, m)
     note = p.fewshot_note(kind, len(images))
+    where = " x ".join(f"{x}px" for x in r["resolutions"]) if multires else f"{r['resolution']}px"
+    status = (f"**{p.PRESETS[kind]['label']}** preset, sized for {len(images)} image(s): dim/alpha {r['dim']}, "
+              f"learning rate {r['learning_rate']:.2g}, {r['repeats']} repeats x {r['epochs']} epochs = {r['steps']} steps "
+              f"at {where} ({r['passes_per_image']} passes over each image).")
+    if r["few_shot"]:
+        status += f" Dropout {r['rank_dropout']:.2f}{', mirrored' if r['flip_aug'] else ''}."
+    elif r["caption_dropout_rate"]:
+        status += f" Caption dropout {r['caption_dropout_rate']:.2f}."
+    if note:
+        status += "\n\n" + note
+    if r["removed_tags"]:
+        more = "" if len(r["removed_tags"]) <= 12 else f" (+{len(r['removed_tags']) - 12} more)"
+        status += "\n\nRemoved from captions so they bind to the trigger instead: " + ", ".join(r["removed_tags"][:12]) + more
     return {"manifest": m, "removed_tags": r["removed_tags"], "passes": r["passes_per_image"],
-            "resolutions": r["resolutions"], "note": note}
+            "resolutions": r["resolutions"], "note": note, "status": status}
 
 
 def cmd_start(a):
