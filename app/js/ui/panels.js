@@ -9,7 +9,7 @@
   P.LAYOUT = [
     { id: 'g-nav', tabs: ['navigator', 'histogram', 'info'], collapsed: true },
     { id: 'g-color', tabs: ['color', 'swatches'] },
-    { id: 'g-props', tabs: ['properties', 'adjustments'], height: 250 },
+    { id: 'g-props', tabs: ['properties', 'adjustments', 'generate'], height: 250 },
     { id: 'g-layers', tabs: ['layers', 'channels', 'paths', 'history'], grow: true },
   ];
   P.register = (id, def) => { P.defs[id] = def; };

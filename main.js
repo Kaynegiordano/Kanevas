@@ -1,6 +1,6 @@
 ﻿// Kanevas — processus principal Electron : la fenêtre, les boîtes de dialogue
 // de fichiers et l'accès disque. Toute l'application vit dans app/ (renderer).
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
@@ -315,7 +315,7 @@ ipcMain.handle('forge-status', forgeHandler(async base => {
   const opt = await forgeCall(base, '/sdapi/v1/options', null, 2500);
   let upscalers = [];
   try { upscalers = (await forgeCall(base, '/sdapi/v1/upscalers', null, 4000) || []).map(u => u.name).filter(n => n && n !== 'None'); } catch { /* ancienne API */ }
-  return { model: opt && opt.sd_model_checkpoint, upscalers };
+  return { model: opt && opt.sd_model_checkpoint, upscalers, current: { model: opt && opt.sd_model_checkpoint, modules: (opt && opt.forge_additional_modules) || [] } };
 }));
 // Les images passent en PNG brut entre la page et ce processus ; seul l'appel HTTP est en base64.
 const b64 = u8 => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
@@ -329,10 +329,155 @@ ipcMain.handle('forge-upscale', forgeHandler(async (base, payload, png) => {
   if (!r || !r.image) throw new Error('Forge n\'a renvoyé aucune image');
   return { image: unb64(r.image) };
 }));
-ipcMain.handle('forge-progress', forgeHandler(async base => {
-  const r = await forgeCall(base, '/sdapi/v1/progress?skip_current_image=true', null, 3000);
-  return { progress: r ? r.progress : 0 };
+ipcMain.handle('forge-txt2img', forgeHandler(async (base, payload) => {
+  const r = await forgeCall(base, '/sdapi/v1/txt2img', payload);
+  return { images: ((r && r.images) || []).map(unb64), info: r && r.info };
 }));
+
+// Catalogue pour le panneau IA (« mini Forge ») : modèles, VAE / encodeurs, échantillonneurs, LoRA avec
+// leurs aperçus et fiches (.png / .json posés à côté par Forge), préréglages d'échantillonnage de Forge.
+const loraPreview = new Map();       // chemin → { t, jpg }
+function sidecar(file, exts) {
+  const stem = file.replace(/\.[^.\\/]+$/, '');
+  for (const e of exts) { const q = stem + e; if (fs.existsSync(q)) return q; }
+  return null;
+}
+ipcMain.handle('forge-catalog', forgeHandler(async base => {
+  const [models, modules, samplers, schedulers, loras, opt, flags] = await Promise.all([
+    forgeCall(base, '/sdapi/v1/sd-models', null, 8000), forgeCall(base, '/sdapi/v1/sd-modules', null, 8000).catch(() => []),
+    forgeCall(base, '/sdapi/v1/samplers', null, 8000), forgeCall(base, '/sdapi/v1/schedulers', null, 8000).catch(() => []),
+    forgeCall(base, '/sdapi/v1/loras', null, 15000).catch(() => []), forgeCall(base, '/sdapi/v1/options', null, 8000),
+    forgeCall(base, '/sdapi/v1/cmd-flags', null, 8000).catch(() => ({})),
+  ]);
+  const kind = f => /[\\/]vae[\\/]/i.test(f) || /vae/i.test(path.basename(f)) ? 'vae' : /[\\/](text_encoder|clip)[\\/]/i.test(f) ? 'te' : 'other';
+  const outLoras = [];
+  for (const l of loras || []) {
+    let trigger = '', weight = 1, preview = null;
+    try {
+      const j = sidecar(l.path, ['.json']);
+      if (j) { const m = JSON.parse(fs.readFileSync(j, 'utf8')); trigger = String(m['activation text'] || '').trim(); weight = +m['preferred weight'] || 1; }
+    } catch { /* fiche illisible */ }
+    try {
+      const img = sidecar(l.path, ['.preview.png', '.png', '.preview.jpg', '.jpg', '.jpeg', '.webp']);
+      if (img) {
+        const t = fs.statSync(img).mtimeMs, c = loraPreview.get(img);
+        if (c && c.t === t) preview = c.jpg;
+        else { const ni = nativeImage.createFromPath(img); if (!ni.isEmpty()) { preview = new Uint8Array(ni.resize({ width: 128, quality: 'good' }).toJPEG(80)); loraPreview.set(img, { t, jpg: preview }); } }
+      }
+    } catch { /* pas d'aperçu */ }
+    const md = l.metadata || {};
+    outLoras.push({ name: l.name, alias: l.alias, folder: path.basename(path.dirname(l.path)), base: md.ss_base_model_version || '', trigger, weight, preview });
+  }
+  let presets = {};
+  try { if (flags && flags.data_dir) presets = JSON.parse(fs.readFileSync(path.join(flags.data_dir, 'style_presets.json'), 'utf8')); } catch { /* aucun */ }
+  let adModels = [];
+  try { const r = await forgeCall(base, '/adetailer/v1/ad_model', null, 8000); adModels = (r && r.ad_model) || []; } catch { /* ADetailer absent */ }
+  let upscalers = [];
+  try { upscalers = ((await forgeCall(base, '/sdapi/v1/upscalers', null, 8000)) || []).map(u => u.name).filter(n => n && n !== 'None'); } catch { /* rien */ }
+  const dirs = { data: flags.data_dir || '', models: flags.model_ref || '', lora: flags.lora_dir || '' };
+  if (dirs.data) { forgeDirs = dirs; try { fs.writeFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), JSON.stringify(dirs)); } catch { /* rien */ } }
+  return {
+    adModels, upscalers, dirs,
+    models: (models || []).map(m => ({ title: m.title, name: m.model_name, file: m.filename })),
+    modules: (modules || []).map(m => ({ name: m.model_name, path: m.filename, kind: kind(m.filename) })),
+    samplers: (samplers || []).map(x => x.name), schedulers: (schedulers || []).map(x => x.label || x.name),
+    loras: outLoras, presets,
+    current: { model: opt.sd_model_checkpoint, modules: opt.forge_additional_modules || [] },
+  };
+}));
+/* ------------------------------------------------------------------ atelier LoRA */
+// Les dossiers de Forge viennent de son API (cmd-flags) ; la passerelle tourne avec le Python du venv de Forge
+// et réutilise son extension d'entraînement (lora_bridge.py). Aucun chemin n'est accepté de la page.
+let forgeDirs = null;
+const loadDirs = () => { if (!forgeDirs) try { forgeDirs = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), 'utf8')); } catch { /* jamais vu */ } };
+const bridgePath = () => path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'lora_bridge.py');
+const insideDir = (root, p) => { const r = path.resolve(root) + path.sep; const q = path.resolve(p); return q.startsWith(r); };
+ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
+  try {
+    // dossiers mémorisés au dernier contact avec Forge : l'atelier marche aussi Forge éteint (carte graphique libre)
+    if (!forgeDirs) try { forgeDirs = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), 'utf8')); } catch { /* jamais vu */ }
+    if (!forgeDirs || !forgeDirs.data) throw new Error('Démarrez Forge une fois depuis Kane OS : Kanevas y lit ses dossiers (entraîneur, modèles)');
+    const py = path.join(forgeDirs.data, 'venv', 'Scripts', 'python.exe');
+    if (!fs.existsSync(py)) throw new Error('Python de Forge introuvable : ' + py);
+    if (!/^[a-z_]+$/.test(cmd)) throw new Error('Commande invalide');
+    const input = JSON.stringify({ ...args, data_dir: forgeDirs.data, model_ref: forgeDirs.models, lora_dir: forgeDirs.lora });
+    const out = await new Promise((resolve, reject) => {
+      const child = require('child_process').spawn(py, [bridgePath(), cmd], { cwd: forgeDirs.data, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+      let so = '', se = '';
+      child.stdout.on('data', d => { so += d; });
+      child.stderr.on('data', d => { se += d; if (se.length > 20000) se = se.slice(-20000); });
+      child.on('error', reject);
+      child.on('close', code => { try { resolve(JSON.parse(so)); } catch { reject(new Error('Passerelle : réponse illisible (' + code + ') ' + se.slice(-400))); } });
+      child.stdin.end(input);
+    });
+    return out;
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// Miniature d'une image du dossier des entraînements ou des LoRA (aperçus, échantillons)
+ipcMain.handle('lora-thumb', (_e, file, width = 256) => {
+  try {
+    loadDirs();
+    if (!forgeDirs || !(insideDir(path.join(forgeDirs.data, 'lora_training'), file) || (forgeDirs.lora && insideDir(forgeDirs.lora, file)))) throw new Error('Chemin refusé');
+    const ni = nativeImage.createFromPath(file);
+    if (ni.isEmpty()) throw new Error('Image illisible');
+    const sz = ni.getSize();
+    return { ok: true, data: new Uint8Array((sz.width > width ? ni.resize({ width, quality: 'good' }) : ni).toJPEG(85)), w: sz.width, h: sz.height };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// Image complète (pour l'ouvrir dans Kanevas)
+ipcMain.handle('lora-file', (_e, file) => {
+  try {
+    loadDirs();
+    if (!forgeDirs || !(insideDir(path.join(forgeDirs.data, 'lora_training'), file) || (forgeDirs.lora && insideDir(forgeDirs.lora, file)))) throw new Error('Chemin refusé');
+    return { ok: true, name: path.basename(file), data: fs.readFileSync(file) };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// Ajout d'une image venue de Kanevas (document, sélection) dans un projet
+ipcMain.handle('lora-write', (_e, project, name, data) => {
+  try {
+    loadDirs();
+    if (!forgeDirs) throw new Error('Forge non joint');
+    const safeProj = String(project).replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 64).trim();
+    const dir = path.join(forgeDirs.data, 'lora_training', safeProj);
+    if (!safeProj || !fs.existsSync(path.join(dir, 'project.json'))) throw new Error('Projet introuvable');
+    let base = path.basename(String(name)).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '_').replace(/\.[^.]*$/, '') || 'kanevas';
+    let f = path.join(dir, base + '.png'), i = 2;
+    while (fs.existsSync(f)) f = path.join(dir, `${base}_${i++}.png`);
+    fs.writeFileSync(f, Buffer.from(data));
+    return { ok: true, file: path.basename(f) };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('pick-image-paths', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Images pour l\'entraînement', properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+  return r.canceled ? [] : r.filePaths;
+});
+ipcMain.handle('pick-folder-images', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Dossier d\'images', properties: ['openDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return [];
+  const d = r.filePaths[0];
+  return fs.readdirSync(d).filter(n => /\.(png|jpe?g|webp|bmp)$/i.test(n)).map(n => path.join(d, n));
+});
+// Export de plusieurs fichiers dans un dossier choisi (découpe pour les réseaux)
+ipcMain.handle('save-files', async (_e, title, files) => {
+  const r = await dialog.showOpenDialog(win, { title: title || 'Choisir le dossier', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+  try {
+    const dir = r.filePaths[0], written = [];
+    for (const f of files) { const n = path.basename(String(f.name)); fs.writeFileSync(path.join(dir, n), Buffer.from(f.data)); written.push(n); }
+    return { ok: true, dir, written };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('open-folder', (_e, p) => { if (forgeDirs && (insideDir(forgeDirs.data, p) || insideDir(forgeDirs.lora, p))) shell.openPath(p); });
+
+ipcMain.handle('forge-progress', forgeHandler(async (base, withImage) => {
+  const r = await forgeCall(base, '/sdapi/v1/progress?skip_current_image=' + (withImage ? 'false' : 'true'), null, 4000);
+  const st = (r && r.state) || {};
+  return { progress: r ? r.progress : 0, eta: r ? r.eta_relative : 0, step: st.sampling_step, steps: st.sampling_steps, jobs: st.job_count,
+    image: withImage && r && r.current_image ? unb64(r.current_image) : null };
+}));
+ipcMain.handle('forge-unload', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/unload-checkpoint', {}, 60000); return {}; }));
+ipcMain.handle('forge-refresh-loras', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/refresh-loras', {}, 60000); return {}; }));
+ipcMain.handle('forge-pnginfo', forgeHandler(async (base, png) => { const r = await forgeCall(base, '/sdapi/v1/png-info', { image: 'data:image/png;base64,' + b64(png) }, 20000); return { info: r && r.info, items: r && r.items }; }));
 ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/interrupt', {}, 4000); return {}; }));
 
 // Le renderer n'accède qu'à des copies identifiées, jamais à un chemin arbitraire.

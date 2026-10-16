@@ -1,4 +1,4 @@
-# Kanevas
+﻿# Kanevas
 
 Éditeur d'images de bureau inspiré de Photoshop (Electron + Canvas, 100 % local).
 
@@ -62,10 +62,44 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - **Réglages selon le modèle actif de Forge** : pour anima, préfixe `newest, year 2026, safe`, échantillonneur ER SDE,
   planificateur simple. Si l'invite ne demande pas de personnage, « girl, woman, man, person… » passent en négatif.
   Force par défaut 85 % (l'objet se fond mieux dans l'image), 30 étapes, CFG 4,5, bords adoucis.
+- **Panneau IA, une « mini Forge »** (1.1.0, onglet IA à côté de Propriétés ; Édition > Générer une image…) :
+  invite (traduite si elle est en français, aperçu de ce qui part), modèle, VAE et encodeur de texte de Forge,
+  **LoRA** en grille avec leurs aperçus (poids conseillé et mot déclencheur lus dans leur fiche `.json`, recherche,
+  LoRA d'une autre base grisés), préréglages d'échantillonnage de Forge (`style_presets.json`) et préréglages
+  Kanevas enregistrés (modèle + LoRA + réglages), échantillonneur, planificateur, étapes, CFG, variantes, force,
+  graine (au hasard, ou reprise de la dernière image). Boutons : Générer dans la sélection, **Nouvelle image**
+  (txt2img dans un calque, à la taille de la sélection ou de l'image), Développer. Un autre modèle que celui chargé
+  dans Forge est utilisé le temps de la requête (Forge revient ensuite au sien, sauf « Garder ce modèle chargé »).
 - `KANEVAS_PROFILE=<dossier>` : lance Kanevas avec un dossier de données séparé (essais automatisés pendant que
   l'application habituelle est ouverte).
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
+
+## Studio Forge (1.1.0)
+Kanevas pilote le Forge local comme un « mini Forge », avec en plus tout l'éditeur autour (menu **IA**, panneau **IA**).
+- **Nouvelle image** (Ctrl+Alt+N) : txt2img dans un **nouveau document** (taille, formats, « comme l'image »), l'image
+  en cours n'est jamais touchée. Variantes ‹ ›, « Générer encore ». Aussi : image dans un calque ou dans la sélection.
+- **Image → image** : l'image (ou la sélection) retravaillée selon l'invite et la force, dans un calque au-dessus.
+- **ADetailer** : détecteurs de Forge (visages, mains, yeux Eyeful…), jusqu'à 3, invite / force / confiance ; à chaque
+  génération, ou **Retoucher (ADetailer)** seul sur l'image en cours (comme « Skip img2img »), dans un calque.
+- **Agrandir et détailler** : agrandissement ESRGAN (×1,5 / ×2 / ×3) puis image vers image par tuiles
+  (**MultiDiffusion**, Mixture of Diffusers), dans un nouveau document (calque agrandi + calque détaillé).
+- **Shift** (anima) envoyé comme dans Forge (3), préréglages de Forge avec leur Shift et leur taille.
+- **Aperçu en direct** de l'image qui se forme pendant chaque génération (option de Forge).
+- **PNG Info** (Fichier ou IA) : les paramètres d'un PNG de Forge sont lus à l'ouverture et réécrits à l'export PNG ;
+  « Envoyer au panneau IA » reprend invite, LoRA, réglages, graine, taille, modèle.
+- **IA en direct** : pendant que vous dessinez, Forge repeint l'image dans une fenêtre flottante (image vers image,
+  peu d'étapes, graine fixe ; ~1 s par rendu en 640 px) ; « Poser en calque » garde un rendu.
+- **Atelier LoRA** (IA > Atelier LoRA, ou bouton du panneau) : projets de l'entraîneur de Forge (mêmes dossiers),
+  images depuis des fichiers, un dossier, l'image en cours, la sélection ou les documents ouverts ; légendes WD14
+  automatiques, modifiables, ajout / retrait d'un tag partout ; type (style, personnage, vêtement…) et préréglage de
+  l'entraîneur ; modèle de base (anima Base conseillé), époques, répétitions, dim, taux, résolution, multi-résolutions,
+  options avancées ; lancement (le modèle de Forge est déchargé d'abord), progression, échantillons, arrêt ;
+  sauvegardes à **essayer** directement dans le panneau IA. La recette et les préréglages sont ceux de
+  `forge_lora_trainer`, appelé par `lora_bridge.py` avec le Python du venv de Forge.
+- **Découper pour les réseaux** (Image, remplace ImgCut) : carrousel (Instagram 4:5, Story 9:16, X 3:4, 2:3, carré,
+  personnalisé, auto) ou **grille du profil** 3 colonnes numérotée dans l'ordre de publication ; aperçu en direct,
+  cadrage en faisant glisser l'aperçu, fond blanc, noir ou flou de l'image ; export numéroté dans un dossier.
 
 ## Performances (grandes images)
 - Seule la zone modifiée est recomposée (élargie de la portée des styles de calque), par tuiles de 512 px dans de
@@ -154,3 +188,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.5** : Electron 44.7.2 (correctifs de sécurité de Chromium).
 - **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.
 - **1.0.7** : génération Forge corrigée : invites en français traduites en anglais sur le PC (fini les filles au hasard), réglages adaptés au modèle anima, force 85 %, invite envoyée affichée ; jointure du développement génératif plus douce.
+- **1.1.0** : Studio Forge : nouvelle image dans un nouveau document, image → image, ADetailer (et retouche seule), agrandir et détailler (MultiDiffusion), Shift, aperçu en direct, PNG Info, IA en direct, atelier LoRA (entraîneur de Forge), découpe pour les réseaux (carrousel, grille du profil), menu IA.

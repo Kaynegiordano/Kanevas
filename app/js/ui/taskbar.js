@@ -26,7 +26,7 @@
       const go = () => { const p = inp.value; KS.state.lastPrompt = p; mode = null; render(); C.generativeFill(p); };
       inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') go(); else if (e.key === 'Escape') { mode = null; render(); } });
       setTimeout(() => inp.focus(), 0);
-      return [h('span.ctx-ico', { html: KS.icon('sparkles') }), inp, btn('sparkles', 'Générer', go, '.primary'), iconOnly('settings', 'Paramètres de génération…', () => { mode = null; render(); C.generativeFill(); }), iconOnly('close', 'Fermer', () => { mode = null; render(); })];
+      return [h('span.ctx-ico', { html: KS.icon('sparkles') }), inp, btn('sparkles', 'Générer', go, '.primary'), iconOnly('settings', 'Modèle, LoRA et réglages (panneau IA)', () => { KS.state.lastPrompt = inp.value; mode = null; render(); C.openGenPanel(); }), iconOnly('close', 'Fermer', () => { mode = null; render(); })];
     }
     const L = d.active;
     if (d.selection.active) {
@@ -40,6 +40,7 @@
           { label: 'Contour progressif…', action: C.feather }, { label: 'Sélectionner et masquer…', action: C.refineEdge },
           { label: 'Calque par copier', action: () => C.layerViaCopy(false) }, { label: 'Remplir…', action: C.fill },
           { label: 'Remplissage d\'après le contenu', action: () => C.contentAwareFill(d) },
+          { sep: true }, { label: 'Panneau IA (modèle, LoRA, réglages)…', action: () => C.openGenPanel() },
         ]),
       ];
     }
@@ -56,6 +57,7 @@
     if (L && L.kind === 'raster') parts.push(btn('remove-bg', 'Supprimer l\'arrière-plan', () => C.removeBackground()));
     if (L && L.kind === 'raster' && d.layers.indexOf(L) > 0) parts.push(btn('harmonize', 'Harmoniser', () => C.harmonize()));
     parts.push(btn('gen-expand', 'Développement génératif', () => C.generativeExpand()));
+    parts.push(btn('image', 'Générer une image', () => C.openGenPanel()));
     parts.push(more([{ label: 'Super résolution IA…', action: C.superResolution }, { label: 'Ton automatique', action: C.autoTone }, { label: 'Couleur automatique', action: C.autoColor }]));
     return parts;
   }

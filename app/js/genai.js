@@ -54,20 +54,33 @@
   };
 
   // Tâche longue : voile avec message, progression et bouton Annuler
+  // progress() renvoie un nombre (0…1) ou { p, step, steps, image } : l'image est l'aperçu en direct de Forge
   G.task = async (label, fn, { cancel, progress } = {}) => {
     const txt = h('span', { text: label }), pct = h('span.gen-pct');
-    const card = h('div.gen-card', h('div.spin'), h('div.gen-txt', txt, pct), cancel ? ui.btn('Annuler', () => { cancel(); txt.textContent = 'Annulation…'; }, '.small') : null);
+    const shot = h('img.gen-live', { alt: '', hidden: true });
+    const card = h('div.gen-card', h('div.gen-row', h('div.spin'), h('div.gen-txt', txt, pct), cancel ? ui.btn('Annuler', () => { cancel(); txt.textContent = 'Annulation…'; }, '.small') : null), shot);
     const back = h('div.busy.gen-busy', card);
     document.body.appendChild(back);
-    let timer = null;
-    if (progress) timer = setInterval(async () => { try { const p = await progress(); if (p != null) pct.textContent = Math.round(p * 100) + ' %'; } catch { /* rien */ } }, 800);
+    let timer = null, busy = false, url = null;
+    if (progress) timer = setInterval(async () => {
+      if (busy) return; busy = true;
+      try {
+        const r = await progress();
+        const p = typeof r === 'number' ? r : r && r.p;
+        if (p != null) pct.textContent = Math.round(p * 100) + ' %' + (r && r.steps ? ` · étape ${r.step || 0} / ${r.steps}` : '');
+        if (r && r.image) { if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(new Blob([r.image], { type: 'image/png' })); shot.src = url; shot.hidden = false; }
+      } catch { /* rien */ } finally { busy = false; }
+    }, 900);
     await new Promise(r => setTimeout(r, 30));     // laisse s'afficher le voile (rAF est suspendu fenêtre masquée)
-    try { return await fn(); } finally { clearInterval(timer); back.remove(); }
+    try { return await fn(); } finally { clearInterval(timer); back.remove(); if (url) URL.revokeObjectURL(url); }
   };
 
   /* ---------------------------------------------------------------- réglages et état de Forge */
   // v2 (1.0.7) : force 85 % (l'objet se fond mieux dans l'image), réglages des versions précédentes oubliés
-  const GEN_DEFAULTS = { negative: 'lowres, blurry, watermark, text, signature, jpeg artifacts', count: 3, strength: 0.85, steps: 30, cfg: 4.5, url: 'http://127.0.0.1:7860', v: 2 };
+  // Panneau IA (1.0.8) : modèle, VAE et encodeur ('' = ceux chargés dans Forge), LoRA [{ name, weight, trigger }],
+  // échantillonneur et planificateur ('' = réglage du modèle), graine (-1 = au hasard)
+  const GEN_DEFAULTS = { negative: 'lowres, blurry, watermark, text, signature, jpeg artifacts', count: 3, strength: 0.85, steps: 30, cfg: 4.5, url: 'http://127.0.0.1:7860', v: 2,
+    model: '', vae: '', te: '', loras: [], sampler: '', scheduler: '', seed: -1, shift: 3, usePrefix: true, useTriggers: true, keepLoaded: false };
   G.settings = () => { const p = KS.prefs.genAI || {}; return Object.assign({ prompt: '' }, GEN_DEFAULTS, p.v === 2 ? p : (p.url ? { url: p.url } : {})); };
   G.saveSettings = o => { const s = { ...G.settings(), ...o, v: 2 }; delete s.prompt; KS.prefs.genAI = s; KS.prefs.save(); };
 
@@ -106,12 +119,33 @@
   const PERSON = /\b(girls?|wom[ae]n|m[ae]n|boys?|persons?|people|humans?|lady|ladies|child(ren)?|kids?|characters?|faces?|portrait|warriors?|knights?|princess|mermaids?|witch|elf|elves|she|he|her|his|couple|crowd|soldiers?|robot)\b/i;
   const NO_PERSON = '1girl, girl, woman, 1boy, boy, man, person, people, human, character, face';
   // Invite finale envoyée à Forge
+  // Modèle et modules demandés, s'ils diffèrent de ceux chargés dans Forge : changés le temps de la requête
+  G.overrides = (o, forge) => {
+    const cur = (forge && forge.current) || {};
+    const ov = {};
+    const nm = t => String(t || '').replace(/\s*\[[0-9a-f]{6,}\]$/i, '');
+    if (o.model && nm(o.model) !== nm(cur.model || forge?.model)) ov.sd_model_checkpoint = o.model;
+    if (o.vae || o.te) {
+      const mods = (cur.modules || []).slice(), isVae = f => /[\\/]vae[\\/]|vae/i.test(f), isTe = f => /[\\/](text_encoder|clip)[\\/]/i.test(f);
+      const next = mods.filter(f => !(o.vae && isVae(f)) && !(o.te && isTe(f)));
+      if (o.vae) next.push(o.vae); if (o.te) next.push(o.te);
+      if (JSON.stringify(next.slice().sort()) !== JSON.stringify(mods.slice().sort())) ov.forge_additional_modules = next;
+    }
+    return Object.keys(ov).length ? { override_settings: ov, override_settings_restore_afterwards: !o.keepLoaded } : {};
+  };
   G.preparePrompt = async (raw, forge, o) => {
     let en = await G.toEnglish(raw);
     if (en == null) { en = stripCmd(raw.trim()); KS.toast('Invite envoyée en français : le résultat risque d\'être sans rapport. Écrivez-la en anglais pour de meilleurs résultats.', 'info', 6000); }
-    const pre = G.modelPreset(forge && forge.model);
-    const neg = [o.negative, PERSON.test(en) ? '' : NO_PERSON, 'nsfw, nude'].filter(Boolean).join(', ');
-    return { prompt: pre.prefix + en, negative: neg, sampler: pre.sampler, scheduler: pre.scheduler, shown: en };
+    const pre = G.modelPreset(o.model || (forge && forge.model));
+    const loras = (o.loras || []).filter(l => l.name && l.weight);
+    const trig = o.useTriggers ? loras.map(l => (l.trigger || '').replace(/,\s*$/, '')).filter(Boolean) : [];
+    const tags = loras.map(l => `<lora:${l.name}:${+(+l.weight).toFixed(2)}>`);
+    const person = PERSON.test(en) || loras.length > 0 && /girl|woman|man|boy|eve|evie/i.test(trig.join(' '));
+    const neg = [o.negative, person ? '' : NO_PERSON, 'nsfw, nude'].filter(Boolean).join(', ');
+    const prompt = [(o.usePrefix !== false ? pre.prefix : '') + [...trig, en].filter(Boolean).join(', '), ...tags].join(' ');
+    // « Shift » des modèles à flux (anima) = distilled_cfg_scale de l'API (3,5 par défaut là-bas, 3 dans Forge)
+    const extra = { ...G.overrides(o, forge), distilled_cfg_scale: +o.shift || 3 };
+    return { prompt, negative: neg, sampler: o.sampler || pre.sampler, scheduler: o.scheduler || pre.scheduler, shown: en, extra };
   };
   let forgeCache = null;
   G.forge = async (fresh = false) => {
@@ -122,7 +156,8 @@
     return forgeCache.s;
   };
   G.forgeError = () => forgeCache?.err || 'Forge n\'est pas démarré';
-  const forgeProgress = async () => { const r = await N.forgeProgress(G.settings().url); return r && r.ok ? r.progress : null; };
+  const forgeProgress = async () => { const r = await N.forgeProgress(G.settings().url, true); return r && r.ok ? { p: r.progress, step: r.step, steps: r.steps, image: r.image } : null; };
+  G.forgeProgress = forgeProgress;
 
   /* ---------------------------------------------------------------- LaMa (suppression) */
   let lamaOk = false;
@@ -188,25 +223,31 @@
     const mimg = bwMask(dilate(scaled(mask, W, H, R.x, R.y, R.w, R.h), 6), W, H, 0, 0, W, H);
     const payload = {
       prompt: o.prompt, negative_prompt: o.negative || '', steps: o.steps, cfg_scale: o.cfg, denoising_strength: o.strength,
-      width: W, height: H, batch_size: U.clamp(o.count | 0, 1, 4), n_iter: 1, seed: -1,
+      width: W, height: H, batch_size: U.clamp(o.count | 0, 1, 4), n_iter: 1, seed: o.seed != null && o.seed !== '' ? +o.seed : -1,
       mask_blur: 12, inpainting_fill: 1, inpaint_full_res: false, inpainting_mask_invert: 0, resize_mode: 0,
       save_images: false, send_images: true,
     };
     if (o.sampler) payload.sampler_name = o.sampler;
     if (o.scheduler) payload.scheduler = o.scheduler;
+    Object.assign(payload, o.extra || {});
+    if (G.scriptsFor) G.addScripts(payload, await G.scriptsFor(o, 'inpaint'));
     const job = { init: await pngBytes(init), mask: await pngBytes(mimg), payload, W, H, R };
     return { ...(await G.forgeRun(job)), job };
   };
   G.forgeRun = async job => {
     let stop = false;
-    const r = await G.task('Génération avec Forge…', () => N.forgeImg2img(G.settings().url, job.payload, job.init, job.mask),
+    const label = job.payload.override_settings?.sd_model_checkpoint ? 'Changement de modèle puis génération avec Forge…' : 'Génération avec Forge…';
+    const r = await G.task(label, () => job.txt ? N.forgeTxt2img(G.settings().url, job.payload) : N.forgeImg2img(G.settings().url, job.payload, job.init, job.mask),
       { cancel: () => { stop = true; N.forgeInterrupt(G.settings().url); }, progress: N.forgeProgress ? forgeProgress : null });
     if (!r.ok) throw new Error(r.error);
     const imgs = [];
     for (const u8 of r.images) { const c = await fromPng(u8); if (c.width === job.W && c.height === job.H) imgs.push(c); }
     if (!imgs.length) throw new Error(stop ? 'Génération annulée' : 'Forge n\'a renvoyé aucune image');
+    let infos = [];
+    try { const info = r.info && JSON.parse(r.info); if (info && info.seed != null) G.lastSeed = info.seed; infos = (info && info.infotexts) || []; } catch { /* rien */ }
     // une éventuelle grille ou image de masque arrive en tête
-    return { variants: imgs.slice(-job.payload.batch_size).map(c => scaled(c, job.R.w, job.R.h)), rect: job.R };
+    const n = job.payload.batch_size || 1;
+    return { variants: imgs.slice(-n).map(c => c.width === job.R.w && c.height === job.R.h ? c : scaled(c, job.R.w, job.R.h)), rect: job.R, infos: infos.slice(-n) };
   };
 
   /* ---------------------------------------------------------------- calques générés */
@@ -215,9 +256,9 @@
   G.addGenLayer = (doc, res, alpha, info) => {
     const R = res.rect;
     const L = new KS.Layer({ name: info.name, canvas: U.copyCanvas(res.variants[0]), x: R.x, y: R.y });
-    L.mask = layerMaskFrom(alpha, R, info.feather ?? U.clamp(Math.max(R.w, R.h) * 0.006, 1.5, 10));
-    L.maskChanged();
-    L._gen = { variants: res.variants, i: 0, job: res.job || null, prompt: info.prompt || '' };
+    if (!info.noMask) { L.mask = layerMaskFrom(alpha, R, info.feather ?? U.clamp(Math.max(R.w, R.h) * 0.006, 1.5, 10)); L.maskChanged(); }
+    L._gen = { variants: res.variants, i: 0, job: res.job || null, prompt: info.prompt || '', infos: res.infos || [] };
+    if (res.infos && res.infos[0]) doc.genInfo = res.infos[0];
     const at = info.index ?? C.insertIndex(doc, L);
     KS.Hist.structure(doc, info.hist || 'Remplissage génératif', () => doc.addLayer(L, at), info.icon || 'sparkles');
     KS.emit('active-layer', doc); KS.emit('gen', doc);
@@ -232,6 +273,7 @@
     L.ctx.clearRect(0, 0, v.width, v.height); L.ctx.drawImage(v, 0, 0); L.touch();
     KS.Hist.commitPixels(doc, 'Variante ' + (i + 1), tok, { x: 0, y: 0, w: v.width, h: v.height }, 'sparkles');
     g.i = i;
+    if (g.infos && g.infos[i]) doc.genInfo = g.infos[i];
     KS.emit('layer-pixels', doc); KS.emit('gen', doc);
   };
   G.generateMore = async (doc, L) => {
@@ -241,6 +283,7 @@
     try {
       const res = await G.forgeRun(g.job);
       g.variants.push(...res.variants);
+      g.infos = (g.infos || []).concat(res.infos || []);
       G.setVariant(doc, L, g.variants.length - res.variants.length);
     } catch (e) { KS.toast(e.message, 'err', 5000); }
   };
@@ -329,6 +372,36 @@
     const B = U.rectIntersect(U.rectInt(d.selection.bounds), d.rect); if (!B) return;
     if (!(await G.lamaReady(true))) { C.contentAwareFill(d); return; }
     await G.fillRegion(d, U.copyCanvas(d.selection.mask), B, { prompt: '' }, { name: 'Suppression', hist: 'Supprimer avec l\'IA' });
+  };
+
+  /* ---------------------------------------------------------------- générer une image (txt2img) */
+  // Nouvelle image dans un calque : elle couvre la sélection (avec son masque) ou toute la zone de travail
+  C.generateImage = async (prompt, opts = {}) => {
+    const d = D(); if (!d) return;
+    const st = { ...G.settings(), ...opts };
+    const raw = (prompt ?? st.prompt ?? '').trim();
+    if (!raw) { KS.toast('Décrivez l\'image à générer (panneau IA)', 'info'); KS.panels.focus('generate'); return; }
+    const forge = await G.forge(true);
+    if (!forge) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS', 'err', 5000); return; }
+    const sel = d.selection.active ? U.rectIntersect(U.rectInt(d.selection.bounds), d.rect) : null;
+    const R = sel || d.rect;
+    const k = Math.sqrt(1048576 / (R.w * R.h));
+    const W = U.clamp(Math.round(R.w * k / 64) * 64, 256, 2048), H = U.clamp(Math.round(R.h * k / 64) * 64, 256, 2048);
+    try {
+      const pp = await G.preparePrompt(raw, forge, st);
+      const payload = { prompt: pp.prompt, negative_prompt: pp.negative, steps: st.steps, cfg_scale: st.cfg, width: W, height: H,
+        batch_size: U.clamp(st.count | 0, 1, 4), n_iter: 1, seed: st.seed != null && st.seed !== '' ? +st.seed : -1, save_images: false, send_images: true, ...pp.extra };
+      if (pp.sampler) payload.sampler_name = pp.sampler;
+      if (pp.scheduler) payload.scheduler = pp.scheduler;
+      if (G.scriptsFor) G.addScripts(payload, await G.scriptsFor(st, 'txt'));
+      const job = { txt: true, payload, W, H, R };
+      const res = await G.forgeRun(job);
+      if (pp.shown !== raw) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 5000);
+      res.job = job;
+      const alpha = U.canvas(d.width, d.height), ax = alpha.getContext('2d');
+      if (sel) ax.drawImage(d.selection.mask, 0, 0); else { ax.fillStyle = '#fff'; ax.fillRect(0, 0, d.width, d.height); }
+      return G.addGenLayer(d, res, alpha, { name: 'Image : ' + raw.slice(0, 40), prompt: raw, hist: 'Générer une image', feather: sel ? undefined : 0 });
+    } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 6000); }
   };
 
   /* ---------------------------------------------------------------- développement génératif */

@@ -1,0 +1,398 @@
+"""Passerelle Kanevas -> entraineur de LoRA de Forge (extension forge_lora_trainer).
+
+Lance par Kanevas avec le Python du venv de Forge :
+    python lora_bridge.py <commande>     (arguments JSON sur stdin, reponse JSON sur stdout)
+
+Reutilise lib_trainer tel quel : recettes et prereglages mesures, legendes WD14 (tagger d'ADetailer),
+commande sd-scripts, suivi de progression. Ecrit dans les memes projets que l'onglet de Forge
+(<data_dir>/lora_training/<nom>/), si bien qu'un projet commence ici se retrouve la-bas et inversement,
+et qu'un Forge redemarre reprend un entrainement lance d'ici (run.json avec pid).
+
+Seule difference voulue avec l'onglet de Forge : Forge n'est pas dans ce processus, il ne peut donc pas
+reserver sa file de generation. Kanevas decharge le modele de Forge avant de lancer et l'utilisateur
+en est averti.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import types
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+LIB = None
+
+
+def setup(a: dict):
+    """Faux modules Forge minimaux (chemins), puis import de lib_trainer."""
+    global LIB
+    data = Path(a["data_dir"])
+    models = Path(a.get("model_ref") or (data / "models"))
+    mods = types.ModuleType("modules")
+    pi = types.ModuleType("modules.paths_internal")
+    pi.data_path = str(data)
+    pi.extensions_dir = str(data / "extensions")
+    pi.models_path = str(models)
+    paths = types.ModuleType("modules.paths")
+    paths.models_path = str(models)
+    sh = types.ModuleType("modules.shared")
+    sh.cmd_opts = types.SimpleNamespace(ckpt_dir=None, lora_dir=a.get("lora_dir") or str(models / "Lora"))
+    sh.opts = types.SimpleNamespace(sd_model_checkpoint="", forge_additional_modules=a.get("modules") or [])
+    mods.paths_internal, mods.paths, mods.shared = pi, paths, sh
+    sys.modules.update({"modules": mods, "modules.paths_internal": pi, "modules.paths": paths, "modules.shared": sh})
+    sys.path.insert(0, str(data / "extensions-builtin" / "forge_lora_trainer"))
+    from lib_trainer import caption, presets, scopes, store, train  # noqa: E402
+    LIB = types.SimpleNamespace(caption=caption, presets=presets, scopes=scopes, store=store, train=train,
+                                lora_dir=Path(sh.cmd_opts.lora_dir), models=models)
+    return LIB
+
+
+# --------------------------------------------------------------------------- outils
+
+def runs_of(name: str) -> list[Path]:
+    root = LIB.store.dir_for(name) / "_training" / "runs"
+    return sorted(root.glob("*/run.json"), reverse=True) if root.is_dir() else []
+
+
+def run_state(run_file: Path) -> dict:
+    """Etat d'un entrainement, qu'il ait ete lance par Forge ou par Kanevas."""
+    t = LIB.train
+    data = json.loads(run_file.read_text(encoding="utf-8"))
+    pid = data.get("pid")
+    running = isinstance(pid, int) and t.pid_alive(pid) and data.get("finished_at") is None
+    output = Path(data["output"]) if data.get("output") else None
+    code = data.get("return_code")
+    if not running and code is None and data.get("finished_at") is None:
+        # lance d'ici et termine : personne n'a releve son code ; le fichier final fait foi
+        code = 0 if output and output.is_file() and output.stat().st_size > 0 else None
+        data.update(return_code=code, finished_at=datetime.now(timezone.utc).isoformat())
+        try:
+            LIB.store.atomic_json(run_file, data)
+        except Exception:
+            pass
+    log = run_file.parent / "train.log"
+    info = t.read_progress(log, running, return_code=code, stopped=bool(data.get("stopped")), expected_output=output)
+    if info["state"] == "error" and code == 0 and not (output and output.is_file()):
+        info = {"state": "done", "pct": 100, "text": "Entraînement terminé (le fichier final a été déplacé ou renommé depuis)."}
+    out_dir = output.parent if output else None
+    ckpts, samples = [], []
+    if out_dir and out_dir.is_dir():
+        ckpts = [str(p) for p in sorted(out_dir.glob("*.safetensors"), key=lambda p: p.stat().st_mtime)]
+        sdir = out_dir / "sample"
+        if sdir.is_dir():
+            samples = [str(p) for p in sorted(sdir.glob("*.png"), key=lambda p: p.stat().st_mtime)][-12:]
+    tail = ""
+    if log.is_file():
+        try:
+            raw = log.read_text(encoding="utf-8", errors="replace").replace("\r", "\n")
+            tail = "\n".join([l for l in raw.splitlines() if l.strip()][-8:])
+        except Exception:
+            pass
+    return {"run": str(run_file.parent), "id": data.get("id"), "project": data.get("project"), "pid": pid,
+            "running": running, "state": info["state"], "pct": info["pct"], "text": info["text"],
+            "output": str(output) if output else "", "checkpoints": ckpts, "samples": samples, "tail": tail,
+            "started_at": data.get("started_at")}
+
+
+def effective_captions(name: str, threshold: float) -> tuple[dict, list]:
+    s = LIB.store
+    m = s.load(name)
+    imgs = s.images_of(name)
+    have = dict(m.get("captions", {}))
+    missing = [p for p in imgs if not have.get(p.name)]
+    failed = []
+    if missing:
+        fresh, failed = LIB.caption.caption_each(missing, threshold=float(threshold))
+        have.update(fresh)
+        m["captions"] = have
+        s.save(name, m)
+    return have, failed
+
+
+EDITABLE = {"trigger", "steps", "epochs", "repeats", "resolution", "dim", "learning_rate", "threshold", "shuffle_caption",
+            "network_dropout", "caption_dropout_rate", "lr_scheduler_num_cycles", "optimizer", "base_model", "scope",
+            "rank_dropout", "module_dropout", "flip_aug", "multires", "lora_type", "captions", "sample_prompt", "sample_every"}
+
+
+# --------------------------------------------------------------------------- commandes
+
+def cmd_info(a):
+    t, p = LIB.train, LIB.presets
+    cands = []
+    for root in (LIB.models / "Stable-diffusion", LIB.models / "diffusion_models"):
+        if root.is_dir():
+            cands += [str(x) for x in root.rglob("*.safetensors")]
+    cands.sort(key=lambda c: (("anima" not in Path(c).name.lower()), t.dit_kind(c) != "base", Path(c).name.lower()))
+    ok, why = LIB.caption.tagger_available()
+    mods = list(a.get("modules") or [])
+    if not mods:
+        # Forge éteint : les fichiers d'anima à leur place habituelle
+        for sub, pat in (("VAE", "*qwen*vae*.safetensors"), ("text_encoder", "qwen*.safetensors")):
+            hits = [p for p in (LIB.models / sub).glob(pat)] if (LIB.models / sub).is_dir() else []
+            # anima : Qwen3 0,6B (pas les gros Qwen-VL d'autres modèles)
+            hits = [p for p in hits if "vl" not in p.name.lower()] or hits
+            hits.sort(key=lambda p: (not any(t in p.name.lower() for t in ("06b", "0.6b", "0_6b")), p.stat().st_size))
+            if hits:
+                mods.append(str(hits[0]))
+    vae = next((m for m in mods if "vae" in Path(m).name.lower()), "")
+    qwen = next((m for m in mods if "vae" not in Path(m).name.lower() and any(k in Path(m).name.lower() for k in ("qwen", "text_encoder", "encoder", "llm"))), "")
+    running = t.find_adoptable_run(max_log_age=10 ** 9)
+    return {
+        "sd_scripts": str(t.find_sd_scripts() or ""),
+        "tagger": ok, "tagger_error": why,
+        "presets": {k: {"label": v["label"], "hint": v.get("hint", "")} for k, v in p.PRESETS.items()},
+        "scopes": {k: v.get("label", k) for k, v in LIB.scopes.SCOPES.items()},
+        "optimizers": t.OPTIMIZERS,
+        "dits": [{"path": c, "name": Path(c).name, "kind": t.dit_kind(c), "note": t.dit_note(c)} for c in cands],
+        "dit": t.pick_default(cands), "vae": vae, "qwen3": qwen,
+        "running": {"project": running["project"], "run": str(running["run_file"].parent), "pid": running["pid"]} if running else None,
+        "resolutions": [512, 768, 1024, 1536],
+    }
+
+
+def cmd_list(a):
+    s = LIB.store
+    out = []
+    for name in s.list_projects():
+        try:
+            m = s.load(name)
+        except Exception as exc:
+            out.append({"name": name, "error": str(exc)})
+            continue
+        last = None
+        rf = runs_of(name)
+        if rf:
+            try:
+                last = run_state(rf[0])
+                last = {k: last[k] for k in ("state", "pct", "running", "output", "run")}
+            except Exception:
+                last = None
+        out.append({"name": name, "trigger": m.get("trigger", ""), "lora_type": m.get("lora_type", "style"),
+                    "count": len(s.images_of(name)), "last": last})
+    return {"projects": out}
+
+
+def cmd_create(a):
+    s = LIB.store
+    name = s.unique_name(a.get("name") or "projet")
+    m = s.default_manifest(name)
+    if a.get("trigger"):
+        m["trigger"] = s.sanitize(a["trigger"]).replace(" ", "_").lower()
+    s.save(name, m)
+    return {"name": name}
+
+
+def cmd_load(a):
+    s = LIB.store
+    name = a["name"]
+    m = s.load(name)
+    previews = dict((label, path) for path, label in s.gallery_images(name))
+    images = [{"file": p.name, "path": str(p), "preview": previews.get(p.name, "")} for p in s.images_of(name)]
+    runs = []
+    for rf in runs_of(name)[:6]:
+        try:
+            runs.append(run_state(rf))
+        except Exception:
+            pass
+    return {"manifest": m, "images": images, "dir": str(s.dir_for(name)), "runs": runs}
+
+
+def cmd_save(a):
+    s = LIB.store
+    m = s.load(a["name"])
+    for k, v in (a.get("patch") or {}).items():
+        if k in EDITABLE:
+            m[k] = v
+    if "trigger" in (a.get("patch") or {}):
+        m["trigger"] = s.sanitize(m.get("trigger", "")).replace(" ", "_").lower()
+    s.save(a["name"], m)
+    return {"manifest": m}
+
+
+def cmd_add(a):
+    return {"added": LIB.store.add_images(a["name"], a.get("paths") or [])}
+
+
+def cmd_remove(a):
+    s = LIB.store
+    d = s.dir_for(a["name"])
+    m = s.load(a["name"])
+    removed = 0
+    for f in a.get("files") or []:
+        p = d / Path(f).name
+        if p.is_file() and p.suffix.lower() in s.IMAGE_EXTS:
+            p.unlink()
+            m.get("captions", {}).pop(p.name, None)
+            removed += 1
+    s.save(a["name"], m)
+    return {"removed": removed}
+
+
+def cmd_delete(a):
+    return {"deleted": LIB.store.delete(a["name"])}
+
+
+def cmd_caption(a):
+    s = LIB.store
+    name = a["name"]
+    thr = float(a.get("threshold", 0.35))
+    paths = s.images_of(name)
+    if a.get("only_missing", True):
+        caps, failed = effective_captions(name, thr)
+        return {"captions": caps, "failed": failed}
+    fresh, failed = LIB.caption.caption_each(paths, threshold=thr)
+    m = s.load(name)
+    m["captions"] = {**m.get("captions", {}), **fresh}
+    m["threshold"] = thr
+    s.save(name, m)
+    return {"captions": m["captions"], "failed": failed}
+
+
+def cmd_preset(a):
+    s, p = LIB.store, LIB.presets
+    name, kind = a["name"], (a.get("kind") or "style").lower()
+    if kind not in p.PRESETS:
+        raise ValueError(f"Préréglage inconnu : {kind}")
+    images = s.images_of(name)
+    if not images:
+        raise ValueError("Ce projet n'a pas encore d'images.")
+    try:
+        caps, _failed = effective_captions(name, a.get("threshold", 0.35))
+    except Exception as exc:
+        print(f"[Kanevas] légendes automatiques indisponibles : {exc}")
+        caps = s.load(name).get("captions", {})
+    r = p.apply(kind, len(images), caps)
+    multires = len(r["resolutions"]) > 1
+    m = s.load(name)
+    m.update(steps=r["steps"], epochs=r["epochs"], dim=r["dim"], repeats=r["repeats"], learning_rate=r["learning_rate"],
+             resolution=r["resolution"], shuffle_caption=r["shuffle_caption"], lora_type=kind, captions=r["captions"],
+             rank_dropout=r["rank_dropout"], module_dropout=r["module_dropout"], flip_aug=r["flip_aug"], multires=multires,
+             caption_dropout_rate=r["caption_dropout_rate"])
+    s.save(name, m)
+    note = p.fewshot_note(kind, len(images))
+    return {"manifest": m, "removed_tags": r["removed_tags"], "passes": r["passes_per_image"],
+            "resolutions": r["resolutions"], "note": note}
+
+
+def cmd_start(a):
+    s, t, p, sc = LIB.store, LIB.train, LIB.presets, LIB.scopes
+    name = a["name"]
+    running = t.find_adoptable_run(max_log_age=10 ** 9)
+    if running:
+        raise ValueError(f"Un entraînement tourne déjà (projet « {running['project']} »). Attendez sa fin ou arrêtez-le.")
+    m = s.load(name)
+    trigger = s.sanitize(m.get("trigger", "")).replace(" ", "_").lower()
+    if not trigger:
+        raise ValueError("Donnez un mot déclencheur : c'est le mot à écrire dans l'invite pour appeler le LoRA.")
+    images = s.images_of(name)
+    if not images:
+        raise ValueError("Ce projet n'a pas encore d'images.")
+    sd = t.find_sd_scripts()
+    if sd is None:
+        raise ValueError("sd-scripts (avec ANIMA) est introuvable à côté du dossier de Forge.")
+    dit, qwen3, vae = a.get("dit") or m.get("base_model") or "", a.get("qwen3") or "", a.get("vae") or ""
+    for label, path in (("modèle de diffusion", dit), ("encodeur Qwen3", qwen3), ("VAE", vae)):
+        if not path or not Path(path).is_file():
+            raise ValueError(f"Chemin du {label} vide ou introuvable : {path or '(vide)'}")
+    m["trigger"], m["base_model"] = trigger, str(dit)
+    s.save(name, m)
+
+    caps, _failed = effective_captions(name, m.get("threshold", 0.35))
+    epochs = int(m.get("epochs") or 0)
+    repeats = int(m.get("repeats") or 10)
+    resolution = int(m.get("resolution") or 1024)
+    multires = bool(m.get("multires"))
+    root = s.dir_for(name) / "_training"
+    prev_log = Path(m["last_run_log"]) if m.get("last_run_log") else root / "train.log"
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
+    work = root / "runs" / run_id
+    subset, count = t.build_dataset(name, trigger, caps, repeats, work / "dataset")
+    resolutions = list(p.FEWSHOT_RESOLUTIONS) if multires else [resolution]
+    toml = t.write_dataset_toml(subset, resolution, 1, repeats, work / "dataset.toml",
+                                shuffle=bool(m.get("shuffle_caption")), caption_dropout_rate=float(m.get("caption_dropout_rate", 0)),
+                                resolutions=resolutions, flip_aug=bool(m.get("flip_aug")))
+    sample_every = int(a.get("sample_every", m.get("sample_every", 250)) or 0)
+    sample_file = None
+    if sample_every > 0:
+        text = (a.get("sample_prompt") or m.get("sample_prompt") or "").strip() or trigger
+        sample_file = t.write_sample_prompts(text, resolution, work / "sample_prompts.txt")
+    per_epoch = max(1, count * repeats * len(resolutions))
+    total = epochs * per_epoch if epochs > 0 else int(m.get("steps") or 2000)
+    out_dir = LIB.lora_dir / "forge-mine" / s.sanitize(name) / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    scope = m.get("scope") if m.get("scope") in sc.SCOPES else sc.DEFAULT
+    command = t.build_command(
+        sd_scripts=sd, dit=Path(dit), qwen3=Path(qwen3), vae=Path(vae), dataset_toml=toml, output_dir=out_dir, output_name=trigger,
+        settings={"max_train_steps": int(m.get("steps") or 2000), "max_train_epochs": epochs, "network_dim": int(m.get("dim") or 20),
+                  "network_alpha": int(m.get("dim") or 20), "learning_rate": float(m.get("learning_rate") or 1e-4),
+                  "optimizer": m.get("optimizer") if m.get("optimizer") in t.OPTIMIZERS else "adamw8bit",
+                  "lr_warmup_steps": min(100, max(1, total // 20)), "network_dropout": float(m.get("network_dropout") or 0),
+                  "lr_scheduler_num_cycles": int(m.get("lr_scheduler_num_cycles") or 1),
+                  "save_every_n_epochs": 1 if len(images) <= p.FEWSHOT_MAX else 2},
+        sample_prompts=sample_file, sample_every=sample_every, shuffle_caption=bool(m.get("shuffle_caption")), scope=scope,
+        rank_dropout=float(m.get("rank_dropout") or 0), module_dropout=float(m.get("module_dropout") or 0))
+    log = work / "train.log"
+    pace = t.measured_pace(prev_log) or t.DEFAULT_PACE
+    (work / "command.txt").write_text("\n".join(command), encoding="utf-8")
+    record = {"id": run_id, "project": name, "started_at": datetime.now(timezone.utc).isoformat(), "settings": m,
+              "command": command, "output": str(out_dir / f"{trigger}.safetensors"), "stopped": False, "pid": None,
+              "launched_by": "kanevas"}
+    s.atomic_json(work / "run.json", record)
+    proc = t.launch(command, cwd=sd, log_path=log)
+    record["pid"] = proc.pid
+    s.atomic_json(work / "run.json", record)
+    m["last_run_log"] = str(log)
+    s.save(name, m)
+    return {"pid": proc.pid, "run": str(work), "total": total, "per_epoch": per_epoch, "resolutions": resolutions,
+            "estimate_s": int(total * pace), "output": record["output"], "count": count}
+
+
+def cmd_status(a):
+    if a.get("run"):
+        return {"status": run_state(Path(a["run"]) / "run.json")}
+    found = LIB.train.find_adoptable_run(max_log_age=10 ** 9)
+    return {"status": run_state(found["run_file"]) if found else None}
+
+
+def cmd_stop(a):
+    rf = Path(a["run"]) / "run.json"
+    data = json.loads(rf.read_text(encoding="utf-8"))
+    pid = data.get("pid")
+    if isinstance(pid, int) and LIB.train.pid_alive(pid):
+        r = subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=20,
+                           creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        if r.returncode and LIB.train.pid_alive(pid):
+            raise RuntimeError("Arrêt non confirmé : " + r.stderr.decode(errors="replace"))
+    data.update(stopped=True, finished_at=datetime.now(timezone.utc).isoformat())
+    LIB.store.atomic_json(rf, data)
+    return {"status": run_state(rf)}
+
+
+COMMANDS = {k[4:]: v for k, v in globals().items() if k.startswith("cmd_")}
+
+
+def main():
+    out = sys.stdout
+    sys.stdout = sys.stderr          # les bibliothèques écrivent sur stdout : la réponse JSON doit rester seule
+    try:
+        cmd = sys.argv[1]
+        args = json.loads(sys.stdin.read() or "{}")
+        setup(args)
+        if cmd not in COMMANDS:
+            raise ValueError(f"Commande inconnue : {cmd}")
+        res = COMMANDS[cmd](args) or {}
+        out.write(json.dumps({"ok": True, **res}, ensure_ascii=True, default=str))
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        out.write(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=True))
+    out.flush()
+
+
+if __name__ == "__main__":
+    main()
