@@ -239,7 +239,7 @@
           { label: 'Vers txt2img (✨ hires, Send to…)', action: () => C.sendToStudio('txt2img') },
           { label: 'Vers Extras (agrandir)', action: () => C.sendToStudio('extras') },
           { label: 'Vers PNG Info', action: () => C.sendToStudio('pnginfo') },
-          { label: 'Ses paramètres vers txt2img', action: () => C.sendToStudio('params'), disabled: () => !(D() && D().genInfo) },
+          { label: 'Ses paramètres vers txt2img', action: () => C.sendToStudio('params'), disabled: () => !(D() && (D().genInfo || D().genParams)) },
         ] },
         { label: () => KS.engine && KS.engine.ready() ? 'Arrêter le moteur IA' : 'Démarrer le moteur IA', icon: 'settings', action: () => KS.engine && (KS.engine.ready() ? KS.engine.stop() : KS.engine.ensure()), hidden: !KS.engine },
         { sep: true },

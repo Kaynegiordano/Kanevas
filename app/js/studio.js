@@ -840,7 +840,7 @@
       { label: 'Vers txt2img (sortie : ✨ hires, 💾, Send to…)', icon: 'file-plus', action: () => C.sendToStudio('txt2img') },
       { label: 'Vers Extras (agrandir)', icon: 'upscale', action: () => C.sendToStudio('extras') },
       { label: 'Vers PNG Info', icon: 'info', action: () => C.sendToStudio('pnginfo') },
-      { label: 'Ses paramètres vers txt2img', icon: 'history', action: () => C.sendToStudio('params'), disabled: !(D() && D().genInfo) },
+      { label: 'Ses paramètres vers txt2img', icon: 'history', action: () => C.sendToStudio('params'), disabled: !(D() && (D().genInfo || D().genParams)) },
     ], r.left, r.bottom + 4);
   }
 
@@ -914,26 +914,45 @@
     save();
   }
   // Vers l'Édition : l'image devient un document, img2img (ou Inpaint) s'ouvre à côté de la toile
+  // Réglages repris d'un onglet à l'autre (comme « Send to img2img » de Forge) : l'invite telle qu'elle a été
+  // tapée (français, balises <lora:…>), l'invite négative, les styles, l'échantillonnage, la graine, ADetailer
+  const SHARED = ['prompt', 'negative_prompt', 'styles', 'sampler_name', 'scheduler', 'steps', 'cfg_scale', 'distilled_cfg_scale',
+    'seed', 'seedExtra', 'subseed', 'subseed_strength', 'seed_resize_from_w', 'seed_resize_from_h', 'ad', 'noom'];
+  const snapParams = st => clone(Object.fromEntries(SHARED.map(k => [k, st[k]])));
+  function paramsTo(k, it) {
+    if (it.params) {
+      const st = FX[k], src = clone(it.params);
+      for (const key of SHARED) if (src[key] !== undefined) st[key] = src[key];
+      if (src.ad && k === 'i2i') st.ad.skip = !!(FX.i2i.ad && FX.i2i.ad.skip);
+      if (it.seed != null && st.seed === -1) st.seed = it.seed;     // graine réelle de l'image
+      save();
+    } else applyInfoTo(k, it.info, { size: false });
+  }
   async function toEdition(it, mode) {
-    openItem(it);
-    applyInfoTo('i2i', it.info, { size: false });
-    FX.i2i.autoSize = true; FX.i2i.seed = -1; FX.i2iMode = mode; save();
+    const d = openItem(it);
+    d.genParams = it.params || null;
+    if (it.info || it.params) paramsTo('i2i', it);
+    FX.i2i.autoSize = true; if (mode) FX.i2iMode = mode; save();
     await C.toggleStudio(false);
-    KS.panels.focus('generate');
+    if (mode) KS.panels.focus('generate');
     renderDock();
+    if (it.info || it.params) KS.toast('Invite et réglages envoyés au panneau img2img', 'ok', 1800);
   }
   function sendTo(target, it) {
     if (!it) return KS.toast('Aucune image', 'info');
     if (target === 'extras') { OUT.exSrc = { canvas: it.canvas, name: docName(it) }; FX.tab = 'extras'; save(); return C.toggleStudio(true).then(render); }
     if (target === 'txt2img') { applyInfoTo('t2i', it.info); FX.tab = 'txt2img'; save(); return C.toggleStudio(true).then(render); }
-    if (target === 'edit') { openItem(it); return C.toggleStudio(false); }
+    if (target === 'edit') return toEdition(it, null);
     return toEdition(it, target === 'inpaint' ? 'inpaint' : 'img2img');
   }
   // Depuis l'Édition : le document tel qu'il est, renvoyé au Studio
   C.sendToStudio = async (target = 'txt2img') => {
     const d = D(); if (!d) return KS.toast('Aucun document ouvert', 'info');
     const canvas = d.composite();
-    if (target === 'params') { if (!d.genInfo) return KS.toast('Ce document n\'a pas de paramètres de génération', 'info'); applyInfoTo('t2i', d.genInfo); FX.tab = 'txt2img'; }
+    if (target === 'params') {
+      if (!d.genInfo && !d.genParams) return KS.toast('Ce document n\'a pas de paramètres de génération', 'info');
+      paramsTo('t2i', { params: d.genParams, info: d.genInfo }); FX.tab = 'txt2img';
+    }
     else if (target === 'extras') { OUT.exSrc = { canvas, name: d.name }; FX.tab = 'extras'; }
     else if (target === 'pnginfo') { OUT.png = { canvas, name: d.name, text: d.genInfo || '', chunks: d.genInfo ? { parameters: d.genInfo } : {} }; FX.tab = 'pnginfo'; }
     else {
@@ -1101,11 +1120,12 @@
       else await runI2I(p, st);
     } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 7000); }
   }
-  async function runT2I(p, firstpass) {
+  async function runT2I(p, firstpass, snap = snapParams(FX.t2i)) {
     const r = await runForge('t2i', () => N.forgeTxt2img(url(), p, firstpass));
     if (!r.ok) throw new Error(r.error);
     const items = await toItems(r, 'txt2img', p);
     if (!items.length) throw new Error('Forge n\'a renvoyé aucune image (génération interrompue ?)');
+    for (const it of items) { it.params = snap; const m = /\bSeed: (\d+)/.exec(it.info || ''); if (m) it.seed = +m[1]; }
     releaseItems(OUT.t2i);
     OUT.t2i.items = items; OUT.t2i.sel = 0;
     renderOut(); pushGallery(items.filter(i => !i.grid));
@@ -1121,7 +1141,7 @@
       if (I.params.Seed) p.seed = +I.params.Seed;
       if (it.info && I.prompt) { p.prompt = I.prompt; p.negative_prompt = I.negative; }
       p.width = it.canvas.width; p.height = it.canvas.height;
-      await runT2I(p, it.bytes || await pngBytes(it.canvas));
+      await runT2I(p, it.bytes || await pngBytes(it.canvas), it.params || snapParams(FX.t2i));
     } catch (e) { KS.toast('Agrandissement impossible : ' + e.message, 'err', 7000); }
   }
   const maskCanvas = alpha => {
