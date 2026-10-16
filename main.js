@@ -322,15 +322,15 @@ const b64 = u8 => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString(
 const unb64 = s => new Uint8Array(Buffer.from(String(s).replace(/^data:[^,]*,/, ''), 'base64'));
 ipcMain.handle('forge-img2img', forgeHandler(async (base, payload, init, mask) => {
   const r = await forgeCall(base, '/sdapi/v1/img2img', { ...payload, init_images: [b64(init)], mask: mask ? b64(mask) : undefined });
-  return { images: ((r && r.images) || []).map(unb64) };
+  return { images: ((r && r.images) || []).map(unb64), info: r && r.info };
 }));
 ipcMain.handle('forge-upscale', forgeHandler(async (base, payload, png) => {
   const r = await forgeCall(base, '/sdapi/v1/extra-single-image', { ...payload, image: b64(png) });
   if (!r || !r.image) throw new Error('Forge n\'a renvoyé aucune image');
-  return { image: unb64(r.image) };
+  return { image: unb64(r.image), info: r.html_info || '' };
 }));
-ipcMain.handle('forge-txt2img', forgeHandler(async (base, payload) => {
-  const r = await forgeCall(base, '/sdapi/v1/txt2img', payload);
+ipcMain.handle('forge-txt2img', forgeHandler(async (base, payload, firstpass) => {
+  const r = await forgeCall(base, '/sdapi/v1/txt2img', firstpass ? { ...payload, firstpass_image: b64(firstpass) } : payload);
   return { images: ((r && r.images) || []).map(unb64), info: r && r.info };
 }));
 
@@ -351,6 +351,13 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
   ]);
   const kind = f => /[\\/]vae[\\/]/i.test(f) || /vae/i.test(path.basename(f)) ? 'vae' : /[\\/](text_encoder|clip)[\\/]/i.test(f) ? 'te' : 'other';
   const outLoras = [];
+  const loraRoot = (() => {
+    const dirsOf = (loras || []).map(l => path.dirname(String(l.path || '')));
+    if (flags && flags.lora_dir && dirsOf.every(d => insideDir(flags.lora_dir, path.join(d, 'x')))) return path.resolve(flags.lora_dir);
+    let root = dirsOf[0] || '';
+    for (const d of dirsOf) while (root && !insideDir(root, path.join(d, 'x'))) root = path.dirname(root) === root ? '' : path.dirname(root);
+    return root;
+  })();
   for (const l of loras || []) {
     let trigger = '', weight = 1, preview = null;
     try {
@@ -366,7 +373,9 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
       }
     } catch { /* pas d'aperçu */ }
     const md = l.metadata || {};
-    outLoras.push({ name: l.name, alias: l.alias, folder: path.basename(path.dirname(l.path)), base: md.ss_base_model_version || '', trigger, weight, preview });
+    let rel = '', mtime = 0;
+    try { rel = loraRoot ? path.relative(loraRoot, path.dirname(l.path)) : ''; mtime = fs.statSync(l.path).mtimeMs; } catch { /* fichier disparu */ }
+    outLoras.push({ name: l.name, alias: l.alias, folder: path.basename(path.dirname(l.path)), rel, mtime, base: md.ss_base_model_version || '', trigger, weight, preview });
   }
   let presets = {};
   try { if (flags && flags.data_dir) presets = JSON.parse(fs.readFileSync(path.join(flags.data_dir, 'style_presets.json'), 'utf8')); } catch { /* aucun */ }
@@ -374,11 +383,41 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
   try { const r = await forgeCall(base, '/adetailer/v1/ad_model', null, 8000); adModels = (r && r.ad_model) || []; } catch { /* ADetailer absent */ }
   let upscalers = [];
   try { upscalers = ((await forgeCall(base, '/sdapi/v1/upscalers', null, 8000)) || []).map(u => u.name).filter(n => n && n !== 'None'); } catch { /* rien */ }
+  const thumb = file => {
+    try {
+      const img = sidecar(file, ['.preview.png', '.png', '.preview.jpg', '.jpg', '.jpeg', '.webp']); if (!img) return null;
+      const t = fs.statSync(img).mtimeMs, c = loraPreview.get(img);
+      if (c && c.t === t) return c.jpg;
+      const ni = nativeImage.createFromPath(img); if (ni.isEmpty()) return null;
+      const jpg = new Uint8Array(ni.resize({ width: 160, quality: 'good' }).toJPEG(80)); loraPreview.set(img, { t, jpg }); return jpg;
+    } catch { return null; }
+  };
+  const [styles, scriptInfo, latent] = await Promise.all([
+    forgeCall(base, '/sdapi/v1/prompt-styles', null, 8000).catch(() => []),
+    forgeCall(base, '/sdapi/v1/script-info', null, 8000).catch(() => []),
+    forgeCall(base, '/sdapi/v1/latent-upscale-modes', null, 8000).catch(() => []),
+  ]);
+  const scripts = (scriptInfo || []).filter(x => !x.is_alwayson && x.name).map(x => ({
+    name: x.name, img2img: !!x.is_img2img,
+    args: (x.args || []).map(a => ({ label: a.label || '', value: a.value, min: a.minimum, max: a.maximum, step: a.step, choices: a.choices || null })),
+  }));
+  // valeurs par défaut de l'interface de Forge (préréglage « anima » de ses réglages)
+  const preset = opt.forge_preset || '';
+  const pick = k => opt[preset + '_' + k];
+  const defaults = preset ? {
+    t2i: { sampler_name: pick('t2i_sampler'), scheduler: pick('t2i_scheduler'), steps: pick('t2i_step'), hr_second_pass_steps: pick('t2i_hr_step'), cfg_scale: pick('t2i_cfg'), hr_cfg: pick('t2i_hr_cfg'),
+      distilled_cfg_scale: pick('t2i_dcfg'), hr_distilled_cfg: pick('t2i_hr_dcfg'), batch_size: pick('t2i_batch_size'), width: pick('t2i_width'), height: pick('t2i_height') },
+    i2i: { sampler_name: pick('i2i_sampler'), scheduler: pick('i2i_scheduler'), steps: pick('i2i_step'), cfg_scale: pick('i2i_cfg'), distilled_cfg_scale: pick('i2i_dcfg'), batch_size: pick('i2i_batch_size'),
+      width: pick('i2i_width'), height: pick('i2i_height') },
+  } : {};
   const dirs = { data: flags.data_dir || '', models: flags.model_ref || '', lora: flags.lora_dir || '' };
   if (dirs.data) { forgeDirs = dirs; try { fs.writeFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), JSON.stringify(dirs)); } catch { /* rien */ } }
   return {
     adModels, upscalers, dirs,
-    models: (models || []).map(m => ({ title: m.title, name: m.model_name, file: m.filename })),
+    models: (models || []).map(m => ({ title: m.title, name: m.model_name, file: m.filename, preview: thumb(m.filename) })),
+    styles: (styles || []).map(x => ({ name: x.name, prompt: x.prompt || '', negative: x.negative_prompt || '' })),
+    scripts, latent: (latent || []).map(x => x.name).filter(Boolean), defaults,
+    dtype: opt.forge_unet_storage_dtype || 'Automatic', resStep: +opt.res_step || 64, defaultWeight: +opt.extra_networks_default_multiplier || 1,
     modules: (modules || []).map(m => ({ name: m.model_name, path: m.filename, kind: kind(m.filename) })),
     samplers: (samplers || []).map(x => x.name), schedulers: (schedulers || []).map(x => x.label || x.name),
     loras: outLoras, presets,
@@ -478,6 +517,41 @@ ipcMain.handle('forge-progress', forgeHandler(async (base, withImage) => {
 ipcMain.handle('forge-unload', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/unload-checkpoint', {}, 60000); return {}; }));
 ipcMain.handle('forge-refresh-loras', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/refresh-loras', {}, 60000); return {}; }));
 ipcMain.handle('forge-pnginfo', forgeHandler(async (base, png) => { const r = await forgeCall(base, '/sdapi/v1/png-info', { image: 'data:image/png;base64,' + b64(png) }, 20000); return { info: r && r.info, items: r && r.items }; }));
+const FORGE_TOP_OPTIONS = ['sd_model_checkpoint', 'forge_additional_modules', 'forge_unet_storage_dtype'];
+ipcMain.handle('forge-set-options', forgeHandler(async (base, o) => {
+  const body = {};
+  for (const k of FORGE_TOP_OPTIONS) if (o && k in o) body[k] = o[k];
+  if (!Object.keys(body).length) throw new Error('Aucune option');
+  await forgeCall(base, '/sdapi/v1/options', body, 120000);
+  return {};
+}));
+ipcMain.handle('forge-memory', forgeHandler(async base => {
+  const r = await forgeCall(base, '/sdapi/v1/memory', null, 4000);
+  const c = (r && r.cuda && r.cuda.system) || {};
+  return { used: c.used || 0, total: c.total || 0 };
+}));
+ipcMain.handle('forge-refresh-checkpoints', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/refresh-checkpoints', {}, 60000); return {}; }));
+// Préréglages d'échantillonnage : le même fichier que la liste « Preset » de Forge
+ipcMain.handle('forge-presets-write', async (_e, presets) => {
+  try {
+    loadDirs();
+    if (!forgeDirs || !forgeDirs.data) throw new Error('Dossier de Forge inconnu');
+    if (!presets || typeof presets !== 'object' || Array.isArray(presets)) throw new Error('Préréglages invalides');
+    const clean = {};
+    for (const [k, v] of Object.entries(presets)) if (k && v && typeof v === 'object') clean[String(k).slice(0, 80)] = v;
+    fs.writeFileSync(path.join(forgeDirs.data, 'style_presets.json'), JSON.stringify(clean, null, 4) + '\n', 'utf8');
+    return { ok: true };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+// Dossiers de sortie de Forge (output\txt2img-images…), là où il range les images qu'il enregistre
+ipcMain.handle('open-forge-output', async (_e, sub) => {
+  loadDirs();
+  const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
+  const allowed = ['txt2img-images', 'img2img-images', 'extras-images', 'txt2img-grids', 'img2img-grids', ''];
+  let d = path.join(data, 'output', allowed.includes(sub) ? sub : '');
+  if (!fs.existsSync(d)) d = path.join(data, 'output');
+  if (fs.existsSync(d)) shell.openPath(d);
+});
 ipcMain.handle('forge-skip', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/skip', {}, 4000); return {}; }));
 ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/interrupt', {}, 4000); return {}; }));
 

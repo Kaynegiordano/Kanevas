@@ -75,6 +75,21 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
+## Studio IA = la page de Forge (1.3.0)
+- Le Studio IA reprend l'interface de Forge (thème Modern UI de Kane OS) : rail à gauche (txt2img, img2img, Extras,
+  PNG Info, Train LoRA, ImgCut, Settings), barre Checkpoint / VAE / Text Encoder / Diffusion in Low Bits / VRAM,
+  Prompt et Negative Prompt avec compteur, Generate orange (Interrupt / Skip), Styles, onglets Generation /
+  Checkpoints / Lora (cartes, puces de dossiers, tri), mêmes réglages, mêmes noms et même ordre que Forge.
+- Réglages repris tels quels : Sampling Method / Schedule Type / Steps, Preset (le même fichier que Forge), Hires. fix
+  complet, Refiner, Width / Height / Batch, FORMAT ANIMA / 1024, Shift, CFG Scale, Seed + Extra, ADetailer (4 onglets,
+  Detection, Mask Preprocessing, Inpainting), Never OOM, MultiDiffusion, Soft inpainting, scripts (X/Y/Z plot, Prompt
+  matrix, Prompts from file, Loopback, SD upscale). Valeurs par défaut lues dans Forge.
+- img2img : sous-onglets img2img / Sketch / Inpaint / Inpaint sketch / Inpaint upload / Batch ; l'image d'entrée est le
+  document Kanevas (toile et outils dans l'onglet), le masque se peint sur « Zone IA », le croquis sur « Croquis IA ».
+  Resize mode, Mask blur, Mask mode, Masked content, Inpaint area et padding envoyés à Forge comme dans son interface.
+- Sorties comme Forge : images enregistrées par Forge dans ses dossiers output, boutons 📂 💾 🗃️ 🖼️ 🎨 📐 ✨, infotexte,
+  Send to entre onglets ; Extras (Upscaler 1 / 2) et PNG Info (Send to txt2img / img2img / inpaint / extras).
+
 ## Studio IA autonome (1.2.0)
 - **Moteur intégré** : Kanevas démarre lui-même le moteur de Forge quand on entre dans le Studio IA ou qu'on génère
   (`launch.py` du dossier de Forge, profil de Kane OS, `--nowebui --port 7862 --server-name 127.0.0.1`, prêt en
@@ -211,4 +226,5 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.
 - **1.0.7** : génération Forge corrigée : invites en français traduites en anglais sur le PC (fini les filles au hasard), réglages adaptés au modèle anima, force 85 %, invite envoyée affichée ; jointure du développement génératif plus douce.
 - **1.1.0** : Studio Forge : nouvelle image dans un nouveau document, image → image, ADetailer (et retouche seule), agrandir et détailler (MultiDiffusion), Shift, aperçu en direct, PNG Info, IA en direct, atelier LoRA (entraîneur de Forge), découpe pour les réseaux (carrousel, grille du profil), menu IA.
+- **1.3.0** : le Studio IA devient la page de Forge : mêmes onglets, réglages, noms et ordre ; img2img / Sketch / Inpaint sur la toile Kanevas ; Extras, PNG Info, scripts.
 - **1.2.0** : Studio IA autonome : moteur de Forge démarré par Kanevas, espace Studio IA (Créer, Transformer, Retoucher la zone peinte, Croquis, Agrandir), hires fix, refiner, lots, graine de variation, options de retouche, soft inpainting, Never OOM, galerie et enregistrement automatique.

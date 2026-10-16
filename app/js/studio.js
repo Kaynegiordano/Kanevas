@@ -1,22 +1,688 @@
-// Studio IA : un espace de travail dédié (Édition ⇄ Studio IA). Colonne de réglages Forge à gauche, barre de
-// modes au-dessus de l'image, galerie des résultats. Peindre ce qu'on veut changer : calque « Zone IA » (rouge,
-// la zone à refaire) et calque « Croquis IA » (des couleurs que Forge transforme en image).
+// Studio IA : la page de Forge dans Kanevas. Mêmes onglets (txt2img, img2img, Extras, PNG Info, Train LoRA,
+// ImgCut, Settings), mêmes réglages, mêmes noms et même ordre que l'interface de Forge (thème Modern UI de
+// Kane OS). Différence voulue : l'image d'entrée d'img2img est le document Kanevas ; masque (Inpaint) et
+// croquis (Sketch) se peignent sur les calques « Zone IA » et « Croquis IA » avec les outils de Kanevas.
 'use strict';
 (() => {
   const U = KS.util, h = KS.h, ui = KS.ui, C = KS.cmd, G = KS.gen, T = KS.tools, N = KS.native;
   const D = () => KS.state.doc;
-  const SD = KS.studio = { on: false, mode: KS.prefs.studioMode || 'create', gallery: [] };
-  const MODES = [
-    ['create', 'Créer', 'file-plus', 'Décrivez une image : elle est créée de zéro (nouveau document ou calque).'],
-    ['transform', 'Transformer', 'adjust', 'Toute l\'image (ou la sélection) est refaite selon l\'invite ; la force règle l\'écart à l\'original.'],
-    ['inpaint', 'Retoucher la zone peinte', 'brush', 'Peignez en rouge (calque Zone IA) ce qui doit changer, décrivez le résultat, puis Générer. Le reste ne bouge pas.'],
-    ['sketch', 'Croquis', 'pencil', 'Peignez grossièrement des formes et des couleurs (calque Croquis IA) : Forge en fait une vraie image à cet endroit.'],
-    ['upscale', 'Agrandir', 'upscale', 'Agrandit l\'image et y ajoute de vrais détails (ESRGAN puis MultiDiffusion par tuiles).'],
-  ];
-  const settings = () => G.studio();
+  const SD = KS.studio = { on: false, gallery: [] };
+  const url = () => G.url();
   const pngBytes = async c => new Uint8Array(await (await U.blobFromCanvas(c)).arrayBuffer());
+  const fromPng = u8 => U.canvasFromBlob(new Blob([u8], { type: 'image/png' }));
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const norm = t => String(t || '').replace(/\s*\[[0-9a-f]{6,}\]$/i, '');
+  const base = f => String(f || '').split(/[\\/]/).pop();
+  const r8 = v => Math.max(64, Math.round(v / 8) * 8);
+  const scaled = (c, w, hh) => { const o = U.canvas(w, hh), x = o.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, w, hh); return o; };
 
-  /* ---------------------------------------------------------------- calques Zone IA / Croquis IA */
+  /* ---------------------------------------------------------------- réglages (mêmes clés que l'API de Forge) */
+  const AD_UNIT = () => ({ ad_tab_enable: true, ad_model: 'None', ad_prompt: '', ad_negative_prompt: '', ad_confidence: 0.3, ad_mask_k: 0, ad_mask_min_ratio: 0, ad_mask_max_ratio: 1,
+    ad_x_offset: 0, ad_y_offset: 0, ad_dilate_erode: 4, ad_mask_merge_invert: 'None', ad_mask_blur: 4, ad_denoising_strength: 0.4, ad_inpaint_only_masked: true,
+    ad_inpaint_only_masked_padding: 32, ad_use_inpaint_width_height: false, ad_inpaint_width: 512, ad_inpaint_height: 512, ad_use_steps: false, ad_steps: 28,
+    ad_use_cfg_scale: false, ad_cfg_scale: 7, ad_use_sampler: false, ad_sampler: 'DPM++ 2M', ad_scheduler: 'Use same scheduler', ad_use_noise_multiplier: false, ad_noise_multiplier: 1 });
+  const COMMON = () => ({
+    prompt: '', negative_prompt: '', styles: [], sampler_name: 'SEEDS 3', scheduler: 'Beta57', steps: 22, width: 1024, height: 1024, n_iter: 1, batch_size: 1,
+    cfg_scale: 4, distilled_cfg_scale: 3, seed: -1, seedExtra: false, subseed: -1, subseed_strength: 0, seed_resize_from_w: 0, seed_resize_from_h: 0,
+    refiner: false, refiner_checkpoint: 'None', refiner_switch_at: 0.875, refiner_cfg: 0,
+    ad: { enabled: false, skip: false, tab: 0, units: [{ ...AD_UNIT(), ad_model: 'face_yolov8n.pt' }, AD_UNIT(), AD_UNIT(), AD_UNIT()] },
+    noom: { unet: false, vae: false }, script: 'None', scriptArgs: {}, open: {},
+  });
+  const DEF = {
+    v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, seeded: false, presetName: '',
+    lora: { q: '', sort: 'new' },
+    t2i: { ...COMMON(), width: 1920, height: 1024, enable_hr: false, hr_upscaler: 'Latent', hr_second_pass_steps: 32, denoising_strength: 0.6, hr_scale: 2, hr_resize_x: 0, hr_resize_y: 0,
+      hr_distilled_cfg: 3, hr_cfg: 4, hr_checkpoint_name: 'Use same checkpoint', hr_additional_modules: ['Use same choices'], hr_sampler_name: 'Use same sampler', hr_scheduler: 'Use same scheduler',
+      hr_prompt: '', hr_negative_prompt: '' },
+    i2i: { ...COMMON(), steps: 32, resize_mode: 1, sizeTab: 'to', scale_by: 1, autoSize: true, denoising_strength: 0.6, mask_blur: 4, inpainting_mask_invert: 0, inpainting_fill: 1,
+      inpaint_full_res: 1, inpaint_full_res_padding: 32,
+      soft: { enabled: false, bias: 1, preserve: 0.5, contrast: 4, influence: 0, diffThr: 0.5, diffContrast: 2 },
+      md: { enabled: false, method: 'Mixture of Diffusers', tw: 768, th: 768, overlap: 64, batch: 1 } },
+    ex: { mode: 'by', resize: 4, w: 1024, h: 1024, crop: true, up1: 'None', up2: 'None', vis2: 0, batch: false },
+  };
+  const FREE = new Set(['scriptArgs', 'open']);   // dictionnaires sans clés fixes
+  const merge = (def, cur) => {
+    const o = clone(def);
+    if (!cur || typeof cur !== 'object') return o;
+    for (const k in cur) {
+      if (FREE.has(k)) o[k] = cur[k] && typeof cur[k] === 'object' ? cur[k] : {};
+      else if (!(k in o)) continue;
+      else if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) o[k] = merge(o[k], cur[k]);
+      else o[k] = cur[k];
+    }
+    return o;
+  };
+  const FX = merge(DEF, KS.prefs.fx && KS.prefs.fx.v === 1 ? KS.prefs.fx : null);
+  for (const k of ['t2i', 'i2i']) FX[k].ad.units = [0, 1, 2, 3].map(i => ({ ...AD_UNIT(), ...((FX[k].ad.units || [])[i] || {}) }));
+  KS.prefs.fx = FX;
+  const save = U.debounce(() => { KS.prefs.fx = FX; KS.prefs.save(); }, 400);
+  const OUT = { t2i: { items: [], sel: 0 }, i2i: { items: [], sel: 0 }, ex: { items: [], sel: 0 }, png: null, exSrc: null, batch: [] };
+  const lastSeed = {};
+  const kOf = tab => tab === 'img2img' ? 'i2i' : 't2i';
+
+  /* ---------------------------------------------------------------- catalogue de Forge */
+  let cat = null, catErr = '', loading = false;
+  const blobUrl = u8 => URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
+  async function loadCat() {
+    if (!N || !N.forgeCatalog || loading) return cat;
+    loading = true; renderTop();
+    try {
+      const r = await N.forgeCatalog(url());
+      if (r.ok) {
+        for (const l of r.loras) if (l.preview) l.url = blobUrl(l.preview);
+        for (const m of r.models) if (m.preview) m.url = blobUrl(m.preview);
+        if (cat) for (const x of [...cat.loras, ...cat.models]) if (x.url) URL.revokeObjectURL(x.url);
+        cat = r; catErr = '';
+        if (!FX.seeded && r.defaults && r.defaults.t2i) {   // première fois : les valeurs par défaut de l'interface de Forge
+          for (const k of ['t2i', 'i2i']) for (const [key, v] of Object.entries(r.defaults[k] || {})) {
+            if (v == null || v === '' || ((key === 'width' || key === 'height') && !+v)) continue;
+            FX[k][key] = typeof DEF[k][key] === 'number' ? +v : v;
+          }
+          FX.seeded = true; save();
+        }
+      } else catErr = r.error;
+    } catch (e) { catErr = e.message; }
+    loading = false;
+    if (SD.on) render();
+    return cat;
+  }
+  async function ensureCat() {
+    if (!(await G.forge(true))) { KS.toast(G.forgeError(), 'err', 5000); return null; }
+    return cat || await loadCat();
+  }
+
+  /* ---------------------------------------------------------------- petits composants façon Forge */
+  const field = (label, ctl, tip) => h('div.fx-field', { title: tip || '' }, label ? h('label.fx-lbl', { text: label }) : null, ctl);
+  const row2 = (...a) => h('div.fx-row2', ...a);
+  const row3 = (...a) => h('div.fx-row3', ...a);
+  const ebtn = (emoji, tip, fn, cls = '') => { const b = h('button.fx-ebtn' + cls, { text: emoji, title: tip }); b.addEventListener('click', fn); return b; };
+  const tbtn = (label, fn, cls = '', tip = '') => { const b = h('button.fx-btn2' + cls, { text: label, title: tip }); b.addEventListener('click', fn); return b; };
+  function slider(label, obj, key, min, max, step, tip, onChange) {
+    const num = h('input.fx-num', { type: 'number', min, max, step, value: obj[key] });
+    const rng = h('input.fx-rng', { type: 'range', min, max, step, value: obj[key] });
+    const fill = () => rng.style.setProperty('--p', ((U.clamp(+obj[key], min, max) - min) / (max - min) * 100) + '%');
+    const set = (v, from) => {
+      v = +v; if (isNaN(v)) { num.value = obj[key]; return; }
+      obj[key] = v; if (from !== num) num.value = v; if (from !== rng) rng.value = v;
+      fill(); save(); onChange && onChange(v);
+    };
+    num.addEventListener('change', () => set(num.value, num));
+    rng.addEventListener('input', () => set(rng.value, rng));
+    fill();
+    const el = h('div.fx-field.fx-slider', { title: tip || '' }, h('div.fx-sh', h('label.fx-lbl', { text: label }), num), rng);
+    el.set = v => set(v);
+    return el;
+  }
+  function select(label, options, obj, key, tip, onChange) {
+    const s = h('select.fx-sel');
+    for (const o of options) { const [v, l] = Array.isArray(o) ? o : [o, o]; s.appendChild(h('option', { value: v, text: l })); }
+    const cur = obj[key] == null ? '' : String(obj[key]);
+    if (cur && ![...s.options].some(o => o.value === cur)) s.appendChild(h('option', { value: cur, text: cur }));
+    s.value = cur;
+    s.addEventListener('change', () => { obj[key] = s.value; save(); onChange && onChange(s.value); });
+    return label ? field(label, s, tip) : s;
+  }
+  function radio(label, options, obj, key, tip, onChange) {
+    const box = h('div.fx-radio');
+    for (const [v, l] of options) {
+      const b = h('label.fx-ropt' + (obj[key] === v ? '.on' : ''), h('input', { type: 'radio', checked: obj[key] === v, tabIndex: -1 }), h('span', { text: l }));
+      b.addEventListener('click', e => {
+        e.preventDefault(); obj[key] = v; save();
+        box.querySelectorAll('.fx-ropt').forEach(x => { x.classList.toggle('on', x === b); x.querySelector('input').checked = x === b; });
+        onChange && onChange(v);
+      });
+      box.appendChild(b);
+    }
+    return field(label, box, tip);
+  }
+  function check(label, obj, key, tip, onChange) {
+    const i = h('input', { type: 'checkbox', checked: !!obj[key] });
+    i.addEventListener('change', () => { obj[key] = i.checked; save(); onChange && onChange(i.checked); });
+    return h('label.fx-check', { title: tip || '' }, i, h('span', { text: label }));
+  }
+  function text(label, obj, key, { rows = 2, placeholder = '', tip } = {}) {
+    const t = h(rows > 1 ? 'textarea.fx-ta.fx-small' : 'input.fx-in', { rows, placeholder, spellcheck: false });
+    t.value = obj[key] == null ? '' : obj[key];
+    t.addEventListener('input', () => { obj[key] = t.value; save(); });
+    return label ? field(label, t, tip) : t;
+  }
+  function tabs(list, cur, onChange, cls = '') {
+    const bar = h('div.fx-tabs' + cls);
+    for (const [v, l] of list) { const b = h('button' + (v === cur ? '.on' : ''), { text: l }); b.addEventListener('click', () => onChange(v)); bar.appendChild(b); }
+    return bar;
+  }
+  // Accordéon de Forge (InputAccordion : case à cocher dans l'en-tête quand `on` est donné)
+  function acc(title, st, key, body, { on, tip, active } = {}) {
+    const open = !!st.open[key];
+    const head = h('div.fx-acc-h', { title: tip || '' });
+    const el = h('div.fx-acc' + (open ? '.open' : '') + ((on ? on[0][on[1]] : active) ? '.active' : ''), head);
+    if (on) {
+      const i = h('input', { type: 'checkbox', checked: !!on[0][on[1]] });
+      i.addEventListener('click', e => e.stopPropagation());
+      i.addEventListener('change', () => { on[0][on[1]] = i.checked; save(); el.classList.toggle('active', i.checked); });
+      head.append(i);
+    }
+    head.append(h('span.fx-acc-t', { text: title }), h('span.fx-acc-a', { text: open ? '▼' : '◀' }));
+    head.addEventListener('click', () => { st.open[key] = !open; save(); renderParams(); });
+    if (open) el.appendChild(h('div.fx-acc-b', ...[].concat(typeof body === 'function' ? body() : body)));
+    return el;
+  }
+  const fillEl = (el, ...kids) => el.replaceChildren(...kids.filter(Boolean));
+  const tokens = t => (String(t || '').replace(/<[^>]+>/g, ' ').match(/[A-Za-zÀ-ÿ]+|\d|[^\sA-Za-zÀ-ÿ\d]/g) || []).length;
+
+  /* ---------------------------------------------------------------- formats (puces FORMAT du thème Modern UI) */
+  const SCALES = {
+    anima: { label: 'ANIMA', title: 'Grand côté plafonné à 1536, la plus grande résolution d\'entraînement d\'ANIMA (environ 1,3 MP)', presets: [
+      ['1:1', 1152, 1152, 'Carré'], ['4:5', 1024, 1280, 'Portrait Instagram'], ['5:4', 1280, 1024, 'Paysage 5:4'], ['3:4', 1008, 1344, 'Portrait 3:4'], ['4:3', 1344, 1008, 'Paysage 4:3'],
+      ['2:3', 928, 1392, 'Portrait 2:3 / impression'], ['3:2', 1392, 928, 'Paysage 3:2 / photo'], ['9:16', 864, 1536, 'Story / Reels / TikTok'], ['16:9', 1536, 864, 'Écran large / YouTube'], ['21:9', 1456, 624, 'Ultra large'],
+    ] },
+    hires: { label: '1024', title: 'Ancienne règle : petit côté = 1024. Plus grand et plus lent', presets: [
+      ['1:1', 1024, 1024, 'Carré'], ['4:5', 1024, 1280, 'Portrait Instagram'], ['5:4', 1280, 1024, 'Paysage 5:4'], ['3:4', 1024, 1344, 'Portrait 3:4'], ['4:3', 1344, 1024, 'Paysage 4:3'],
+      ['2:3', 1024, 1536, 'Portrait 2:3'], ['3:2', 1536, 1024, 'Paysage 3:2'], ['9:16', 1024, 1856, 'Story'], ['16:9', 1856, 1024, 'Écran large'], ['21:9', 2048, 896, 'Ultra large'],
+    ] },
+  };
+  function formatRow(st) {
+    const sc = SCALES[FX.scale] ? FX.scale : 'anima';
+    const row = h('div.fx-fmt', h('span.fx-fmt-l', { text: 'FORMAT' }));
+    for (const [id, S] of Object.entries(SCALES)) {
+      const b = h('button.fx-chip.fx-scale' + (sc === id ? '.on' : ''), { text: S.label, title: S.title });
+      b.addEventListener('click', () => { FX.scale = id; save(); renderParams(); }); row.appendChild(b);
+    }
+    for (const [lab, w, hh, name] of SCALES[sc].presets) {
+      const b = h('button.fx-chip' + (st.width === w && st.height === hh ? '.on' : ''), { text: lab, title: `${name} : ${w} × ${hh} (${(w * hh / 1e6).toFixed(2)} MP)` });
+      b.addEventListener('click', () => { st.width = w; st.height = hh; if ('autoSize' in st) { st.autoSize = false; st.sizeTab = 'to'; } save(); renderParams(); });
+      row.appendChild(b);
+    }
+    return row;
+  }
+
+  /* ---------------------------------------------------------------- page : rail et barre du haut */
+  let root = null;
+  const els = {};
+  const RAIL = [['txt2img', 'txt2img', 'file-plus'], ['img2img', 'img2img', 'image'], ['extras', 'Extras', 'upscale'], ['pnginfo', 'PNG Info', 'info'],
+    ['train', 'Train LoRA', 'layers'], ['imgcut', 'ImgCut', 'crop'], ['settings', 'Settings', 'settings']];
+  function mountPage() {
+    root = KS.$('#studio');
+    root.className = 'fx';
+    const rail = h('nav.fx-rail'), top = h('div.fx-top'), body = h('div.fx-body');
+    root.replaceChildren(rail, h('div.fx-page', top, body));
+    Object.assign(els, { rail, top, body });
+    if (!root._keys) {
+      root._keys = true;
+      root.addEventListener('keydown', e => { if (e.target.matches && e.target.matches('input, textarea, select')) e.stopPropagation(); });
+    }
+  }
+  function renderRail() {
+    els.rail.replaceChildren();
+    for (const [id, label, icon] of RAIL) {
+      const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
+      b.addEventListener('click', () => {
+        if (id === 'train') return C.loraStudio();
+        if (id === 'imgcut') return C.socialCut();
+        FX.tab = id; save(); render();
+      });
+      els.rail.appendChild(b);
+    }
+    els.rail.appendChild(h('div.spacer'));
+    const back = h('button', { title: 'Revenir à l\'édition (F6)' }, h('span', { html: KS.icon('brush') }), h('span', { text: 'Édition' }));
+    back.addEventListener('click', () => C.toggleStudio(false));
+    els.rail.appendChild(back);
+  }
+  const DTYPES = ['Automatic', 'Automatic (fp16 LoRA)', 'float8-e4m3fn', 'float8-e4m3fn (fp16 LoRA)', 'float8-e5m2', 'float8-e5m2 (fp16 LoRA)'];
+  async function setOptions(o, msg) {
+    const r = await N.forgeSetOptions(url(), o);
+    if (!r.ok) return KS.toast('Forge : ' + r.error, 'err', 6000);
+    if (cat) {
+      if (o.sd_model_checkpoint) cat.current.model = o.sd_model_checkpoint;
+      if (o.forge_additional_modules) cat.current.modules = o.forge_additional_modules;
+      if (o.forge_unet_storage_dtype) cat.dtype = o.forge_unet_storage_dtype;
+    }
+    if (msg) KS.toast(msg, 'ok', 2600);
+    renderTop(); if (FX.tab === 'txt2img' || FX.tab === 'img2img') renderParams();
+  }
+  // Liste à puces (VAE / Text Encoder) : comme le multi-sélecteur de Forge
+  function modulesPicker(values, onChange, { same = false } = {}) {
+    const box = h('div.fx-modchips');
+    const names = (cat ? cat.modules : []).map(m => [m.path, m.name]);
+    for (const v of values) {
+      const chip = h('span.fx-mchip', h('span', { text: base(v) }));
+      const x = h('button', { text: '×', title: 'Retirer' }); x.addEventListener('click', () => onChange(values.filter(q => q !== v)));
+      chip.appendChild(x); box.appendChild(chip);
+    }
+    const add = h('select.fx-modadd', { title: 'Ajouter' }, h('option', { value: '', text: '＋' }),
+      ...(same ? [h('option', { value: 'Use same choices', text: 'Use same choices' })] : []),
+      ...names.filter(([p, n]) => !values.includes(p) && !values.includes(n)).map(([p, n]) => h('option', { value: same ? n : p, text: n })));
+    add.addEventListener('change', () => { if (!add.value) return; onChange(add.value === 'Use same choices' ? ['Use same choices'] : [...values.filter(q => q !== 'Use same choices'), add.value]); });
+    box.appendChild(add);
+    return box;
+  }
+  function renderTop() {
+    const t = els.top; if (!t || !SD.on) return;
+    const E = KS.engine;
+    const ck = h('select.fx-sel');
+    if (cat) {
+      for (const m of cat.models) ck.appendChild(h('option', { value: m.title, text: norm(m.title) }));
+      const cur = cat.models.find(m => norm(m.title) === norm(cat.current.model));
+      ck.value = cur ? cur.title : '';
+      ck.addEventListener('change', () => setOptions({ sd_model_checkpoint: ck.value }, 'Checkpoint : ' + norm(ck.value) + ' (chargé à la prochaine génération)'));
+    } else ck.appendChild(h('option', { text: loading ? 'Lecture de Forge…' : 'Moteur IA arrêté' }));
+    ck.disabled = !cat;
+    const mods = cat ? modulesPicker(cat.current.modules || [], v => setOptions({ forge_additional_modules: v }, 'VAE / Text Encoder changés')) : h('div.fx-modchips');
+    const dt = h('select.fx-sel', ...DTYPES.map(d => h('option', { value: d, text: d })));
+    dt.value = cat ? cat.dtype : 'Automatic'; dt.disabled = !cat;
+    dt.addEventListener('change', () => setOptions({ forge_unet_storage_dtype: dt.value }, 'Diffusion in Low Bits : ' + dt.value + ' (au prochain chargement du modèle)'));
+    const ref = ebtn('🔄', 'Relire les modèles, modules et LoRA de Forge', async () => { if (!cat) return loadCat(); await N.forgeRefreshCheckpoints(url()); await N.forgeRefreshLoras(url()); loadCat(); });
+    const gpu = h('div.fx-gpu', { title: 'Mémoire de la carte graphique utilisée par Forge' }, h('span', { text: 'VRAM' }), h('div.fx-gpu-bar', h('i')), h('span.fx-gpu-t', { text: '—' }));
+    els.gpu = gpu;
+    const st = E ? E.state : 'off';
+    const eng = h('div.fx-eng', h('span.fx-dot' + (E && E.ready() ? '.ok' : st === 'starting' ? '.busy' : '')),
+      h('span', { text: !E ? 'Moteur indisponible' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS' : 'Moteur IA prêt') : st === 'starting' ? 'Démarrage du moteur…' : st === 'error' ? 'Moteur : erreur' : 'Moteur IA arrêté' }),
+      E && !E.ready() && st !== 'starting' ? tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary.sm') : null);
+    t.replaceChildren(field('Checkpoint', ck), field('VAE / Text Encoder', mods), ref, field('Diffusion in Low Bits', dt), h('div.spacer'), gpu, eng);
+    t.querySelector('.fx-field').classList.add('fx-ck');
+    t.querySelectorAll('.fx-field')[1].classList.add('fx-mods');
+    pollGpu();
+  }
+  let gpuBusy = false;
+  async function pollGpu() {
+    if (!SD.on || gpuBusy || !els.gpu || !N.forgeMemory || !(KS.engine && KS.engine.ready()) || document.hidden) return;
+    gpuBusy = true;
+    try {
+      const r = await N.forgeMemory(url());
+      if (r.ok && r.total) {
+        els.gpu.querySelector('i').style.width = Math.round(r.used / r.total * 100) + '%';
+        els.gpu.querySelector('.fx-gpu-t').textContent = `${Math.round(r.used / 1048576)} / ${Math.round(r.total / 1048576)} Mo`;
+      }
+    } catch { /* rien */ } finally { gpuBusy = false; }
+  }
+  setInterval(pollGpu, 3000);
+
+  /* ---------------------------------------------------------------- rendu général */
+  function render() {
+    if (!SD.on || !root) return;
+    park();
+    renderRail(); renderTop();
+    document.body.classList.toggle('fx-i2i', FX.tab === 'img2img');
+    Object.assign(els, { left: null, right: null, genbox: null, strip: null, i2ihead: null, slot: null, promptTa: null });
+    let content;
+    switch (FX.tab) {
+      case 'img2img': case 'txt2img': content = genTab(kOf(FX.tab)); break;
+      case 'extras': content = extrasTab(); break;
+      case 'pnginfo': content = pngTab(); break;
+      case 'settings': content = settingsTab(); break;
+      default: FX.tab = 'txt2img'; content = genTab('t2i');
+    }
+    els.body.replaceChildren(content);
+    if (FX.tab === 'img2img' && els.slot) attach(els.slot);
+    window.dispatchEvent(new Event('resize'));
+    if (FX.tab === 'img2img') refit();
+  }
+  // La toile de Kanevas (outils + vue) passe dans l'onglet img2img, puis revient à sa place
+  const park = () => {
+    const main = KS.$('#main'), tb = KS.$('#toolbar'), ce = KS.$('#center'), st = KS.$('#studio'), dock = KS.$('#dock');
+    if (tb.parentNode !== main) main.insertBefore(tb, st);
+    if (ce.parentNode !== main) main.insertBefore(ce, dock);
+  };
+  // la vue change de taille en entrant dans l'onglet : l'image est recadrée dans la place disponible
+  const refit = () => setTimeout(() => { window.dispatchEvent(new Event('resize')); setTimeout(() => { if (D() && SD.on && FX.tab === 'img2img') KS.view.fit(D()); }, 60); }, 120);
+  const attach = slot => { slot.append(KS.$('#toolbar'), KS.$('#center')); };
+
+  /* ---------------------------------------------------------------- txt2img / img2img */
+  function genTab(k) {
+    const st = FX[k];
+    const left = h('div.fx-left'), right = h('div' + (k === 't2i' ? '.fx-out' : '.fx-canvascol'));
+    Object.assign(els, { left, right });
+    const wrap = h('div.fx-gen', promptRow(k), h('div.fx-cols', left, right));
+    renderParams();
+    if (k === 't2i') renderOut();
+    else {
+      els.i2ihead = h('div.fx-i2ihead'); els.slot = h('div.fx-slot'); els.strip = h('div.fx-strip');
+      right.append(els.i2ihead, els.slot, els.strip);
+      renderI2IHead(); renderStrip();
+    }
+    void st;
+    return wrap;
+  }
+  function promptRow(k) {
+    const st = FX[k];
+    const area = (key, label) => {
+      const ta = h('textarea.fx-ta.fx-prompt', { placeholder: label + '\n(Ctrl+Enter to Generate ; Alt+Enter to Skip ; Esc to Interrupt)', spellcheck: false, rows: 3 });
+      ta.value = st[key] || '';
+      const cnt = h('span.fx-tok');
+      const upd = () => { const n = tokens(ta.value); cnt.textContent = n + '/' + Math.max(75, Math.ceil(n / 75) * 75); };
+      ta.addEventListener('input', () => { st[key] = ta.value; upd(); save(); if (key === 'prompt') { trNote(k); markLoras(k); } });
+      ta.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); generate(k); }
+        else if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
+        else if (e.key === 'Escape') interrupt();
+      });
+      upd();
+      return { box: h('div.fx-pbox', cnt, ta), ta };
+    };
+    const P = area('prompt', 'Prompt'), Q = area('negative_prompt', 'Negative Prompt');
+    els.promptTa = P.ta;
+    els.trNote = h('div.fx-trnote');
+    els.genbox = h('div.fx-genbox');
+    renderGenButtons(k); trNote(k);
+    const tools = h('div.fx-ptools',
+      ebtn('↙️', 'Lire les paramètres collés dans l\'invite (texte d\'une image de Forge), ou ceux de la dernière génération si l\'invite est vide', () => readParams(k)),
+      ebtn('🗑️', 'Effacer l\'invite et l\'invite négative', () => { st.prompt = ''; st.negative_prompt = ''; P.ta.value = ''; Q.ta.value = ''; P.ta.dispatchEvent(new Event('input')); Q.ta.dispatchEvent(new Event('input')); }),
+      ebtn('📋', 'Appliquer les styles choisis à l\'invite', () => applyStyles(k, P.ta, Q.ta)));
+    return h('div.fx-toprow', h('div.fx-prompts', P.box, Q.box, els.trNote), h('div.fx-side', els.genbox, h('div.fx-ptools-row', tools, stylesPicker(k))));
+  }
+  function trNote(k) {
+    if (!els.trNote) return;
+    const fr = FX.translate !== false && G.looksFrench(FX[k].prompt);
+    els.trNote.textContent = fr ? 'Invite en français : traduite en anglais sur votre PC avant l\'envoi à Forge (les balises <lora:…> restent telles quelles).' : '';
+  }
+  function stylesPicker(k) {
+    const st = FX[k];
+    const b = h('button.fx-styles', { title: 'Styles de Forge (styles.csv) : ajoutés à l\'invite au moment de générer' }, h('span.fx-lbl', { text: 'Styles' }), h('span.fx-styles-v', { text: st.styles.length ? st.styles.join(', ') : '—' }));
+    b.addEventListener('click', () => {
+      const list = (cat && cat.styles) || [];
+      const r = b.getBoundingClientRect();
+      ui.menu(list.length ? list.map(s => ({ label: s.name, checked: () => st.styles.includes(s.name), action: () => {
+        st.styles = st.styles.includes(s.name) ? st.styles.filter(x => x !== s.name) : [...st.styles, s.name]; save();
+        b.querySelector('.fx-styles-v').textContent = st.styles.length ? st.styles.join(', ') : '—';
+      } })) : [{ label: cat ? 'Aucun style dans Forge (styles.csv)' : 'Moteur IA arrêté', disabled: true }], r.left, r.bottom + 4);
+    });
+    return b;
+  }
+  function applyStyles(k, pta, nta) {
+    const st = FX[k], list = ((cat && cat.styles) || []).filter(s => st.styles.includes(s.name));
+    if (!list.length) return KS.toast('Choisissez d\'abord un ou plusieurs styles', 'info');
+    const merge1 = (txt, add) => !add ? txt : add.includes('{prompt}') ? add.replace('{prompt}', txt) : [txt, add].filter(Boolean).join(', ');
+    for (const s of list) { st.prompt = merge1(st.prompt, s.prompt); st.negative_prompt = merge1(st.negative_prompt, s.negative); }
+    st.styles = []; save();
+    pta.value = st.prompt; nta.value = st.negative_prompt; pta.dispatchEvent(new Event('input')); nta.dispatchEvent(new Event('input'));
+    render();
+  }
+  function renderGenButtons(k) {
+    const g = els.genbox; if (!g) return;
+    if (BUSY) {
+      const i = h('button.fx-interrupt', { text: BUSY.stopping ? 'Interrupting...' : 'Interrupt', title: 'Arrêter la génération (Échap)' }); i.addEventListener('click', interrupt);
+      const s = h('button.fx-skip', { text: 'Skip', title: 'Passer à l\'image suivante du lot (Alt+Entrée)' }); s.addEventListener('click', skip);
+      g.replaceChildren(i, s);
+    } else {
+      const b = h('button.fx-generate', { text: 'Generate', title: 'Générer (Ctrl+Entrée)' }); b.addEventListener('click', () => generate(k));
+      g.replaceChildren(b);
+    }
+  }
+
+  /* ---------------------------------------------------------------- colonne des réglages */
+  function renderParams() {
+    const left = els.left; if (!left) return;
+    const k = kOf(FX.tab), st = FX[k];
+    const sc = left.scrollTop, pageSc = els.body.scrollTop;
+    const sub = st.open._sub || 'generation';
+    const bar = tabs([['generation', 'Generation'], ['checkpoints', 'Checkpoints'], ['lora', 'Lora']], sub, v => { st.open._sub = v; save(); renderParams(); });
+    let content;
+    if (!cat) content = h('div.fx-panel', h('div.fx-note', { text: loading ? 'Lecture de Forge…' : (catErr && KS.engine && KS.engine.ready() ? catErr : 'Le moteur IA (Forge) n\'est pas démarré.') }),
+      !loading ? tbtn('Démarrer le moteur IA', () => ensureCat(), '.primary') : null);
+    else if (sub === 'lora') content = loraTab(k);
+    else if (sub === 'checkpoints') content = ckptTab();
+    else content = k === 't2i' ? t2iParams(st) : i2iParams(st);
+    left.replaceChildren(bar, content);
+    left.scrollTop = sc; els.body.scrollTop = pageSc;
+  }
+  const rp = () => renderParams();
+  function samplingRow(st) {
+    return h('div.fx-row3',
+      select('Sampling Method', cat.samplers, st, 'sampler_name'),
+      select('Schedule Type', cat.schedulers, st, 'scheduler'),
+      slider('Sampling Steps', st, 'steps', 1, 150, 1));
+  }
+  function presetRow(st) {
+    const names = Object.keys(cat.presets || {}).sort();
+    const id = 'fx-pl-' + Math.random().toString(36).slice(2);
+    const inp = h('input.fx-in', { list: id, value: FX.presetName || '', spellcheck: false });
+    inp.addEventListener('change', () => {
+      FX.presetName = inp.value; save();
+      const p = cat.presets[inp.value]; if (!p) return;
+      if (p.sampler) st.sampler_name = p.sampler; if (p.scheduler) st.scheduler = p.scheduler; if (p.steps) st.steps = +p.steps;
+      if (p.cfg) st.cfg_scale = +p.cfg; if (p.dcfg) st.distilled_cfg_scale = +p.dcfg;
+      if (p.width && p.height) { st.width = +p.width; st.height = +p.height; if ('autoSize' in st) st.autoSize = false; }
+      save(); renderParams();
+    });
+    const write = async presets => { const r = await N.forgePresetsWrite(presets); if (!r.ok) return KS.toast(r.error, 'err'); cat.presets = presets; renderParams(); };
+    const sv = tbtn('Save', () => {
+      const n = inp.value.trim(); if (!n) return KS.toast('Tapez un nom de préréglage puis Save', 'info');
+      write({ ...cat.presets, [n]: { sampler: st.sampler_name, scheduler: st.scheduler, steps: st.steps, cfg: st.cfg_scale, dcfg: st.distilled_cfg_scale, width: st.width, height: st.height } })
+        .then(() => KS.toast('Préréglage « ' + n + ' » enregistré (aussi dans Forge)', 'ok'));
+    });
+    const del = tbtn('Delete', () => { const n = inp.value.trim(); if (!cat.presets[n]) return; const p = { ...cat.presets }; delete p[n]; FX.presetName = ''; write(p); });
+    return h('div.fx-preset', h('div.fx-field.grow', h('label.fx-lbl', { text: 'Preset' }),
+      h('div.fx-info', { text: 'Sampling + size, never the prompt: type a name then Save to record the current settings' }), inp,
+      h('datalist', { id }, ...names.map(n => h('option', { value: n })))), sv, del);
+  }
+  function seedRows(st, k) {
+    const seedField = (key, dice, recycle) => {
+      const inp = h('input.fx-in', { type: 'number', value: st[key] });
+      inp.addEventListener('change', () => { const v = parseInt(inp.value, 10); st[key] = isNaN(v) ? -1 : v; inp.value = st[key]; save(); });
+      return [inp, ebtn('🎲️', dice, () => { st[key] = -1; inp.value = -1; save(); }),
+        ebtn('♻️', recycle, () => { if (lastSeed[k] == null) return KS.toast('Aucune génération encore', 'info'); st[key] = lastSeed[k]; inp.value = lastSeed[k]; save(); })];
+    };
+    const [s, d1, r1] = seedField('seed', 'Graine au hasard (-1)', 'Reprendre la graine de la dernière image');
+    const out = [h('div.fx-seedrow', field('Seed', s), d1, r1, check('Extra', st, 'seedExtra', 'Graine de variation et redimensionnement de la graine', rp))];
+    if (st.seedExtra) {
+      const [v, d2, r2] = seedField('subseed', 'Graine de variation au hasard (-1)', 'Reprendre la graine de la dernière image');
+      out.push(h('div.fx-seedrow', field('Variation seed', v), d2, r2), slider('Variation strength', st, 'subseed_strength', 0, 1, 0.01),
+        row2(slider('Resize seed from width', st, 'seed_resize_from_w', 0, 2048, 8), slider('Resize seed from height', st, 'seed_resize_from_h', 0, 2048, 8)));
+    }
+    return out;
+  }
+  function refinerAcc(st) {
+    return acc('Refiner', st, 'refiner', () => [
+      row2(select('Checkpoint', ['None', ...cat.models.map(m => norm(m.title))], st, 'refiner_checkpoint'), slider('Switch at', st, 'refiner_switch_at', 0, 1, 0.025)),
+      slider('Refiner CFG Scale', st, 'refiner_cfg', 0, 24, 0.5, '0 = même CFG que la génération')], { on: [st, 'refiner'] });
+  }
+  function adAcc(st, k) {
+    return acc('ADetailer', st, 'ad', () => {
+      const ORD = ['1st', '2nd', '3rd', '4th'], u = st.ad.units[st.ad.tab] || st.ad.units[0], o = ORD[st.ad.tab] || '1st';
+      const out = [];
+      if (k === 'i2i') out.push(check('Skip img2img', st.ad, 'skip', 'Garde l\'image et ne refait que les zones détectées (visages, mains…)'));
+      out.push(tabs(ORD.map((x, i) => [i, x]), st.ad.tab, v => { st.ad.tab = v; save(); rp(); }, '.fx-subtabs'),
+        check(`Enable this tab (${o})`, u, 'ad_tab_enable'),
+        select('ADetailer detector', ['None', ...(cat.adModels || [])], u, 'ad_model'),
+        text('', u, 'ad_prompt', { placeholder: `ADetailer prompt ${o}\nIf blank, the main prompt is used.` }),
+        text('', u, 'ad_negative_prompt', { placeholder: `ADetailer negative prompt ${o}\nIf blank, the main negative prompt is used.` }),
+        acc('Detection', st, 'adDet', () => [slider('Detection model confidence threshold', u, 'ad_confidence', 0, 1, 0.01), slider('Mask only the top k (0 to disable)', u, 'ad_mask_k', 0, 10, 1),
+          row2(slider('Mask min area ratio', u, 'ad_mask_min_ratio', 0, 1, 0.001), slider('Mask max area ratio', u, 'ad_mask_max_ratio', 0, 1, 0.001))]),
+        acc('Mask Preprocessing', st, 'adMask', () => [row2(slider('Mask x(→) offset', u, 'ad_x_offset', -200, 200, 1), slider('Mask y(↑) offset', u, 'ad_y_offset', -200, 200, 1)),
+          slider('Mask erosion (-) / dilation (+)', u, 'ad_dilate_erode', -128, 128, 4), radio('Mask merge mode', [['None', 'None'], ['Merge', 'Merge'], ['Merge and Invert', 'Merge and Invert']], u, 'ad_mask_merge_invert')]),
+        acc('Inpainting', st, 'adInp', () => [
+          row2(slider('Inpaint mask blur', u, 'ad_mask_blur', 0, 64, 1), slider('Inpaint denoising strength', u, 'ad_denoising_strength', 0, 1, 0.01)),
+          row2(check('Inpaint only masked', u, 'ad_inpaint_only_masked'), slider('Inpaint only masked padding, pixels', u, 'ad_inpaint_only_masked_padding', 0, 256, 4)),
+          check('Use separate width/height', u, 'ad_use_inpaint_width_height', '', rp),
+          u.ad_use_inpaint_width_height ? row2(slider('inpaint width', u, 'ad_inpaint_width', 64, 2048, 4), slider('inpaint height', u, 'ad_inpaint_height', 64, 2048, 4)) : null,
+          check('Use separate steps', u, 'ad_use_steps', '', rp), u.ad_use_steps ? slider('ADetailer steps', u, 'ad_steps', 1, 150, 1) : null,
+          check('Use separate CFG scale', u, 'ad_use_cfg_scale', '', rp), u.ad_use_cfg_scale ? slider('ADetailer CFG scale', u, 'ad_cfg_scale', 0, 30, 0.5) : null,
+          check('Use separate sampler', u, 'ad_use_sampler', '', rp),
+          u.ad_use_sampler ? row2(select('ADetailer sampler', cat.samplers, u, 'ad_sampler'), select('ADetailer scheduler', ['Use same scheduler', ...cat.schedulers], u, 'ad_scheduler')) : null,
+          check('Use separate noise multiplier', u, 'ad_use_noise_multiplier', '', rp), u.ad_use_noise_multiplier ? slider('Noise multiplier for img2img', u, 'ad_noise_multiplier', 0.5, 1.5, 0.01) : null,
+        ].filter(Boolean)));
+      return out;
+    }, { on: [st.ad, 'enabled'] });
+  }
+  const noomAcc = st => acc('Never OOM Integrated', st, 'noom', () => [
+    check('Enabled for UNet (always offload)', st.noom, 'unet', 'Décharge le modèle à chaque passe : plus lent, mais pas de manque de mémoire'),
+    check('Enabled for VAE (always tiled)', st.noom, 'vae', 'VAE par tuiles : indispensable pour les très grandes images')], { active: st.noom.unet || st.noom.vae });
+  const SCRIPT_NAMES = { 'prompt matrix': 'Prompt matrix', 'prompts from file or textbox': 'Prompts from file or textbox', 'x/y/z plot': 'X/Y/Z plot', loopback: 'Loopback', 'sd upscale': 'SD upscale' };
+  const SCRIPT_HELP = {
+    'x/y/z plot': 'Grille de comparaison : choisissez un paramètre par axe et ses valeurs séparées par des virgules (ex. Steps : 20, 30, 40 ; CFG Scale : 3, 4, 5).',
+    'prompt matrix': 'Séparez des variantes par | dans l\'invite : une image par combinaison, réunies dans une grille.',
+    'prompts from file or textbox': 'Une invite par ligne : une génération par ligne.',
+    loopback: 'Repasse plusieurs fois le résultat dans img2img.',
+    'sd upscale': 'Agrandit puis refait l\'image par tuiles (taille des tuiles = Width × Height).',
+  };
+  const XYZ_HIDDEN = [2, 5, 8, 18];
+  function scriptBlock(st, k) {
+    const list = (cat.scripts || []).filter(s => s.img2img === (k === 'i2i'));
+    const out = [select('Script', [['None', 'None'], ...list.map(s => [s.name, SCRIPT_NAMES[s.name] || s.name.replace(/^./, c => c.toUpperCase())])], st, 'script', '', rp)];
+    const sc = list.find(s => s.name === st.script);
+    if (!sc) return out;
+    const vals = st.scriptArgs[sc.name] || (st.scriptArgs[sc.name] = sc.args.map(a => a.value == null ? (a.choices ? a.choices[0] : '') : a.value));
+    while (vals.length < sc.args.length) vals.push(sc.args[vals.length].value ?? '');
+    if (SCRIPT_HELP[sc.name]) out.push(h('div.fx-info', { text: SCRIPT_HELP[sc.name] }));
+    const grid = h('div.fx-script');
+    sc.args.forEach((a, i) => {
+      if (sc.name === 'x/y/z plot' && XYZ_HIDDEN.includes(i)) return;
+      const lab = a.label || ('Argument ' + (i + 1));
+      let el;
+      if (typeof a.value === 'boolean') el = check(lab, vals, i);
+      else if (a.choices) el = select(lab, a.choices, vals, i);
+      else if (typeof a.value === 'number' && a.min != null && a.max != null) el = slider(lab, vals, i, a.min, a.max, a.step || 1);
+      else el = text(lab, vals, i, { rows: /list of prompt/i.test(lab) ? 5 : 1, placeholder: /values/i.test(lab) ? 'ex. 20, 30, 40' : '' });
+      grid.appendChild(el);
+    });
+    out.push(grid);
+    return out;
+  }
+  function t2iParams(st) {
+    const step = cat.resStep || 16;
+    const hrRes = () => {
+      let w = st.width, hh = st.height, tw, th;
+      if (st.hr_resize_x || st.hr_resize_y) { tw = st.hr_resize_x || Math.round(st.hr_resize_y * w / hh); th = st.hr_resize_y || Math.round(st.hr_resize_x * hh / w); }
+      else { tw = Math.round(w * st.hr_scale); th = Math.round(hh * st.hr_scale); }
+      return `from ${w}x${hh} to ${tw}x${th}`;
+    };
+    const hrInfo = h('div.fx-info');
+    const updHr = () => { hrInfo.textContent = hrRes(); };
+    updHr();
+    const hires = acc('Hires. fix', st, 'hr', () => [
+      field('Upscaled resolution', hrInfo),
+      row2(select('Upscaler', [...(cat.latent.length ? cat.latent : ['Latent']), ...cat.upscalers], st, 'hr_upscaler'), slider('Hires steps', st, 'hr_second_pass_steps', 0, 150, 1, '0 = autant que la première passe')),
+      slider('Denoising strength', st, 'denoising_strength', 0, 1, 0.05),
+      row3(slider('Upscale by', st, 'hr_scale', 1, 4, 0.05, '', updHr), slider('Resize width to', st, 'hr_resize_x', 0, 4096, step, '', updHr), slider('Resize height to', st, 'hr_resize_y', 0, 4096, step, '', updHr)),
+      row2(slider('Shift', st, 'hr_distilled_cfg', 1, 24, 0.5), slider('Hires CFG Scale', st, 'hr_cfg', 1, 24, 0.5)),
+      row2(select('Hires Checkpoint', ['Use same checkpoint', ...cat.models.map(m => norm(m.title))], st, 'hr_checkpoint_name'),
+        field('Hires VAE / Text Encoder', modulesPicker(st.hr_additional_modules, v => { st.hr_additional_modules = v.length ? v : ['Use same choices']; save(); rp(); }, { same: true }))),
+      row2(select('Hires sampling method', ['Use same sampler', ...cat.samplers], st, 'hr_sampler_name'), select('Hires schedule type', ['Use same scheduler', ...cat.schedulers], st, 'hr_scheduler')),
+      text('', st, 'hr_prompt', { placeholder: 'Prompt for hires fix pass.\nLeave empty to use the same prompt as in first pass.' }),
+      text('', st, 'hr_negative_prompt', { placeholder: 'Negative prompt for hires fix pass.\nLeave empty to use the same negative prompt as in first pass.' }),
+    ], { on: [st, 'enable_hr'] });
+    const swap = ebtn('⇅', 'Inverser largeur et hauteur', () => { [st.width, st.height] = [st.height, st.width]; save(); rp(); });
+    return h('div.fx-panel',
+      samplingRow(st), presetRow(st),
+      h('div.fx-accs', hires, refinerAcc(st)),
+      h('div.fx-dims', h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', updHr), slider('Height', st, 'height', 64, 2048, step, '', updHr)), swap,
+        h('div.fx-col', slider('Batch Count', st, 'n_iter', 1, 128, 1, 'Nombre de lots à la suite'), slider('Batch Size', st, 'batch_size', 1, 8, 1, 'Images par lot (en même temps)'))),
+      formatRow(st),
+      row2(slider('Shift', st, 'distilled_cfg_scale', 1, 24, 0.5, 'Shift des modèles à flux (anima) : Distilled CFG Scale de l\'API'), slider('CFG Scale', st, 'cfg_scale', 1, 24, 0.5)),
+      ...seedRows(st, 't2i'), adAcc(st, 't2i'), noomAcc(st), ...scriptBlock(st, 't2i'));
+  }
+  const INPAINT_MODES = ['inpaint', 'inpaint_sketch', 'inpaint_upload'];
+  const fitDoc = d => { const k = Math.min(1, 2048 / Math.max(d.width, d.height)); return { w: r8(d.width * k), h: r8(d.height * k) }; };
+  function i2iParams(st) {
+    const step = cat.resStep || 16, d = D(), inpaint = INPAINT_MODES.includes(FX.i2iMode);
+    if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; }
+    const out = [radio('Resize mode', [[0, 'Just Resize'], [1, 'Crop and Resize'], [2, 'Resize and Fill'], [3, 'Just Resize (latent upscale)']], st, 'resize_mode')];
+    if (inpaint) out.push(
+      slider('Mask blur', st, 'mask_blur', 0, 64, 1),
+      radio('Mask mode', [[0, 'Inpaint masked'], [1, 'Inpaint not masked']], st, 'inpainting_mask_invert'),
+      radio('Masked content', [[0, 'fill'], [1, 'original'], [2, 'latent noise'], [3, 'latent nothing']], st, 'inpainting_fill', 'original = repart de l\'image ; fill = des couleurs voisines ; latent noise = du bruit (nouveau contenu)'),
+      row2(radio('Inpaint area', [[0, 'Whole picture'], [1, 'Only masked']], st, 'inpaint_full_res', 'Only masked : la zone est recadrée et refaite en Width × Height, puis recollée (plus de détails)'),
+        slider('Only masked padding, pixels', st, 'inpaint_full_res_padding', 0, 256, 4)),
+      acc('Soft inpainting', st, 'soft', () => [
+        row2(slider('Schedule bias', st.soft, 'bias', 0, 8, 0.1), slider('Preservation strength', st.soft, 'preserve', 0, 8, 0.05)),
+        row2(slider('Transition contrast boost', st.soft, 'contrast', 1, 32, 0.5), slider('Mask influence', st.soft, 'influence', 0, 1, 0.05)),
+        row2(slider('Difference threshold', st.soft, 'diffThr', 0, 8, 0.25), slider('Difference contrast', st.soft, 'diffContrast', 0, 8, 0.25))], { on: [st.soft, 'enabled'] }));
+    const manual = () => { st.autoSize = false; save(); };
+    const swap = ebtn('⇅', 'Inverser largeur et hauteur', () => { [st.width, st.height] = [st.height, st.width]; st.autoSize = false; save(); rp(); });
+    const auto = ebtn('📐', 'Taille de l\'image (suit le document)', () => { st.autoSize = true; st.sizeTab = 'to'; save(); rp(); }, st.autoSize ? '.on' : '');
+    const src = d ? { w: d.width, h: d.height } : null;
+    const byInfo = h('div.fx-info', { text: src ? `Resize: from ${src.w}x${src.h} to ${r8(src.w * st.scale_by)}x${r8(src.h * st.scale_by)}` : 'Aucune image' });
+    const sizeBody = st.sizeTab === 'by'
+      ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.5, 4, 0.05, '', v => { if (src) byInfo.textContent = `Resize: from ${src.w}x${src.h} to ${r8(src.w * v)}x${r8(src.h * v)}`; }), byInfo)
+      : h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', manual), slider('Height', st, 'height', 64, 2048, step, '', manual),
+        st.autoSize ? h('div.fx-info', { text: 'Taille de l\'image du document (📐)' }) : null);
+    out.push(samplingRow(st), presetRow(st), h('div.fx-accs', refinerAcc(st)),
+      tabs([['to', 'Resize to'], ['by', 'Resize by']], st.sizeTab, v => { st.sizeTab = v; save(); rp(); }, '.fx-subtabs'),
+      h('div.fx-dims', sizeBody, h('div.fx-col.fx-mid', swap, auto),
+        h('div.fx-col', slider('Batch Count', st, 'n_iter', 1, 128, 1), slider('Batch Size', st, 'batch_size', 1, 8, 1))),
+      st.sizeTab === 'to' ? formatRow(st) : null,
+      row2(slider('Shift', st, 'distilled_cfg_scale', 0, 24, 0.5), slider('CFG Scale', st, 'cfg_scale', 1, 24, 0.5)),
+      slider('Denoising Strength', st, 'denoising_strength', 0, 1, 0.01, 'Écart à l\'image de départ : bas = proche, haut = très différent'),
+      ...seedRows(st, 'i2i'), adAcc(st, 'i2i'),
+      acc('MultiDiffusion Integrated', st, 'md', () => [select('Method', ['MultiDiffusion', 'Mixture of Diffusers'], st.md, 'method'),
+        row2(slider('Tile Width', st.md, 'tw', 256, 2048, 64), slider('Tile Height', st.md, 'th', 256, 2048, 64)),
+        row2(slider('Tile Overlap', st.md, 'overlap', 0, 1024, 16), slider('Tile Batch Size', st.md, 'batch', 1, 8, 1))], { on: [st.md, 'enabled'] }),
+      noomAcc(st), ...scriptBlock(st, 'i2i'));
+    return h('div.fx-panel', ...out.filter(Boolean));
+  }
+
+  /* ---------------------------------------------------------------- onglets Lora et Checkpoints */
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const loraRe = name => new RegExp('<lora:' + esc(name) + '(:[^>]*)?>', 'i');
+  function toggleLora(k, l) {
+    const st = FX[k], re = loraRe(l.name);
+    if (re.test(st.prompt)) {
+      st.prompt = st.prompt.replace(new RegExp('\\s*' + re.source + (l.trigger ? '\\s*' + esc(l.trigger) : ''), 'i'), '').replace(re, '').trim();
+    } else {
+      const w = +(l.weight || (cat && cat.defaultWeight) || 1);
+      st.prompt = (st.prompt ? st.prompt.replace(/\s+$/, '') + ' ' : '') + `<lora:${l.name}:${w}>` + (l.trigger ? ' ' + l.trigger : '');
+    }
+    save();
+    if (els.promptTa) { els.promptTa.value = st.prompt; els.promptTa.dispatchEvent(new Event('input')); }
+  }
+  function markLoras(k) {
+    if (!els.left) return;
+    for (const c of els.left.querySelectorAll('.fx-card[data-lora]')) c.classList.toggle('on', loraRe(c.dataset.lora).test(FX[k].prompt));
+  }
+  function loraTab(k) {
+    const L = FX.lora;
+    const q = h('input.fx-in.fx-search', { type: 'search', placeholder: 'Search', value: L.q, spellcheck: false });
+    const sort = h('select.fx-sel.fx-sort', ...[['forge', 'Défaut de Forge'], ['new', 'Plus récentes d’abord'], ['old', 'Plus anciennes d’abord'], ['name', 'Nom (A→Z)']].map(([v, l]) => h('option', { value: v, text: l })));
+    sort.value = L.sort;
+    const refresh = ebtn('🔄', 'Relire la liste des LoRA', async () => { await N.forgeRefreshLoras(url()); await loadCat(); });
+    const folders = [...new Set(cat.loras.map(l => l.rel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const chips = h('div.fx-folders');
+    const grid = h('div.fx-cards');
+    const fill = () => {
+      const term = L.q.trim().toLowerCase();
+      let list = cat.loras.filter(l => !term || (l.rel + '\\' + l.name + ' ' + (l.alias || '') + ' ' + (l.trigger || '')).toLowerCase().includes(term));
+      if (L.sort === 'new') list = list.slice().sort((a, b) => b.mtime - a.mtime);
+      else if (L.sort === 'old') list = list.slice().sort((a, b) => a.mtime - b.mtime);
+      else if (L.sort === 'name') list = list.slice().sort((a, b) => a.name.localeCompare(b.name));
+      grid.replaceChildren(...list.map(l => {
+        const card = h('div.fx-card' + (loraRe(l.name).test(FX[k].prompt) ? '.on' : ''), { 'data-lora': l.name, title: l.name + (l.trigger ? '\nActivation text : ' + l.trigger : '') + (l.rel ? '\n' + l.rel + '\\' : '') + '\nPoids : ' + (l.weight || 1) },
+          l.url ? h('img', { src: l.url, alt: '', loading: 'lazy' }) : h('div.fx-nopv', { text: 'NO PREVIEW' }), h('div.fx-card-n', { text: l.alias || l.name }));
+        card.addEventListener('click', () => toggleLora(k, l));
+        return card;
+      }));
+      if (!list.length) grid.appendChild(h('div.fx-note', { text: cat.loras.length ? 'Aucun LoRA ne correspond.' : 'Aucun LoRA dans Forge.' }));
+      chips.replaceChildren(...['', ...folders].map(f => {
+        const b = h('button.fx-chip' + ((f === '' ? !term : term === f.toLowerCase()) ? '.on' : ''), { text: f ? f + '\\' : 'all' });
+        b.addEventListener('click', () => { L.q = f; q.value = f; save(); fill(); }); return b;
+      }));
+    };
+    q.addEventListener('input', () => { L.q = q.value; save(); fill(); });
+    sort.addEventListener('change', () => { L.sort = sort.value; save(); fill(); });
+    fill();
+    return h('div.fx-panel', h('div.fx-lorabar', q, sort, refresh), chips, grid,
+      h('div.fx-info', { text: 'Cliquez une carte pour ajouter <lora:nom:poids> (et son activation text) à l\'invite ; recliquez pour l\'enlever. Le poids se modifie dans l\'invite.' }));
+  }
+  function ckptTab() {
+    const grid = h('div.fx-cards');
+    for (const m of cat.models) {
+      const on = norm(m.title) === norm(cat.current.model);
+      const card = h('div.fx-card' + (on ? '.on' : ''), { title: m.title }, m.url ? h('img', { src: m.url, alt: '' }) : h('div.fx-nopv', { text: 'NO PREVIEW' }), h('div.fx-card-n', { text: norm(m.title) }));
+      card.addEventListener('click', () => setOptions({ sd_model_checkpoint: m.title }, 'Checkpoint : ' + norm(m.title) + ' (chargé à la prochaine génération)'));
+      grid.appendChild(card);
+    }
+    return h('div.fx-panel', grid);
+  }
+
+  /* ---------------------------------------------------------------- img2img : la toile de Kanevas */
+  const I2I_MODES = [['img2img', 'img2img'], ['sketch', 'Sketch'], ['inpaint', 'Inpaint'], ['inpaint_sketch', 'Inpaint sketch'], ['inpaint_upload', 'Inpaint upload'], ['batch', 'Batch']];
+  const I2I_HELP = {
+    img2img: 'Toute l\'image (les calques visibles du document) est refaite selon l\'invite. Denoising Strength règle l\'écart à l\'original.',
+    sketch: 'Peignez des formes et des couleurs sur le calque « Croquis IA » : l\'image, croquis compris, est refaite selon l\'invite.',
+    inpaint: 'Peignez en rouge sur le calque « Zone IA » ce qui doit changer (ou faites une sélection), décrivez le résultat, Generate : le reste ne bouge pas.',
+    inpaint_sketch: 'Peignez en couleur ce qui doit changer : seule la partie peinte est refaite, en partant de vos couleurs.',
+    inpaint_upload: 'Chargez un masque noir et blanc (blanc = à refaire) : il remplit le calque « Zone IA ».',
+    batch: 'Chaque image choisie passe dans img2img avec ces réglages ; les résultats vont dans output\\img2img-images de Forge.',
+  };
   const roleLayer = (d, role) => d && d.layers.find(l => l.aiRole === role || (!l.aiRole && l.name === (role === 'zone' ? 'Zone IA' : 'Croquis IA')));
   const ensureRoleLayer = (d, role) => {
     let L = roleLayer(d, role);
@@ -27,78 +693,545 @@
     return L;
   };
   let savedFG = null;
+  const restoreFG = () => { if (savedFG) { KS.setFG(savedFG); savedFG = null; } };
   const paintOn = (role, erase = false) => {
     const d = D(); if (!d) return KS.toast('Ouvrez d\'abord une image', 'info');
     const L = ensureRoleLayer(d, role);
     d.activeId = L.id; L.editMask = false; KS.emit('active-layer', d); KS.emit('layers', d);
     if (role === 'zone' && !erase) { if (!savedFG) savedFG = { ...KS.state.fg }; KS.setFG({ r: 255, g: 32, b: 64 }); }
+    else if (role === 'sketch') restoreFG();
     T.select(erase ? 'eraser' : 'brush');
   };
-  const restoreFG = () => { if (savedFG) { KS.setFG(savedFG); savedFG = null; } };
   const layerAlpha = (d, L) => { const c = U.canvas(d.width, d.height); c.getContext('2d').drawImage(L.canvas, L.x, L.y); return c; };
-  // Image envoyée à Forge : tout sauf la zone (et le croquis selon le mode)
   const sourceFor = (d, keepSketch) => d.flatten(d.layers.filter(l => l.aiRole !== 'zone' && (keepSketch || l.aiRole !== 'sketch') && l.visible !== false));
   const clearRole = role => {
     const d = D(), L = roleLayer(d, role); if (!L) return;
     const tok = KS.Hist.begin(L); L.ctx.clearRect(0, 0, L.canvas.width, L.canvas.height); L.touch();
     KS.Hist.commitPixels(d, role === 'zone' ? 'Effacer la zone IA' : 'Effacer le croquis', tok, null, 'trash'); d.changed();
   };
+  const paintZone = (d, drawFn, label, icon) => {
+    const L = ensureRoleLayer(d, 'zone'); L.ensureCovers(d.rect);
+    const tok = KS.Hist.begin(L);
+    drawFn(L);
+    L.touch(); KS.Hist.commitPixels(d, label, tok, null, icon); d.changed();
+  };
   const invertZone = () => {
-    const d = D(), L = roleLayer(d, 'zone'); if (!L) return;
-    L.ensureCovers(d.rect);
-    const tok = KS.Hist.begin(L), c = U.canvas(L.canvas.width, L.canvas.height), x = c.getContext('2d');
-    x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-out'; x.drawImage(L.canvas, 0, 0);
-    L.ctx.clearRect(0, 0, c.width, c.height); L.ctx.drawImage(c, 0, 0); L.touch();
-    KS.Hist.commitPixels(d, 'Inverser la zone IA', tok, null, 'select-invert'); d.changed();
+    const d = D(); if (!d) return;
+    paintZone(d, L => {
+      const c = U.canvas(L.canvas.width, L.canvas.height), x = c.getContext('2d');
+      x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-out'; x.drawImage(L.canvas, 0, 0);
+      L.ctx.clearRect(0, 0, c.width, c.height); L.ctx.drawImage(c, 0, 0);
+    }, 'Inverser la zone IA', 'select-invert');
   };
   const selectionToZone = () => {
     const d = D(); if (!d || !d.selection.active) return KS.toast('Faites d\'abord une sélection', 'info');
-    const L = ensureRoleLayer(d, 'zone'); L.ensureCovers(d.rect);
-    const tok = KS.Hist.begin(L), t = U.canvas(d.width, d.height), x = t.getContext('2d');
-    x.drawImage(d.selection.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, d.width, d.height);
-    L.ctx.drawImage(t, -L.x, -L.y); L.touch();
-    KS.Hist.commitPixels(d, 'Sélection → zone IA', tok, null, 'brush'); d.changed();
+    paintZone(d, L => {
+      const t = U.canvas(d.width, d.height), x = t.getContext('2d');
+      x.drawImage(d.selection.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, d.width, d.height);
+      L.ctx.drawImage(t, -L.x, -L.y);
+    }, 'Sélection → zone IA', 'brush');
   };
-
-  /* ---------------------------------------------------------------- retouche de la zone / croquis */
-  // Masque = alpha du calque (Zone IA ou Croquis IA), ou la sélection à défaut ; image = le reste du document
-  async function paintedGenerate(kind) {
+  async function uploadMask() {
     const d = D(); if (!d) return KS.toast('Ouvrez d\'abord une image', 'info');
-    const st = settings(), role = kind === 'sketch' ? 'sketch' : 'zone';
-    const L = roleLayer(d, role);
-    let alpha = L ? layerAlpha(d, L) : null, B = alpha && U.alphaBounds(alpha, 8);
-    if (!B && d.selection.active) { alpha = U.copyCanvas(d.selection.mask); B = U.rectInt(d.selection.bounds); }
-    if (!B) { KS.toast(kind === 'sketch' ? 'Peignez d\'abord votre croquis (bouton « Peindre le croquis »)' : 'Peignez d\'abord en rouge la zone à refaire (bouton « Peindre la zone »)', 'info', 4500); return; }
-    B = U.rectIntersect(B, d.rect);
-    const raw = (KS.state.lastPrompt || '').trim();
-    if (!raw && kind === 'sketch') return KS.toast('Décrivez ce que représente votre croquis', 'info');
-    const forge = await G.forge(true); if (!forge) return;
-    if (kind === 'sketch') {   // un croquis compte jusque dans ses bords flous
-      const g = U.blurCanvas(alpha, 6), gx = g.getContext('2d'); gx.globalCompositeOperation = 'source-over'; gx.drawImage(alpha, 0, 0); alpha = g;
-    }
-    const src = sourceFor(d, kind === 'sketch');
-    try {
-      if (!raw) {   // retouche sans invite : l'IA locale remplit avec les alentours
-        const r0 = await G.task('Suppression par l\'IA locale…', () => G.inpaint(src, alpha, B));
-        return finish(G.addGenLayer(d, { variants: [r0.raw], rect: r0.rect }, alpha, { name: 'Zone retouchée', hist: 'Retoucher la zone', icon: 'remove' }), L);
-      }
-      const pp = await G.preparePrompt(raw, forge, st);
-      const o = { ...st, ...pp, strength: kind === 'sketch' ? st.sketchStrength : st.strength, fill: kind === 'sketch' ? 1 : st.inpaintFill, maskBlur: st.maskBlur, pad: st.inpaintPad, whole: st.inpaintArea === 'whole' };
-      const res = await G.forgeGenerate(src, alpha, B, o, o.whole);
-      if (pp.shown !== raw) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 4000);
-      finish(G.addGenLayer(d, res, alpha, { name: (kind === 'sketch' ? 'Croquis → ' : 'Retouche : ') + raw.slice(0, 32), prompt: raw, hist: kind === 'sketch' ? 'Croquis IA' : 'Retoucher la zone' }), L);
-    } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 6000); }
+    const files = await N.openDialog({ title: 'Masque (blanc = à refaire)', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+    if (!files || !files[0]) return;
+    const m = await KS.io.canvasFromEntry(files[0]);
+    const t = scaled(m, d.width, d.height), x = t.getContext('2d'), id = x.getImageData(0, 0, d.width, d.height), p = id.data;
+    for (let i = 0; i < p.length; i += 4) { const lum = (p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11) * p[i + 3] / 255; p[i] = 255; p[i + 1] = 32; p[i + 2] = 64; p[i + 3] = lum > 127 ? 255 : 0; }
+    x.putImageData(id, 0, 0);
+    paintZone(d, L => { L.ctx.clearRect(0, 0, L.canvas.width, L.canvas.height); L.ctx.drawImage(t, -L.x, -L.y); }, 'Masque chargé', 'mask');
   }
-  // Le calque de zone / croquis est masqué une fois servi (il reste là, on peut le réafficher et recommencer)
-  const finish = (layer, roleL) => {
-    const d = D();
-    if (roleL && d && KS.prefs.hideAfterGen !== false) { roleL.visible = false; roleL.touch(); d.changed(); KS.emit('layers', d); }
-    restoreFG();
-    return layer;
+  async function pickBatch() {
+    const files = await N.openDialog({ title: 'Images à traiter', multi: true, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+    if (!files || !files.length) return;
+    OUT.batch = [];
+    for (const f of files) OUT.batch.push({ name: f.name, canvas: await KS.io.canvasFromEntry(f) });
+    renderI2IHead();
+  }
+  function renderI2IHead() {
+    const box = els.i2ihead; if (!box) return;
+    const d = D(), m = FX.i2iMode;
+    const modes = tabs(I2I_MODES, m, v => { FX.i2iMode = v; save(); if (!['inpaint', 'inpaint_upload'].includes(v)) restoreFG(); renderI2IHead(); renderParams(); }, '.fx-modes');
+    const tools = [];
+    const col = () => ui.colorChip(U.hex(KS.state.fg), hex => KS.setFG(U.parseHex(hex)), 'Couleur du croquis');
+    if (m === 'sketch' || m === 'inpaint_sketch') tools.push(tbtn('🖌 Pinceau', () => paintOn('sketch'), '.primary'), tbtn('Gomme', () => paintOn('sketch', true)), tbtn('Effacer le croquis', () => clearRole('sketch')), col());
+    else if (m === 'inpaint') tools.push(tbtn('🖌 Peindre le masque', () => paintOn('zone'), '.primary'), tbtn('Gomme', () => paintOn('zone', true)), tbtn('Effacer', () => clearRole('zone')),
+      tbtn('Inverser', invertZone), d && d.selection.active ? tbtn('Sélection → masque', selectionToZone) : null);
+    else if (m === 'inpaint_upload') tools.push(tbtn('Charger un masque…', uploadMask, '.primary'), tbtn('Effacer', () => clearRole('zone')), tbtn('Inverser', invertZone));
+    else if (m === 'batch') tools.push(tbtn('Choisir des images…', pickBatch, '.primary'), h('span.fx-info', { text: OUT.batch.length ? OUT.batch.length + ' image(s) : ' + OUT.batch.slice(0, 4).map(b => b.name).join(', ') + (OUT.batch.length > 4 ? '…' : '') : 'Aucune image choisie' }),
+      OUT.batch.length ? tbtn('Vider', () => { OUT.batch = []; renderI2IHead(); }) : null);
+    const docInfo = m === 'batch' ? null : h('span.fx-docinfo', { text: d ? `Image : ${d.name} (${d.width} × ${d.height})` : 'Aucune image ouverte' }, tbtn('Ouvrir une image…', () => C.open()));
+    box.replaceChildren(modes, h('div.fx-i2itools', ...tools.filter(Boolean), h('div.spacer'), docInfo), h('div.fx-help', { text: I2I_HELP[m] }));
+  }
+
+  /* ---------------------------------------------------------------- sorties (galerie de Forge) */
+  async function toItems(r, kind, p) {
+    let info = {};
+    try { info = r.info ? (typeof r.info === 'string' ? JSON.parse(r.info) : r.info) : {}; } catch { /* rien */ }
+    const infos = info.infotexts || [];
+    // grille en tête : celle des scripts (X/Y/Z, Prompt matrix) ou celle de Forge dès qu'il y a plusieurs images
+    const n = p ? (+p.batch_size || 1) * (+p.n_iter || 1) : 0, count = (r.images || []).length;
+    const grids = n && count > n ? count - n : p && /x\/y\/z plot|prompt matrix/.test(p.script_name || '') ? 1 : 0;
+    const items = [];
+    for (let i = 0; i < (r.images || []).length; i++) {
+      const bytes = r.images[i], canvas = await fromPng(bytes);
+      items.push({ canvas, bytes, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })), info: infos[i] || infos[infos.length - 1] || '', kind, grid: i < grids && r.images.length > 1 });
+    }
+    if (info.seed != null) lastSeed[kind === 'img2img' ? 'i2i' : 't2i'] = info.seed;
+    return items;
+  }
+  const releaseItems = o => { for (const it of o.items || []) if (it.url && !SD.gallery.some(g => g.url === it.url)) URL.revokeObjectURL(it.url); };
+  function pushGallery(items) {
+    for (const it of items) {
+      const t = U.canvas(Math.max(1, Math.round(it.canvas.width * 220 / Math.max(it.canvas.width, it.canvas.height))), Math.max(1, Math.round(it.canvas.height * 220 / Math.max(it.canvas.width, it.canvas.height))));
+      t.getContext('2d').drawImage(it.canvas, 0, 0, t.width, t.height);
+      SD.gallery.unshift({ id: U.uid(), canvas: it.canvas, info: it.info, kind: it.kind, time: Date.now(), thumb: t.toDataURL('image/jpeg', 0.82) });
+    }
+    if (SD.gallery.length > 120) SD.gallery.length = 120;
+    renderGallery();
+  }
+  const outKey = () => FX.tab === 'img2img' ? 'i2i' : FX.tab === 'extras' ? 'ex' : 't2i';
+  const selItem = (key = outKey()) => { const o = OUT[key]; return o.items[o.sel] || null; };
+  const docName = it => (it.info || 'Image IA').split('\n')[0].replace(/<[^>]+>|[\\/:*?"<>|]/g, '').trim().slice(0, 40) || 'Image IA';
+  const openItem = it => {
+    const d = new KS.Doc({ name: docName(it), width: it.canvas.width, height: it.canvas.height });
+    d.addLayer(new KS.Layer({ name: 'Image IA', canvas: U.copyCanvas(it.canvas) }), 0);
+    d.genInfo = it.info; d.dirty = false; KS.addDoc(d); return d;
+  };
+  const addAsLayer = it => {
+    const d = D(); if (!d) return KS.toast('Aucun document ouvert', 'info');
+    KS.io.placeCanvas(d, it.canvas.width === d.width && it.canvas.height === d.height ? U.copyCanvas(it.canvas) : scaled(it.canvas, d.width, d.height), 'Image IA', { x: 0, y: 0 });
+    KS.toast('Ajoutée en calque à « ' + d.name + ' »', 'ok', 1500);
+  };
+  async function saveItem(it) {
+    if (!it) return;
+    const p = await N.saveDialog({ title: 'Enregistrer l\'image', defaultPath: docName(it).replace(/[^\w\- ]+/g, '').slice(0, 40) + '.png', filters: [{ name: 'PNG', extensions: ['png'] }] });
+    if (p) { await N.writeFile(p, it.bytes || await pngBytes(it.canvas)); KS.toast('Enregistrée', 'ok', 1200); }
+  }
+  async function saveAll(items) {
+    if (!items.length) return;
+    const t = Date.now();
+    const r = await N.saveFiles('Dossier où enregistrer les images', await Promise.all(items.map(async (it, i) => ({ name: `kanevas-${t}-${i}.png`, data: it.bytes || await pngBytes(it.canvas) }))));
+    if (r && r.ok) KS.toast(r.written.length + ' image(s) enregistrée(s)', 'ok');
+  }
+  // « Send to » de Forge : l'image et ses paramètres passent à un autre onglet
+  function applyInfoTo(k, textInfo, { size = true } = {}) {
+    if (!textInfo) return;
+    const I = KS.png.parseInfo(textInfo), P = I.params, st = FX[k];
+    st.prompt = I.prompt; st.negative_prompt = I.negative;
+    if (P.Steps) st.steps = +P.Steps;
+    if (P.Sampler) st.sampler_name = P.Sampler;
+    if (P['Schedule type']) st.scheduler = P['Schedule type'];
+    if (P['CFG scale']) st.cfg_scale = +P['CFG scale'];
+    const sh = P['Distilled CFG Scale'] || P.Shift; if (sh) st.distilled_cfg_scale = +sh;
+    if (P.Seed) st.seed = +P.Seed;
+    if (P['Variation seed']) { st.seedExtra = true; st.subseed = +P['Variation seed']; st.subseed_strength = +(P['Variation seed strength'] || 0); }
+    if (size && P.Size) { const [w, hh] = P.Size.split('x').map(Number); if (w && hh) { st.width = w; st.height = hh; if ('autoSize' in st) st.autoSize = false; } }
+    if (k === 't2i') {
+      if (P['Hires upscale']) { st.enable_hr = true; st.hr_scale = +P['Hires upscale']; if (P['Denoising strength']) st.denoising_strength = +P['Denoising strength']; }
+      if (P['Hires upscaler']) st.hr_upscaler = P['Hires upscaler'];
+      if (P['Hires steps']) st.hr_second_pass_steps = +P['Hires steps'];
+    } else if (P['Denoising strength']) st.denoising_strength = +P['Denoising strength'];
+    save();
+  }
+  function sendTo(target, it) {
+    if (!it) return KS.toast('Aucune image', 'info');
+    if (target === 'extras') { OUT.exSrc = { canvas: it.canvas, name: docName(it) }; FX.tab = 'extras'; save(); return render(); }
+    if (target === 'txt2img') { applyInfoTo('t2i', it.info); FX.tab = 'txt2img'; save(); return render(); }
+    openItem(it);
+    applyInfoTo('i2i', it.info, { size: false });
+    FX.i2i.autoSize = true; FX.i2iMode = target === 'inpaint' ? 'inpaint' : 'img2img';
+    FX.tab = 'img2img'; save(); render();
+  }
+  function readParams(k) {
+    const st = FX[k];
+    if (/\bSteps: \d+/.test(st.prompt)) { applyInfoTo(k, st.prompt); render(); return KS.toast('Paramètres lus depuis l\'invite', 'ok', 1500); }
+    const it = selItem(k) || OUT[k].items[0];
+    if (!it || !it.info) return KS.toast('Aucune génération encore', 'info');
+    applyInfoTo(k, it.info, { size: k === 't2i' }); render();
+    KS.toast('Paramètres de la dernière génération repris', 'ok', 1500);
+  }
+  function outButtons(key, it) {
+    const sub = key === 'i2i' ? 'img2img-images' : key === 'ex' ? 'extras-images' : 'txt2img-images';
+    const items = OUT[key].items;
+    return h('div.fx-outbtns',
+      ebtn('📂', key === 'ex' ? 'Ouvrir le dossier des images (output\\kanevas)' : 'Ouvrir le dossier des images (output\\' + sub + ' de Forge)', () => key === 'ex' ? N.openOutputs() : N.openForgeOutput(sub)),
+      ebtn('💾', 'Enregistrer cette image sous…', () => saveItem(it)),
+      ebtn('🗃️', 'Enregistrer toutes ces images dans un dossier…', () => saveAll(items)),
+      ebtn('🖼️', key === 'i2i' ? 'Repartir de ce résultat dans img2img (nouveau document)' : 'Envoyer vers img2img', () => sendTo('img2img', it)),
+      ebtn('🎨️', 'Envoyer vers Inpaint', () => sendTo('inpaint', it)),
+      ebtn('📐', 'Envoyer vers Extras', () => sendTo('extras', it)),
+      key === 't2i' ? ebtn('✨', 'Agrandir cette image avec le hires fix (réglages de « Hires. fix »)', () => upscaleHires(it)) : null,
+      h('span.fx-sep'),
+      tbtn('Ouvrir dans l\'éditeur', () => { if (!it) return; openItem(it); C.toggleStudio(false); }, '', 'Nouveau document, retour à l\'édition'),
+      key !== 'i2i' ? tbtn('Ajouter en calque', () => it && addAsLayer(it), '', 'Au document ouvert') : null);
+  }
+  function progressBox() {
+    const bar = h('i'), txt = h('span', { text: 'En attente de Forge…' }), img = h('img.fx-live', { alt: '', hidden: true });
+    Object.assign(els, { progBar: bar, progTxt: txt, progImg: img });
+    return { box: h('div.fx-prog', h('div.fx-prog-bar', bar), txt), img };
+  }
+  function renderOut() {
+    const box = els.right; if (!box || FX.tab !== 'txt2img') return;
+    const o = OUT.t2i, it = o.items[o.sel];
+    const view = h('div.fx-view');
+    if (BUSY && BUSY.k === 't2i') { const p = progressBox(); view.append(p.box, p.img); }
+    else if (it) { const im = h('img', { src: it.url, alt: '', title: 'Double-clic : ouvrir dans l\'éditeur' }); im.addEventListener('dblclick', () => { openItem(it); C.toggleStudio(false); }); view.append(im); }
+    else view.append(h('div.fx-ph', { html: KS.icon('image') }));
+    const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '' }); t.addEventListener('click', () => { o.sel = i; renderOut(); }); return t; })) : null;
+    fillEl(box, view, thumbs, outButtons('t2i', it), it && it.info ? h('div.fx-outinfo', { text: it.info + (o.time ? `\n\nTime taken: ${o.time}` : '') }) : null);
+  }
+  function renderStrip() {
+    const box = els.strip; if (!box) return;
+    const o = OUT.i2i, it = o.items[o.sel];
+    if (BUSY && BUSY.k === 'i2i') { const p = progressBox(); box.replaceChildren(h('div.fx-strip-prog', p.img, p.box)); return; }
+    if (!o.items.length) { box.replaceChildren(); return; }
+    const thumbs = h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: 'Résultat ' + (i + 1) }); t.addEventListener('click', () => { o.sel = i; renderStrip(); }); return t; }));
+    const info = it && it.info ? h('div.fx-outinfo.fx-oneline', { text: it.info.replace(/\n/g, '  ·  '), title: it.info }) : null;
+    fillEl(box, h('div.fx-strip-row', thumbs, outButtons('i2i', it)), info);
+  }
+
+  /* ---------------------------------------------------------------- génération */
+  let BUSY = null, progTimer = null, tickBusy = false;
+  async function tick() {
+    if (tickBusy || !BUSY) return; tickBusy = true;
+    try {
+      const r = await N.forgeProgress(url(), FX.livePreview !== false);
+      if (r && r.ok && BUSY && els.progTxt) {
+        const p = Math.max(0, Math.min(1, r.progress || 0));
+        els.progBar.style.width = Math.round(p * 100) + '%';
+        els.progTxt.textContent = (BUSY.label ? BUSY.label + ' · ' : '') + Math.round(p * 100) + '%' + (r.eta > 0 ? ` ETA: ${Math.round(r.eta)}s` : '') + (r.steps ? ` · step ${r.step || 0}/${r.steps}` : '');
+        if (r.image) { if (els.progImg._u) URL.revokeObjectURL(els.progImg._u); els.progImg._u = URL.createObjectURL(new Blob([r.image], { type: 'image/png' })); els.progImg.src = els.progImg._u; els.progImg.hidden = false; }
+      }
+    } catch { /* rien */ } finally { tickBusy = false; }
+  }
+  const refreshBusy = k => { renderGenButtons(k); if (k === 't2i') renderOut(); else if (k === 'i2i') renderStrip(); else if (k === 'ex') renderExOut(); };
+  async function runForge(k, call) {
+    BUSY = { k, t0: performance.now() };
+    refreshBusy(k);
+    progTimer = setInterval(tick, 700);
+    try { return await call(); }
+    finally {
+      clearInterval(progTimer);
+      if (els.progImg && els.progImg._u) URL.revokeObjectURL(els.progImg._u);
+      const dt = ((performance.now() - BUSY.t0) / 1000).toFixed(1) + ' sec.';
+      BUSY = null; OUT[k] && (OUT[k].time = dt);
+      refreshBusy(k);
+    }
+  }
+  const interrupt = () => { if (!BUSY) return; BUSY.stopping = true; N.forgeInterrupt(url()); renderGenButtons(kOf(FX.tab)); };
+  const skip = () => { if (BUSY) N.forgeSkip(url()); };
+  let warnedFr = false;
+  async function english(t) {
+    if (!t || FX.translate === false || !G.looksFrench(t)) return t;
+    const tags = [];
+    const body = t.replace(/<[^>]+>/g, m => { tags.push(m); return ' '; }).replace(/\s{2,}/g, ' ').trim();
+    const en = await G.toEnglish(body, true);
+    if (en == null) { if (!warnedFr) KS.toast('Invite envoyée en français : Forge risque de dessiner autre chose.', 'info', 5000); warnedFr = true; return t; }
+    return [en, tags.join(' ')].filter(Boolean).join(' ');
+  }
+  async function payloadFor(k, st) {
+    const p = {
+      prompt: await english(st.prompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
+      sampler_name: st.sampler_name, scheduler: st.scheduler, steps: +st.steps, width: +st.width, height: +st.height, n_iter: +st.n_iter, batch_size: +st.batch_size,
+      cfg_scale: +st.cfg_scale, distilled_cfg_scale: +st.distilled_cfg_scale, seed: +st.seed, save_images: FX.saveImages !== false, send_images: true, alwayson_scripts: {},
+    };
+    if (st.seedExtra) Object.assign(p, { subseed: +st.subseed, subseed_strength: +st.subseed_strength, seed_resize_from_w: +st.seed_resize_from_w, seed_resize_from_h: +st.seed_resize_from_h });
+    if (st.refiner && st.refiner_checkpoint && st.refiner_checkpoint !== 'None') Object.assign(p, { refiner_checkpoint: st.refiner_checkpoint, refiner_switch_at: +st.refiner_switch_at, refiner_cfg: +st.refiner_cfg });
+    if (k === 't2i' && st.enable_hr) Object.assign(p, {
+      enable_hr: true, hr_upscaler: st.hr_upscaler, hr_second_pass_steps: +st.hr_second_pass_steps, denoising_strength: +st.denoising_strength, hr_scale: +st.hr_scale,
+      hr_resize_x: +st.hr_resize_x, hr_resize_y: +st.hr_resize_y, hr_distilled_cfg: +st.hr_distilled_cfg, hr_cfg: +st.hr_cfg,
+      hr_checkpoint_name: st.hr_checkpoint_name || 'Use same checkpoint', hr_additional_modules: st.hr_additional_modules && st.hr_additional_modules.length ? st.hr_additional_modules : ['Use same choices'],
+      // « Use same … » : l'interface de Forge les traduit, son API non (« bad sampler name »)
+      hr_sampler_name: st.hr_sampler_name && st.hr_sampler_name !== 'Use same sampler' ? st.hr_sampler_name : undefined,
+      hr_scheduler: st.hr_scheduler && st.hr_scheduler !== 'Use same scheduler' ? st.hr_scheduler : undefined, hr_prompt: await english(st.hr_prompt), hr_negative_prompt: await english(st.hr_negative_prompt),
+    });
+    if (st.ad.enabled) {
+      const units = [];
+      for (const u of st.ad.units) if (u.ad_tab_enable && u.ad_model && u.ad_model !== 'None') units.push({ ...u, ad_prompt: await english(u.ad_prompt), ad_negative_prompt: await english(u.ad_negative_prompt) });
+      if (units.length) p.alwayson_scripts.ADetailer = { args: [true, k === 'i2i' && !!st.ad.skip, ...units] };
+    }
+    if (st.noom.unet || st.noom.vae) p.alwayson_scripts['Never OOM Integrated'] = { args: [!!st.noom.unet, !!st.noom.vae] };
+    if (k === 'i2i') {
+      if (st.md.enabled) p.alwayson_scripts['MultiDiffusion Integrated'] = { args: [true, st.md.method, +st.md.tw, +st.md.th, +st.md.overlap, +st.md.batch] };
+      if (st.soft.enabled && INPAINT_MODES.includes(FX.i2iMode)) p.alwayson_scripts['Soft inpainting'] = { args: [true, +st.soft.bias, +st.soft.preserve, +st.soft.contrast, +st.soft.influence, +st.soft.diffThr, +st.soft.diffContrast] };
+    }
+    const sc = st.script !== 'None' && cat && cat.scripts.find(s => s.name === st.script && s.img2img === (k === 'i2i'));
+    if (sc) {
+      const vals = st.scriptArgs[sc.name] || [];
+      const INDEX = { 'x/y/z plot': [0, 3, 6], 'sd upscale': [1] }[sc.name] || [];
+      p.script_name = sc.name;
+      p.script_args = sc.args.map((a, i) => {
+        let v = vals[i] !== undefined ? vals[i] : a.value;
+        if (sc.name === 'x/y/z plot' && i === 18) v = true;            // valeurs tapées en texte, comme « Use text inputs instead of dropdowns »
+        if (sc.name === 'x/y/z plot' && [2, 5, 8].includes(i)) v = [];
+        if (INDEX.includes(i) && a.choices) v = Math.max(0, a.choices.indexOf(v));
+        if (typeof a.value === 'number' && v !== '' && v != null) v = +v;
+        return v == null ? '' : v;
+      });
+    }
+    return p;
+  }
+  async function generate(k) {
+    if (BUSY) return KS.toast('Une génération est déjà en cours', 'info');
+    if (!(await ensureCat())) return;
+    const st = FX[k];
+    try {
+      const p = await payloadFor(k, st);
+      if (k === 't2i') await runT2I(p);
+      else await runI2I(p, st);
+    } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 7000); }
+  }
+  async function runT2I(p, firstpass) {
+    const r = await runForge('t2i', () => N.forgeTxt2img(url(), p, firstpass));
+    if (!r.ok) throw new Error(r.error);
+    const items = await toItems(r, 'txt2img', p);
+    if (!items.length) throw new Error('Forge n\'a renvoyé aucune image (génération interrompue ?)');
+    releaseItems(OUT.t2i);
+    OUT.t2i.items = items; OUT.t2i.sel = 0;
+    renderOut(); pushGallery(items.filter(i => !i.grid));
+  }
+  // ✨ de Forge : la même image, refaite avec le hires fix (image de première passe)
+  async function upscaleHires(it) {
+    if (!it || BUSY) return;
+    if (!(await ensureCat())) return;
+    const st = FX.t2i;
+    try {
+      const p = await payloadFor('t2i', { ...st, enable_hr: true, n_iter: 1, batch_size: 1 });
+      const I = KS.png.parseInfo(it.info);
+      if (I.params.Seed) p.seed = +I.params.Seed;
+      p.width = it.canvas.width; p.height = it.canvas.height; p.script_name = undefined; p.script_args = undefined;
+      await runT2I(p, it.bytes || await pngBytes(it.canvas));
+    } catch (e) { KS.toast('Agrandissement impossible : ' + e.message, 'err', 7000); }
+  }
+  const maskCanvas = alpha => {
+    const m = U.canvas(alpha.width, alpha.height), x = m.getContext('2d');
+    x.drawImage(alpha, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, m.width, m.height);
+    x.globalCompositeOperation = 'destination-over'; x.fillStyle = '#000'; x.fillRect(0, 0, m.width, m.height);
+    return m;
+  };
+  const MODE_NAMES = { img2img: 'img2img', sketch: 'Sketch', inpaint: 'Inpaint', inpaint_sketch: 'Inpaint sketch', inpaint_upload: 'Inpaint upload' };
+  const i2iSize = (st, w, hh) => st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : st.autoSize ? fitDoc({ width: w, height: hh }) : { w: +st.width, h: +st.height };
+  async function runI2I(p, st) {
+    const mode = FX.i2iMode;
+    Object.assign(p, { resize_mode: +st.resize_mode, denoising_strength: +st.denoising_strength });
+    if (mode === 'batch') return runBatch(p, st);
+    const d = D(); if (!d) return KS.toast('Ouvrez une image (ou envoyez-en une depuis txt2img avec 🖼️)', 'info', 4000);
+    const keepSketch = mode === 'sketch' || mode === 'inpaint_sketch';
+    let mask = null, roleL = null;
+    if (INPAINT_MODES.includes(mode)) {
+      const role = mode === 'inpaint_sketch' ? 'sketch' : 'zone';
+      roleL = roleLayer(d, role);
+      let alpha = roleL && roleL.visible !== false ? layerAlpha(d, roleL) : null;
+      if (alpha && !U.alphaBounds(alpha, 8)) alpha = null;
+      if (!alpha && role === 'zone' && d.selection.active) alpha = U.copyCanvas(d.selection.mask);
+      if (!alpha) return KS.toast(role === 'zone' ? 'Peignez d\'abord le masque (« Peindre le masque ») ou faites une sélection' : 'Peignez d\'abord en couleur ce qui doit changer', 'info', 4500);
+      if (role === 'sketch') { const g = U.blurCanvas(alpha, 6), gx = g.getContext('2d'); gx.drawImage(alpha, 0, 0); alpha = g; }
+      mask = maskCanvas(alpha);
+      Object.assign(p, { mask_blur: +st.mask_blur, inpainting_mask_invert: +st.inpainting_mask_invert, inpainting_fill: +st.inpainting_fill, inpaint_full_res: +st.inpaint_full_res, inpaint_full_res_padding: +st.inpaint_full_res_padding });
+    } else if (mode === 'sketch') roleL = roleLayer(d, 'sketch');
+    const init = sourceFor(d, keepSketch);
+    const sz = i2iSize(st, init.width, init.height); p.width = sz.w; p.height = sz.h;
+    const initB = await pngBytes(init), maskB = mask ? await pngBytes(mask) : null;
+    const r = await runForge('i2i', () => N.forgeImg2img(url(), p, initB, maskB));
+    if (!r.ok) throw new Error(r.error);
+    const items = await toItems(r, 'img2img', p);
+    if (!items.length) throw new Error('Forge n\'a renvoyé aucune image (génération interrompue ?)');
+    releaseItems(OUT.i2i);
+    OUT.i2i.items = items; OUT.i2i.sel = 0;
+    const imgs = items.filter(i => !i.grid);
+    if (imgs.length && KS.state.docs.includes(d)) {
+      const variants = imgs.map(i => i.canvas.width === d.width && i.canvas.height === d.height ? i.canvas : scaled(i.canvas, d.width, d.height));
+      G.addGenLayer(d, { variants, rect: { x: 0, y: 0, w: d.width, h: d.height }, infos: imgs.map(i => i.info) }, null,
+        { name: MODE_NAMES[mode] + ' : ' + (st.prompt.replace(/<[^>]+>/g, '').trim().slice(0, 32) || '…'), hist: MODE_NAMES[mode], noMask: true, icon: 'sparkles' });
+      if (roleL && KS.prefs.hideAfterGen !== false) { roleL.visible = false; roleL.touch(); d.changed(); KS.emit('layers', d); }
+      restoreFG();
+    }
+    renderStrip(); pushGallery(imgs);
+  }
+  async function runBatch(p, st) {
+    if (!OUT.batch.length) return KS.toast('Choisissez d\'abord des images (« Choisir des images… »)', 'info');
+    const all = [];
+    await runForge('i2i', async () => {
+      for (let i = 0; i < OUT.batch.length; i++) {
+        if (BUSY && BUSY.stopping) break;
+        const b = OUT.batch[i], sz = i2iSize(st, b.canvas.width, b.canvas.height);
+        BUSY.label = `Image ${i + 1} / ${OUT.batch.length}`;
+        const r = await N.forgeImg2img(url(), { ...p, width: sz.w, height: sz.h }, await pngBytes(b.canvas), null);
+        if (!r.ok) throw new Error(r.error);
+        all.push(...await toItems(r, 'img2img', p));
+      }
+    });
+    releaseItems(OUT.i2i);
+    OUT.i2i.items = all; OUT.i2i.sel = 0; renderStrip(); pushGallery(all.filter(i => !i.grid));
+    KS.toast(all.length + ' image(s) traitée(s)' + (FX.saveImages !== false ? ' : dans output\\img2img-images de Forge' : ''), 'ok', 4000);
+  }
+
+  /* ---------------------------------------------------------------- Extras */
+  function extrasTab() {
+    const ex = FX.ex, src = OUT.exSrc, d = D();
+    const zone = h('div.fx-dropzone', src ? h('img', { src: src.canvas.toDataURL('image/png'), alt: '' }) : h('div', { text: 'Déposer l\'image ici, ou cliquer pour en choisir une' }));
+    zone.addEventListener('click', async () => {
+      const files = await N.openDialog({ title: 'Image à agrandir', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+      if (files && files[0]) { OUT.exSrc = { canvas: await KS.io.canvasFromEntry(files[0]), name: files[0].name }; render(); }
+    });
+    dropTo(zone, async f => { OUT.exSrc = { canvas: await KS.io.canvasFromEntry(f), name: f.name }; render(); });
+    const srcBtns = h('div.fx-outbtns', tbtn('Image du document', () => { if (!d) return KS.toast('Aucun document ouvert', 'info'); OUT.exSrc = { canvas: d.composite(), name: d.name }; render(); }),
+      src ? h('span.fx-info', { text: `${src.name} · ${src.canvas.width} × ${src.canvas.height}` }) : null);
+    const ups = ['None', ...(cat ? cat.upscalers : [])];
+    const sizeTabs = tabs([['by', 'Scale by'], ['to', 'Scale to']], ex.mode, v => { ex.mode = v; save(); render(); }, '.fx-subtabs');
+    const sizeBody = ex.mode === 'to'
+      ? h('div.fx-col', row2(slider('Width', ex, 'w', 64, 8192, 8), slider('Height', ex, 'h', 64, 8192, 8)), check('Crop to fit', ex, 'crop'))
+      : h('div.fx-col', slider('Resize', ex, 'resize', 1, 8, 0.05), src ? h('div.fx-info', { text: `${src.canvas.width}x${src.canvas.height} → ${Math.round(src.canvas.width * ex.resize)}x${Math.round(src.canvas.height * ex.resize)}` }) : null);
+    const left = h('div.fx-left',
+      tabs([['single', 'Single Image'], ['batch', 'Batch Process']], ex.batch ? 'batch' : 'single', v => { ex.batch = v === 'batch'; save(); render(); }),
+      ex.batch
+        ? h('div.fx-panel', tbtn('Choisir des images…', async () => { const files = await N.openDialog({ title: 'Images à agrandir', multi: true, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] }); if (files && files.length) { OUT.exBatch = files; render(); } }, '.primary'),
+          h('div.fx-info', { text: OUT.exBatch && OUT.exBatch.length ? OUT.exBatch.length + ' image(s) : ' + OUT.exBatch.map(f => f.name).slice(0, 5).join(', ') : 'Aucune image choisie' }))
+        : h('div.fx-panel', zone, srcBtns),
+      h('div.fx-panel', h('div.fx-acc.open.active', h('div.fx-acc-h', h('span.fx-acc-t', { text: 'Upscale' })), h('div.fx-acc-b', sizeTabs, sizeBody,
+        row2(select('Upscaler 1', ups, ex, 'up1'), select('Upscaler 2', ups, ex, 'up2')), slider('Upscaler 2 visibility', ex, 'vis2', 0, 1, 0.001)))));
+    els.genbox = h('div.fx-genbox');
+    const right = h('div.fx-out', els.genbox, h('div.fx-exout'));
+    els.exOut = right.lastChild;
+    const wrap = h('div.fx-gen', h('div.fx-cols', left, right));
+    renderExGen(); renderExOut();
+    return wrap;
+  }
+  function renderExGen() {
+    if (!els.genbox || FX.tab !== 'extras') return;
+    if (BUSY) { const i = h('button.fx-interrupt', { text: 'Interrupt' }); i.addEventListener('click', interrupt); els.genbox.replaceChildren(i); return; }
+    const b = h('button.fx-generate', { text: 'Generate' }); b.addEventListener('click', runExtras); els.genbox.replaceChildren(b);
+  }
+  function renderExOut() {
+    renderExGen();
+    const box = els.exOut; if (!box || FX.tab !== 'extras') return;
+    const o = OUT.ex, it = o.items[o.sel];
+    const view = h('div.fx-view');
+    if (BUSY && BUSY.k === 'ex') { const p = progressBox(); view.append(p.box); }
+    else if (it) view.append(h('img', { src: it.url, alt: '' }));
+    else view.append(h('div.fx-ph', { html: KS.icon('upscale') }));
+    const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '' }); t.addEventListener('click', () => { o.sel = i; renderExOut(); }); return t; })) : null;
+    fillEl(box, view, thumbs, outButtons('ex', it), it ? h('div.fx-outinfo', { text: `${it.canvas.width} × ${it.canvas.height}` + (it.info ? '\n' + it.info : '') + (o.time ? `\nTime taken: ${o.time}` : '') }) : null);
+  }
+  const stamp = () => { const t = new Date(), p = n => String(n).padStart(2, '0'); return `${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}`; };
+  async function runExtras() {
+    if (BUSY) return;
+    const ex = FX.ex;
+    const sources = ex.batch ? await Promise.all((OUT.exBatch || []).map(async f => ({ canvas: await KS.io.canvasFromEntry(f), name: f.name }))) : OUT.exSrc ? [OUT.exSrc] : [];
+    if (!sources.length) return KS.toast(ex.batch ? 'Choisissez d\'abord des images' : 'Choisissez d\'abord une image', 'info');
+    if (!(await ensureCat())) return;
+    const payload = { resize_mode: ex.mode === 'to' ? 1 : 0, upscaling_resize: +ex.resize, upscaling_resize_w: +ex.w, upscaling_resize_h: +ex.h, upscaling_crop: !!ex.crop,
+      upscaler_1: ex.up1, upscaler_2: ex.up2, extras_upscaler_2_visibility: +ex.vis2, show_extras_results: true };
+    const items = [];
+    try {
+      await runForge('ex', async () => {
+        for (let i = 0; i < sources.length; i++) {
+          if (BUSY && BUSY.stopping) break;
+          BUSY.label = sources.length > 1 ? `Image ${i + 1} / ${sources.length}` : '';
+          const r = await N.forgeUpscale(url(), payload, await pngBytes(sources[i].canvas));
+          if (!r.ok) throw new Error(r.error);
+          const canvas = await fromPng(r.image);
+          items.push({ canvas, bytes: r.image, url: URL.createObjectURL(new Blob([r.image], { type: 'image/png' })), info: String(r.info || '').replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim(), kind: 'extras' });
+          if (FX.saveImages !== false && N.saveOutput) N.saveOutput('extras', `${stamp()}-${i}.png`, r.image).catch(() => {});
+        }
+      });
+    } catch (e) { KS.toast('Extras : ' + e.message, 'err', 6000); }
+    if (items.length) { releaseItems(OUT.ex); OUT.ex.items = items; OUT.ex.sel = 0; renderExOut(); pushGallery(items); }
+  }
+  function dropTo(el, fn) {
+    el.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); el.classList.add('over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', async e => {
+      e.preventDefault(); e.stopPropagation(); el.classList.remove('over');
+      const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (!f) return;
+      fn({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) });
+    });
+  }
+
+  /* ---------------------------------------------------------------- PNG Info */
+  async function loadPng(entry) {
+    const data = entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data);
+    const chunks = await KS.png.readText(data);
+    const canvas = await KS.io.canvasFromEntry({ name: entry.name, data });
+    OUT.png = { canvas, name: entry.name, text: chunks.parameters || '', chunks, bytes: data };
+    render();
+  }
+  function pngTab() {
+    const o = OUT.png, d = D();
+    const zone = h('div.fx-dropzone', o ? h('img', { src: o.canvas.toDataURL('image/png'), alt: '' }) : h('div', { text: 'Déposer une image ici, ou cliquer pour en choisir une' }));
+    zone.addEventListener('click', async () => {
+      const files = await N.openDialog({ title: 'Image à lire', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
+      if (files && files[0]) loadPng(files[0]);
+    });
+    dropTo(zone, loadPng);
+    const fromDoc = tbtn('Image du document', () => { if (!d) return KS.toast('Aucun document ouvert', 'info'); OUT.png = { canvas: d.composite(), name: d.name, text: d.genInfo || '', chunks: d.genInfo ? { parameters: d.genInfo } : {} }; render(); });
+    const it = o && { canvas: o.canvas, info: o.text, bytes: o.bytes };
+    const others = o ? Object.entries(o.chunks).filter(([k2]) => k2 !== 'parameters') : [];
+    const right = h('div.fx-out',
+      h('div.fx-outinfo.fx-pnginfo', { text: o ? (o.text || 'Aucun paramètre de génération dans cette image.') + others.map(([k2, v]) => `\n\n${k2}:\n${v}`).join('') : 'Les paramètres de génération de l\'image (Prompt, Negative prompt, Steps, Sampler…) apparaîtront ici.' }),
+      h('div.fx-outbtns', ...[['txt2img', 'Send to txt2img'], ['img2img', 'Send to img2img'], ['inpaint', 'Send to inpaint'], ['extras', 'Send to extras']].map(([t, l]) => {
+        const b = tbtn(l, () => { if (!o) return; if (t === 'txt2img' && !o.text) return KS.toast('Aucun paramètre à envoyer', 'info'); sendTo(t, it); }); b.disabled = !o; return b;
+      }), o && o.text ? tbtn('Copier', () => { navigator.clipboard.writeText(o.text); KS.toast('Copié', 'ok', 900); }) : null));
+    return h('div.fx-gen', h('div.fx-cols', h('div.fx-left', h('div.fx-panel', zone, h('div.fx-outbtns', fromDoc))), right));
+  }
+
+  /* ---------------------------------------------------------------- Settings */
+  function settingsTab() {
+    const E = KS.engine;
+    const pane = (title, ...kids) => h('div.fx-panel', h('div.fx-h', { text: title }), ...kids);
+    return h('div.fx-settings',
+      pane('Moteur IA (Forge)',
+        h('div.fx-info', { text: !E ? 'Indisponible dans cette version.' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS (déjà lancé) : Kanevas l\'utilise.' : 'Moteur démarré par Kanevas, profil ' + (E.profile || 'Kane OS') + '. Il s\'arrête quand vous quittez Kanevas.') : E.state === 'starting' ? 'Démarrage…' : E.state === 'error' ? 'Erreur : ' + E.error : 'Arrêté.' }),
+        E ? h('div.fx-outbtns', tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary'), tbtn('Arrêter', () => E.stop()), tbtn('Journal…', () => E.showLog && E.showLog()), tbtn('Profil…', () => E.pickProfile && E.pickProfile())) : null,
+        check('Démarrer le moteur automatiquement quand il le faut', { v: KS.prefs.engineAuto !== false }, 'v', '', v => { KS.prefs.engineAuto = v; KS.prefs.save(); })),
+      pane('Génération',
+        check('Traduire en anglais les invites écrites en français (modèle local Opus-MT)', FX, 'translate', 'Forge et anima ne comprennent que l\'anglais'),
+        check('Enregistrer les images comme Forge (dossiers output\\txt2img-images, img2img-images…)', FX, 'saveImages', 'Avec leurs paramètres (PNG Info), comme l\'interface de Forge'),
+        check('Aperçu en direct pendant la génération', FX, 'livePreview'),
+        check('Masquer le calque Zone IA / Croquis IA après une génération', { v: KS.prefs.hideAfterGen !== false }, 'v', '', v => { KS.prefs.hideAfterGen = v; KS.prefs.save(); })),
+      pane('Dossiers',
+        h('div.fx-outbtns', tbtn('Images de Forge (output)', () => N.openForgeOutput('')), tbtn('Images d\'Extras (output\\kanevas)', () => N.openOutputs())),
+        h('div.fx-info', { text: cat && cat.dirs ? 'Forge : ' + cat.dirs.data : 'Forge : dossier lu au premier démarrage du moteur.' })));
+  }
+
+  /* ---------------------------------------------------------------- galerie du dock (espace Édition) */
+  let galleryRoot = null;
+  function renderGallery() {
+    if (!galleryRoot) return;
+    galleryRoot.innerHTML = '';
+    const head = h('div.ga-head', h('span', { text: SD.gallery.length ? SD.gallery.length + ' image(s) cette session' : 'Les images générées apparaîtront ici.' }), h('div.spacer'),
+      N && N.openForgeOutput ? ui.iconBtn('folder-open', 'Ouvrir le dossier des images de Forge', () => N.openForgeOutput(''), '.sm') : null);
+    const grid = h('div.ga-grid');
+    for (const it of SD.gallery) {
+      const cell = h('button.ga-cell', h('img', { src: it.thumb, alt: '', title: (it.info || '').split('\n')[0].slice(0, 160) }), h('span.ga-k', { text: it.kind }));
+      cell.addEventListener('click', () => {
+        const r = cell.getBoundingClientRect();
+        ui.menu([
+          { label: 'Ouvrir dans un nouveau document', icon: 'file-plus', action: () => openItem(it) },
+          { label: 'Ajouter comme calque', icon: 'layers', action: () => addAsLayer(it), disabled: !D() },
+          { label: 'Envoyer vers img2img (Studio IA)', icon: 'adjust', action: async () => { await C.toggleStudio(true); sendTo('img2img', it); } },
+          { label: 'Réutiliser ces réglages (txt2img)', icon: 'history', action: async () => { await C.toggleStudio(true); sendTo('txt2img', it); }, disabled: !it.info },
+          { label: 'Copier', icon: 'copy', action: async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': await U.blobFromCanvas(it.canvas) })]); KS.toast('Copié', 'ok', 900); } catch (er) { KS.toast(er.message, 'err'); } } },
+        ], r.left, r.bottom + 4);
+      });
+      grid.appendChild(cell);
+    }
+    galleryRoot.append(head, grid);
+  }
+  KS.panels.register('gallery', { title: 'Galerie', build(el) { galleryRoot = h('div.ga'); el.appendChild(galleryRoot); renderGallery(); } });
+  // Résultats des commandes de l'espace Édition (remplissage génératif…) : galerie et enregistrement
+  G.onResults = async (res, job) => {
+    const kind = job.txt ? 'txt2img' : job.mask ? 'inpaint' : 'img2img';
+    const items = res.variants.map((c, i) => ({ canvas: c, info: (res.infos || [])[i] || '', kind }));
+    pushGallery(items);
+    if (KS.prefs.autoSave !== false && N && N.saveOutput) for (let i = 0; i < items.length; i++) {
+      try { let bytes = await pngBytes(items[i].canvas); if (items[i].info) bytes = KS.png.writeText(bytes, 'parameters', items[i].info); await N.saveOutput(kind, `${stamp()}-${i}.png`, bytes); } catch { /* facultatif */ }
+    }
   };
 
-  /* ---------------------------------------------------------------- paramètres Forge supplémentaires */
-  // hires fix, refiner, graine de variation, nombre de lots ; scripts : soft inpainting, Never OOM
+  /* ---------------------------------------------------------------- paramètres des commandes de l'espace Édition */
+  // (Nouvelle image, Image → image… du panneau IA du dock) : hires fix, refiner, lots, variation, Never OOM, soft inpainting
   G.extraParams = (st, kind) => {
     const p = {};
     const bc = U.clamp(+st.batchCount || 1, 1, 16); if (bc > 1) p.n_iter = bc;
@@ -120,131 +1253,20 @@
     return s;
   };
 
-  /* ---------------------------------------------------------------- galerie */
-  // Chaque résultat de Forge : vignette, infotexte, et enregistrement automatique (C:\KaneOS\output\kanevas)
-  const stamp = () => { const t = new Date(), p = n => String(n).padStart(2, '0'); return `${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}`; };
-  G.onResults = async (res, job) => {
-    const kind = job.txt ? 'txt2img' : job.mask ? 'inpaint' : 'img2img';
-    for (let i = 0; i < res.variants.length; i++) {
-      const c = res.variants[i], info = (res.infos || [])[i] || '';
-      const item = { id: U.uid(), canvas: c, info, kind, time: Date.now(), thumb: '' };
-      const t = U.canvas(Math.max(1, Math.round(c.width * 220 / Math.max(c.width, c.height))), Math.max(1, Math.round(c.height * 220 / Math.max(c.width, c.height))));
-      t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
-      item.thumb = t.toDataURL('image/jpeg', 0.82);
-      SD.gallery.unshift(item);
-      if (KS.prefs.autoSave !== false && N && N.saveOutput) {
-        try {
-          let bytes = await pngBytes(c);
-          if (info) bytes = KS.png.writeText(bytes, 'parameters', info);
-          const r = await N.saveOutput(kind, `${stamp()}-${i}.png`, bytes);
-          if (r.ok) item.path = r.path;
-        } catch { /* enregistrement facultatif */ }
-      }
-    }
-    if (SD.gallery.length > 120) SD.gallery.length = 120;
-    renderGallery();
-  };
-  let galleryRoot = null;
-  function renderGallery() {
-    if (!galleryRoot) return;
-    galleryRoot.innerHTML = '';
-    const head = h('div.ga-head', h('span', { text: SD.gallery.length ? SD.gallery.length + ' image(s) cette session' : 'Les images générées apparaîtront ici.' }), h('div.spacer'),
-      ui.check('Enregistrer automatiquement', KS.prefs.autoSave !== false, v => { KS.prefs.autoSave = v; KS.prefs.save(); }, 'Dans output\\kanevas de Kane OS (à côté des sorties de Forge), avec les paramètres (PNG Info)'),
-      N && N.openOutputs ? ui.iconBtn('folder-open', 'Ouvrir le dossier des images', () => N.openOutputs(), '.sm') : null);
-    const grid = h('div.ga-grid');
-    for (const it of SD.gallery) {
-      const im = h('img', { src: it.thumb, alt: '', title: (it.info || '').split('\n')[0].slice(0, 160) });
-      const cell = h('button.ga-cell', im, h('span.ga-k', { text: it.kind }));
-      cell.addEventListener('click', e => {
-        const r = cell.getBoundingClientRect();
-        ui.menu([
-          { label: 'Ouvrir dans un nouveau document', icon: 'file-plus', action: () => openItem(it) },
-          { label: 'Ajouter comme calque', icon: 'layers', action: () => addItemLayer(it), disabled: !D() },
-          { label: 'Transformer cette image', icon: 'adjust', action: () => { openItem(it); setMode('transform'); } },
-          { label: 'Réutiliser ces réglages', icon: 'history', action: () => it.info && G.applyInfo(it.info), disabled: !it.info },
-          { label: 'Copier', icon: 'copy', action: async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': await U.blobFromCanvas(it.canvas) })]); KS.toast('Copié', 'ok', 900); } catch (er) { KS.toast(er.message, 'err'); } } },
-          { label: 'Infos de génération…', icon: 'info', action: () => { const d = openItem(it); if (d) C.pngInfo(); }, disabled: !it.info },
-        ], r.left, r.bottom + 4);
-      });
-      cell.draggable = true;
-      grid.appendChild(cell);
-    }
-    galleryRoot.append(head, grid);
-  }
-  const openItem = it => {
-    const d = new KS.Doc({ name: (it.info || 'Image IA').split('\n')[0].replace(/<[^>]+>|[\\/:*?"<>|]/g, '').replace(/^newest, year 2026, safe,\s*/i, '').slice(0, 40) || 'Image IA', width: it.canvas.width, height: it.canvas.height });
-    d.addLayer(new KS.Layer({ name: 'Image IA', canvas: U.copyCanvas(it.canvas) }), 0);
-    d.genInfo = it.info; d.dirty = false; KS.addDoc(d); return d;
-  };
-  const addItemLayer = it => { const d = D(); const c = U.canvas(d.width, d.height); c.getContext('2d').drawImage(it.canvas, 0, 0, d.width, d.height); KS.io.placeCanvas ? KS.io.placeCanvas(d, c, 'Image IA', { x: 0, y: 0 }) : null; };
-  KS.panels.register('gallery', { title: 'Galerie', build(el) { galleryRoot = h('div.ga'); el.appendChild(galleryRoot); renderGallery(); } });
-
-  /* ---------------------------------------------------------------- barre de modes */
-  let bar = null;
-  const setMode = m => { SD.mode = m; KS.prefs.studioMode = m; KS.prefs.save(); if (m !== 'inpaint') restoreFG(); renderBar(); };
-  function modeTools() {
-    const st = settings(), d = D();
-    const sc = (label, value, min, max, step, unit, key, scale = 1) => ui.scrub({ label, value: Math.round(value * scale * 100) / 100, min, max, step, unit, onInput: v => G.saveSettings({ [key]: v / scale }) });
-    switch (SD.mode) {
-      case 'create': return [
-        ui.seg([['doc', 'Nouveau document'], ['layer', 'Calque du document']], KS.prefs.createInto || 'doc', v => { KS.prefs.createInto = v; KS.prefs.save(); }),
-        h('span.sb-dim', { text: `${st.size.w} × ${st.size.h}` + (st.hr.enabled ? ` → hires ×${st.hr.scale}` : '') })];
-      case 'transform': return [sc('Force', st.i2iStrength, 5, 100, 1, '%', 'i2iStrength', 100)];
-      case 'inpaint': return [
-        ui.btn('Peindre la zone', () => paintOn('zone'), '.small.primary', 'brush'), ui.btn('Gomme', () => paintOn('zone', true), '.small', 'eraser'),
-        ui.btn('Effacer', () => clearRole('zone'), '.small', 'trash'), ui.btn('Inverser', invertZone, '.small', 'select-invert'),
-        d && d.selection.active ? ui.btn('Sélection → zone', selectionToZone, '.small', 'marquee-rect') : null,
-        sc('Force', st.strength, 30, 100, 1, '%', 'strength', 100)];
-      case 'sketch': return [
-        ui.btn('Peindre le croquis', () => paintOn('sketch'), '.small.primary', 'pencil'), ui.btn('Gomme', () => paintOn('sketch', true), '.small', 'eraser'),
-        ui.btn('Effacer', () => clearRole('sketch'), '.small', 'trash'),
-        sc('Force', st.sketchStrength, 30, 100, 1, '%', 'sketchStrength', 100)];
-      case 'upscale': return [ui.seg([['1.5', '× 1,5'], ['2', '× 2'], ['3', '× 3']], String(st.md.factor), v => G.saveSettings({ md: { ...settings().md, factor: +v } })),
-        sc('Force', st.md.denoise, 5, 70, 1, '%', 'md', 100)];
-    }
-    return [];
-  }
-  function renderBar() {
-    if (!bar) return;
-    const st = settings();
-    const modes = h('div.sb-modes', ...MODES.map(([id, label, icon]) => {
-      const b = h('button.sb-mode' + (SD.mode === id ? '.on' : ''), h('span', { html: KS.icon(icon) }), h('span', { text: label }));
-      b.addEventListener('click', () => setMode(id)); return b;
-    }));
-    const help = h('div.sb-help', { text: MODES.find(m => m[0] === SD.mode)[3] });
-    const gen = h('button.sb-gen', h('span', { html: KS.icon('sparkles') }), h('span', { text: 'Générer' }));
-    gen.addEventListener('click', generate);
-    const count = ui.scrub({ label: 'Lots', value: st.batchCount || 1, min: 1, max: 16, onInput: v => G.saveSettings({ batchCount: v }), title: 'Nombre de lots (chaque lot = « Variantes » images)' });
-    const stop = ui.iconBtn('close', 'Interrompre la génération', () => N.forgeInterrupt(G.url()), '.sm');
-    const skip = N.forgeSkip ? ui.iconBtn('chevron-right', 'Passer à l\'image suivante du lot', () => N.forgeSkip(G.url()), '.sm') : null;
-    bar.replaceChildren(h('div.sb-row', modes, h('div.spacer'), count, stop, skip, gen), h('div.sb-row.sb-tools', ...modeTools().filter(Boolean), h('div.spacer'), help));
-  }
-  async function generate() {
-    const p = (KS.state.lastPrompt || '').trim();
-    switch (SD.mode) {
-      case 'create': return (KS.prefs.createInto || 'doc') === 'doc' || !D() ? C.newImageDoc(p) : C.generateImage(p);
-      case 'transform': return C.img2imgDoc(p);
-      case 'inpaint': return paintedGenerate('inpaint');
-      case 'sketch': return paintedGenerate('sketch');
-      case 'upscale': return C.upscaleDetail();
-    }
-  }
-  C.studioGenerate = generate;
-
   /* ---------------------------------------------------------------- bascule Édition ⇄ Studio IA */
+  C.studioGenerate = () => FX.tab === 'extras' ? runExtras() : generate(kOf(FX.tab));
   C.toggleStudio = async (on = !SD.on) => {
+    if (on === SD.on && root) return;
     SD.on = on;
     document.body.classList.toggle('studio', on);
-    const aside = KS.$('#studio');
     if (on) {
-      if (!bar) { bar = h('div#studio-bar'); KS.$('#center').prepend(bar); }
-      KS.genPanel.mount(aside);
-      renderBar();
-      KS.panels.focus('gallery');
-      if (KS.engine) KS.engine.ensure({ quiet: true }).then(ok => ok && KS.genPanel.reload());
+      mountPage(); render();
+      if (KS.engine) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && !cat) loadCat(); else if (ok) renderTop(); });
+      else loadCat();
     } else {
-      KS.genPanel.unmount();
-      restoreFG();
+      park(); restoreFG();
+      document.body.classList.remove('fx-i2i');
+      if (root) { root.replaceChildren(); root.className = ''; }
     }
     KS.prefs.studio = on; KS.prefs.save();
     switchBtns.forEach(b => b.classList.toggle('on', (b.dataset.v === 'studio') === on));
@@ -263,6 +1285,9 @@
     box.prepend(sw);
     if (KS.prefs.studio) setTimeout(() => C.toggleStudio(true), 300);
   });
-  for (const ev of ['selection', 'doc']) KS.on(ev, U.debounce(() => { if (SD.on) renderBar(); }, 100));
-  KS.on('studio-settings', () => { if (SD.on) renderBar(); });
+  KS.on('engine', E => { if (!SD.on) return; renderTop(); if (E.ready() && !cat && !loading) loadCat(); });
+  let lastDocId = null;
+  const onDoc = U.debounce(() => { if (!SD.on || FX.tab !== 'img2img') return; renderI2IHead(); const d = D(); if (d && d.id !== lastDocId) { lastDocId = d.id; refit(); } if (FX.i2i.autoSize) renderParams(); }, 120);
+  for (const ev of ['doc', 'selection']) KS.on(ev, onDoc);
+  document.addEventListener('keydown', e => { if (SD.on && BUSY && e.key === 'Escape' && !e.defaultPrevented) interrupt(); });
 })();

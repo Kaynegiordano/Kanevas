@@ -79,6 +79,7 @@
     E.refresh();
   });
   setInterval(() => { if (!document.hidden) E.refresh(); }, 15000);
+  E.showLog = showLog; E.pickProfile = pickProfile;
   KS.cmd.engineStart = () => E.ensure();
   KS.cmd.engineStop = () => E.stop();
 })();
