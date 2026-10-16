@@ -14,7 +14,7 @@
   async function loadCatalog() {
     if (!N || !N.forgeCatalog || loading) return;
     loading = true; render();
-    const r = await N.forgeCatalog(S().url);
+    const r = await N.forgeCatalog(G.url());
     loading = false;
     if (r.ok) { cat = r; catErr = ''; for (const l of cat.loras) if (l.preview) l.url = URL.createObjectURL(new Blob([l.preview], { type: 'image/jpeg' })); }
     else { cat = null; catErr = r.error; }
@@ -24,7 +24,7 @@
   // sections repliables, état mémorisé
   const section = (title, ...kids) => {
     const open = KS.prefs.gpOpen || (KS.prefs.gpOpen = {});
-    const closedByDefault = /ADetailer|MultiDiffusion|direct|Modèle|taille/i.test(title);
+    const closedByDefault = /ADetailer|MultiDiffusion|direct|Modèle|taille|Hires|Refiner|Mémoire|Lots/i.test(title);
     const isOpen = open[title.split(' ')[0]] ?? !closedByDefault;
     const d = h('details.gp-sec', { open: isOpen }, h('summary.gp-h', { text: title }), ...kids);
     d.addEventListener('toggle', () => { open[title.split(' ')[0]] = d.open; KS.prefs.save(); });
@@ -233,23 +233,75 @@
       h('div.note', { text: 'Graine fixe d\'un rendu à l\'autre (bouton ↻ de la fenêtre pour en changer).' }));
   }
 
+  /* ---------------------------------------------------------------- sections Forge du Studio */
+  function hrBlock() {
+    const st = G.studio(), hr = st.hr, seth = (k, v) => { set('hr', { ...G.studio().hr, [k]: v }); KS.emit('studio-settings'); };
+    const ups = [['', 'Latent'], ...['Latent (antialiased)', 'Latent (bicubic)', 'Latent (nearest-exact)'].map(n => [n, n]), ...((cat && cat.upscalers) || []).map(n => [n, n])];
+    return section('Hires fix (Créer)',
+      h('div.gp-row.gp-wide', ui.check('Activer le hires fix', !!hr.enabled, v => seth('enabled', v), 'Deuxième passe agrandie : plus de détails')),
+      row('Agrandir', ui.scrub({ value: hr.scale, min: 1, max: 3, step: 0.05, onInput: v => seth('scale', v) })),
+      row('Agrandisseur', select(ups, hr.upscaler, v => seth('upscaler', v))),
+      row('Étapes', ui.scrub({ value: hr.steps, min: 0, max: 80, onInput: v => seth('steps', v), title: '0 = autant que la première passe' })),
+      row('Force', ui.scrub({ value: Math.round(hr.denoise * 100), min: 5, max: 100, unit: '%', onInput: v => seth('denoise', v / 100) })),
+      row('CFG', ui.scrub({ value: hr.cfg || 0, min: 0, max: 15, step: 0.5, onInput: v => seth('cfg', v), title: '0 = même CFG' })));
+  }
+  function refinerBlock() {
+    const st = G.studio(), rf = st.refiner;
+    return section('Refiner',
+      row('Modèle', select([['', 'Aucun'], ...cat.models.map(m => [m.title, norm(m.title)])], rf.model, v => set('refiner', { ...G.studio().refiner, model: v }))),
+      row('Bascule à', ui.scrub({ value: Math.round(rf.at * 100), min: 10, max: 95, unit: '%', onInput: v => set('refiner', { ...G.studio().refiner, at: v / 100 }) })));
+  }
+  function batchBlock() {
+    const st = G.studio();
+    const vs = h('input.field.gp-seed', { type: 'text', value: st.varSeed ?? -1 });
+    vs.addEventListener('change', () => { const v = parseInt(vs.value, 10); set('varSeed', isNaN(v) ? -1 : v); }); vs.addEventListener('keydown', e => e.stopPropagation());
+    return section('Lots et variation',
+      row('Lots', ui.scrub({ value: st.batchCount || 1, min: 1, max: 16, onInput: v => { set('batchCount', v); KS.emit('studio-settings'); }, title: 'Nombre de lots à la suite' })),
+      row('Images / lot', ui.seg([['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], String(st.count), v => set('count', +v))),
+      row('Variation', ui.scrub({ value: Math.round((st.varStrength || 0) * 100), min: 0, max: 100, unit: '%', onInput: v => set('varStrength', v / 100), title: 'Graine de variation : de petites différences autour de la même image' })),
+      row('Graine var.', vs));
+  }
+  function inpaintBlock() {
+    const st = G.studio();
+    return section('Retouche (inpainting)',
+      row('Contenu masqué', select([['1', 'Original'], ['0', 'Remplir'], ['2', 'Bruit latent'], ['3', 'Rien (latent)']], String(st.inpaintFill), v => set('inpaintFill', +v))),
+      row('Zone de travail', select([['zone', 'Zone seule + marge'], ['whole', 'Image entière']], st.inpaintArea, v => set('inpaintArea', v))),
+      row('Marge', ui.scrub({ value: st.inpaintPad, min: 16, max: 512, step: 8, unit: 'px', onInput: v => set('inpaintPad', v) })),
+      row('Flou du masque', ui.scrub({ value: st.maskBlur, min: 0, max: 64, unit: 'px', onInput: v => set('maskBlur', v) })),
+      row('Force croquis', ui.scrub({ value: Math.round(st.sketchStrength * 100), min: 30, max: 100, unit: '%', onInput: v => set('sketchStrength', v / 100) })),
+      h('div.gp-row.gp-wide', ui.check('Soft inpainting', !!st.softInpaint, v => set('softInpaint', v), 'Raccord progressif entre la zone et le reste'),
+        ui.check('Masquer le calque de zone après', KS.prefs.hideAfterGen !== false, v => { KS.prefs.hideAfterGen = v; KS.prefs.save(); })));
+  }
+  function memBlock() {
+    const st = G.studio();
+    return section('Mémoire vidéo',
+      h('div.gp-row.gp-wide', ui.check('Never OOM (déchargement et VAE par tuiles)', !!st.neverOom, v => set('neverOom', v), 'Plus lent, mais évite les manques de mémoire sur les grandes images')),
+      h('div.note', { text: 'Moteur : ' + (KS.engine ? (KS.engine.ready() ? (KS.engine.ours ? 'démarré par Kanevas' : 'Forge de Kane OS') : 'arrêté') : '—') }));
+  }
+
   function render() {
     if (!root) return;
-    const box = root.closest('.pbody') || root, scroll = box.scrollTop;
+    const box = root.closest('.pbody') || root.closest('#studio') || root, scroll = box.scrollTop;
     root.innerHTML = '';
-    const head = h('div.gp-status', h('span.gp-dot' + (cat ? '.ok' : '')), h('span', { text: loading ? 'Lecture de Forge…' : cat ? 'Forge : ' + norm(cat.current.model) : (catErr || 'Forge non joint') + ' — lancez Forge depuis Kane OS' }),
+    const studio = !!(KS.studio && KS.studio.on);
+    const eng = KS.engine, engOff = eng && !eng.ready();
+    const statusTxt = loading ? 'Lecture du moteur…' : cat ? 'Modèle : ' + norm(cat.current.model) : eng && eng.state === 'starting' ? 'Moteur IA en cours de démarrage…' : engOff ? 'Moteur IA arrêté' : (catErr || 'Moteur non joint');
+    const head = h('div.gp-status', h('span.gp-dot' + (cat ? '.ok' : '')), h('span', { text: statusTxt }),
+      !cat && eng && eng.state !== 'starting' ? ui.btn('Démarrer', () => eng.ensure().then(ok => ok && loadCatalog()), '.small.primary', 'sparkles') : null,
       h('div.spacer'), ui.iconBtn('info', 'Infos de génération (PNG Info)', () => C.pngInfo(), '.sm'), ui.iconBtn('layers', 'Atelier LoRA (fabriquer un LoRA)', () => C.loraStudio(), '.sm'),
       ui.iconBtn('history', 'Relire Forge (modèles, LoRA)', () => loadCatalog(), '.sm'));
     root.appendChild(head);
     if (!N || !N.forgeCatalog) { root.appendChild(h('div.note', { text: 'La génération n\'est disponible que dans l\'application de bureau.' })); return; }
-    if (!cat) { root.append(promptBlock(), actions()); box.scrollTop = scroll; return; }
-    root.append(promptBlock(), actions(), presetBlock(), loraBlock(), modelBlock(), samplingBlock(), sizeBlock(), adBlock(), mdBlock(), liveBlock());
+    if (!cat) { root.append(promptBlock(), studio ? null : actions()); box.scrollTop = scroll; return; }
+    if (studio) root.append(promptBlock(), presetBlock(), loraBlock(), modelBlock(), samplingBlock(), batchBlock(), sizeBlock(), hrBlock(), inpaintBlock(), adBlock(), refinerBlock(), mdBlock(), liveBlock(), memBlock());
+    else root.append(promptBlock(), actions(), presetBlock(), loraBlock(), modelBlock(), samplingBlock(), sizeBlock(), adBlock(), mdBlock(), liveBlock());
     box.scrollTop = scroll;
   }
 
+  let dockRoot = null;
   KS.panels.register('generate', {
     title: 'IA',
-    build(el) { root = h('div.gp'); el.appendChild(root); render(); loadCatalog(); },
+    build(el) { dockRoot = root = h('div.gp'); el.appendChild(root); render(); loadCatalog(); },
     show() {
       // le panneau a besoin de place : son groupe est agrandi s'il est petit
       const Gp = KS.panels.groups.find(x => x.panes.generate);
@@ -257,7 +309,11 @@
       if (root && !cat && !loading) loadCatalog();
     },
   });
-  KS.genPanel = { render, reload: loadCatalog };
+  // Studio IA : le panneau passe dans la colonne de gauche, puis revient dans le dock
+  const mount = el => { root = h('div.gp.gp-studio'); el.replaceChildren(root); render(); if (!cat) loadCatalog(); };
+  const unmount = () => { root = dockRoot; if (root) render(); };
+  KS.genPanel = { render, reload: loadCatalog, mount, unmount };
+  KS.on('engine', E => { if (E.ready() && !cat && !loading && root) loadCatalog(); else if (root && !cat) render(); });
   for (const ev of ['selection', 'doc']) KS.on(ev, U.debounce(() => { if (root && KS.panels.isVisible('generate')) { const a = root.querySelector('.gp-actions'); if (a) a.replaceWith(actions()); } }, 80));
   C.openGenPanel = () => KS.panels.focus('generate');
 })();

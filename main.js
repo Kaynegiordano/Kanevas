@@ -478,7 +478,123 @@ ipcMain.handle('forge-progress', forgeHandler(async (base, withImage) => {
 ipcMain.handle('forge-unload', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/unload-checkpoint', {}, 60000); return {}; }));
 ipcMain.handle('forge-refresh-loras', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/refresh-loras', {}, 60000); return {}; }));
 ipcMain.handle('forge-pnginfo', forgeHandler(async (base, png) => { const r = await forgeCall(base, '/sdapi/v1/png-info', { image: 'data:image/png;base64,' + b64(png) }, 20000); return { info: r && r.info, items: r && r.items }; }));
+ipcMain.handle('forge-skip', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/skip', {}, 4000); return {}; }));
 ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/interrupt', {}, 4000); return {}; }));
+
+/* ------------------------------------------------------------------ moteur IA (Forge sans interface) */
+// Le Studio IA est autonome : Kanevas démarre lui-même le moteur de Forge (launch.py, --nowebui, port 7862)
+// avec le profil de Kane OS (arguments --sage --highvram… --model-ref). Si le Forge de Kane OS tourne déjà
+// (port 7860), il est réutilisé : jamais deux copies des modèles en mémoire vidéo.
+const ENGINE_PORT = 7862;
+const engine = { state: 'off', url: '', pid: null, ours: false, log: [], error: '', profile: '', startedAt: 0 };
+const engineLog = line => { engine.log.push(line); if (engine.log.length > 400) engine.log.splice(0, engine.log.length - 400); };
+const engineEmit = () => { if (win) win.webContents.send('engine-status', engineStatus()); };
+const engineStatus = () => ({ state: engine.state, url: engine.url, ours: engine.ours, pid: engine.pid, error: engine.error, profile: engine.profile, tail: engine.log.slice(-12), uptime: engine.startedAt ? Date.now() - engine.startedAt : 0 });
+const ping = async (url, ms = 1500) => { try { const r = await fetch(url + '/sdapi/v1/options', { signal: AbortSignal.timeout(ms) }); return r.ok; } catch { return false; } };
+function engineDirs() {
+  loadDirs();
+  const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
+  const root = path.dirname(data);
+  let profiles = [];
+  try { profiles = JSON.parse(fs.readFileSync(path.join(root, 'launcher', 'data', 'webui_profiles.json'), 'utf8')); } catch { /* pas de Kane OS */ }
+  const models = (forgeDirs && forgeDirs.models) || path.join(root, 'models');
+  return { data, profiles, models };
+}
+ipcMain.handle('engine-status', async () => {
+  // Forge de Kane OS démarré entre-temps ?
+  if (engine.state === 'off' && await ping('http://127.0.0.1:7860', 800)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; }
+  else if (engine.state === 'external' && !(await ping(engine.url, 800))) { engine.state = 'off'; engine.url = ''; }
+  return engineStatus();
+});
+ipcMain.handle('engine-profiles', () => { const d = engineDirs(); return { data: d.data, profiles: d.profiles.map(p => ({ id: p.id, name: p.name, args: p.args })) }; });
+ipcMain.handle('engine-start', async (_e, profileId) => {
+  if (engine.state === 'ready' || engine.state === 'starting') return engineStatus();
+  if (await ping('http://127.0.0.1:7860', 1200)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; engine.ours = false; engineEmit(); return engineStatus(); }
+  // moteur resté actif (Kanevas fermé brutalement) : on le reprend, il pourra être arrêté
+  if (await ping('http://127.0.0.1:' + ENGINE_PORT, 1200)) { engine.state = 'ready'; engine.url = 'http://127.0.0.1:' + ENGINE_PORT; engine.ours = true; engine.pid = pidOnPort(ENGINE_PORT); engineEmit(); return engineStatus(); }
+  const d = engineDirs();
+  const py = path.join(d.data, 'venv', 'Scripts', 'python.exe');
+  if (!fs.existsSync(py) || !fs.existsSync(path.join(d.data, 'launch.py'))) { engine.state = 'error'; engine.error = 'Forge introuvable : ' + d.data; engineEmit(); return engineStatus(); }
+  const prof = d.profiles.find(p => p.id === profileId) || d.profiles[0];
+  let args = prof ? prof.args : `--api --model-ref "${d.models.replace(/\\/g, '/')}"`;
+  args = args.replace(/--port\s+\d+/g, '').replace(/--nowebui/g, '').replace(/--listen/g, '').replace(/--server-name\s+\S+/g, '') + ` --nowebui --port ${ENGINE_PORT} --server-name 127.0.0.1 --skip-prepare-environment`;   // joignable seulement depuis ce PC
+  engine.profile = prof ? prof.name : 'par défaut';
+  engine.log = []; engine.error = ''; engine.state = 'starting'; engine.ours = true; engine.startedAt = Date.now();
+  engine.url = 'http://127.0.0.1:' + ENGINE_PORT;
+  engineLog('> ' + args);
+  const child = require('child_process').spawn(py, ['launch.py'], {
+    cwd: d.data, windowsHide: true,
+    env: { ...process.env, COMMANDLINE_ARGS: args, SD_WEBUI_RESTARTING: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
+  });
+  engine.pid = child.pid;
+  const onData = buf => String(buf).split(/\r?\n|\r/).forEach(l => { if (l.trim()) engineLog(l.slice(0, 400)); });
+  child.stdout.on('data', onData); child.stderr.on('data', onData);
+  child.on('exit', code => {
+    if (engine.pid !== child.pid) return;
+    engine.pid = null;
+    if (engine.state !== 'off') { engine.state = code ? 'error' : 'off'; if (code) engine.error = 'Le moteur s\'est arrêté (code ' + code + ')'; }
+    engineEmit();
+  });
+  engineEmit();
+  // prêt quand l'API répond
+  (async () => {
+    const t0 = Date.now();
+    while (engine.pid === child.pid && engine.state === 'starting') {
+      if (await ping(engine.url, 1500)) { engine.state = 'ready'; engineLog('Moteur prêt en ' + Math.round((Date.now() - t0) / 1000) + ' s'); engineEmit(); return; }
+      if (Date.now() - t0 > 6 * 60 * 1000) { engine.state = 'error'; engine.error = 'Le moteur ne répond pas après 6 minutes'; engineEmit(); return; }
+      await new Promise(r => setTimeout(r, 1000));
+      if ((Date.now() - t0) % 5000 < 1000) engineEmit();
+    }
+  })();
+  return engineStatus();
+});
+// Processus qui écoute sur un port (pour arrêter un moteur repris après un plantage de Kanevas)
+function pidOnPort(port) {
+  try {
+    const out = require('child_process').execFileSync('netstat', ['-ano', '-p', 'TCP'], { windowsHide: true, encoding: 'utf8' });
+    const m = out.split(/\r?\n/).map(l => l.trim().split(/\s+/)).find(c => c[0] === 'TCP' && /:(\d+)$/.test(c[1]) && +c[1].split(':').pop() === port && c[3] === 'LISTENING');
+    return m ? +m[4] : null;
+  } catch { return null; }
+}
+function engineKill() {
+  if (!engine.ours || !engine.pid) return;
+  try { require('child_process').execFileSync('taskkill', ['/PID', String(engine.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* déjà arrêté */ }
+  engine.pid = null;
+}
+ipcMain.handle('engine-stop', () => { engineKill(); engine.state = 'off'; engine.url = ''; engine.ours = false; engineEmit(); return engineStatus(); });
+ipcMain.handle('engine-log', () => engine.log.join('\n'));
+app.on('will-quit', () => { if (!globalThis.__kvKeepEngine) engineKill(); });
+
+// Résultats enregistrés automatiquement (comme le dossier « outputs » de Forge), avec leurs paramètres.
+// Dossier : <Kane OS>\output\kanevas (à côté des sorties de Forge), sinon le dossier de données de Kanevas.
+// Jamais dans « Images » : chez beaucoup, c'est un dossier OneDrive à la demande, et la création récursive de
+// dossiers de Node y boucle sans fin (dans du code natif), ce qui figeait toute l'application.
+function outputsRoot() {
+  loadDirs();
+  const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
+  const kane = path.join(path.dirname(data), 'output');
+  return fs.existsSync(kane) ? path.join(kane, 'kanevas') : path.join(app.getPath('userData'), 'outputs');
+}
+// Crée les dossiers un par un (sans « recursive »), en tâche de fond
+async function ensureDir(dir) {
+  const parts = path.resolve(dir).split(path.sep);
+  let cur = parts.shift() + path.sep;
+  for (const p of parts) {
+    cur = path.join(cur, p);
+    try { await fs.promises.mkdir(cur); } catch (err) { if (err.code !== 'EEXIST') { const st = await fs.promises.stat(cur).catch(() => null); if (!st || !st.isDirectory()) throw err; } }
+  }
+}
+ipcMain.handle('save-output', async (_e, sub, name, data) => {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const dir = path.join(outputsRoot(), String(sub || 'images').replace(/[^\w -]/g, ''), day);
+    await ensureDir(dir);
+    const f = path.join(dir, path.basename(String(name)).replace(/[^\w .-]/g, '_'));
+    await fs.promises.writeFile(f, Buffer.from(data));
+    return { ok: true, path: f };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('open-outputs', async () => { const d = outputsRoot(); try { await ensureDir(d); } catch { /* rien */ } shell.openPath(d); });
 
 // Le renderer n'accède qu'à des copies identifiées, jamais à un chemin arbitraire.
 const recoveryStore = require('./recovery-store.cjs')(path.join(app.getPath('userData'), 'recovery'));

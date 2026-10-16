@@ -11,9 +11,18 @@
     i2iStrength: 0.5,
     ad: { enabled: false, units: [{ ...AD_UNIT }] },
     md: { factor: 1.5, upscaler: '', tile: 1024, overlap: 64, method: 'Mixture of Diffusers', denoise: 0.3, steps: 20 },
+    hr: { enabled: false, scale: 1.5, upscaler: '', steps: 0, denoise: 0.4, cfg: 0 },
+    refiner: { model: '', at: 0.8 },
+    batchCount: 1, varSeed: -1, varStrength: 0,
+    sketchStrength: 0.85, inpaintFill: 1, maskBlur: 8, inpaintPad: 96, inpaintArea: 'zone', softInpaint: false, neverOom: false,
     live: { strength: 0.6, steps: 8, size: 768 },
   };
-  G.studio = () => { const s = G.settings(); return { ...s, size: { ...DEF.size, ...s.size }, ad: { ...DEF.ad, ...s.ad }, md: { ...DEF.md, ...s.md }, live: { ...DEF.live, ...s.live }, i2iStrength: s.i2iStrength ?? DEF.i2iStrength }; };
+  G.studio = () => {
+    const s = G.settings(), o = { ...DEF };
+    for (const k in s) if (s[k] !== undefined) o[k] = s[k];
+    for (const k of ['size', 'ad', 'md', 'live', 'hr', 'refiner']) o[k] = { ...DEF[k], ...(s[k] || {}) };
+    return o;
+  };
   const pngBytes = async c => new Uint8Array(await (await U.blobFromCanvas(c)).arrayBuffer());
   const scaled = (src, w, hh, sx = 0, sy = 0, sw = src.width, sh = src.height) => {
     const c = U.canvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(hh))), x = c.getContext('2d');
@@ -50,8 +59,10 @@
       seed: st.seed != null && st.seed !== '' ? +st.seed : -1, save_images: false, send_images: true, ...pp.extra };
     if (pp.sampler) p.sampler_name = pp.sampler;
     if (pp.scheduler) p.scheduler = pp.scheduler;
+    if (G.extraParams) Object.assign(p, G.extraParams(st, kindOf(st)));
     return p;
   };
+  const kindOf = st => st._kind || 'img2img';
   const needForge = async () => {
     const f = await G.forge(true);
     if (!f) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS', 'err', 5000); return null; }
@@ -67,11 +78,12 @@
     const W = r8(st.size.w), H = r8(st.size.h);
     try {
       const pp = await G.preparePrompt(raw, forge, st);
-      const payload = basePayload(st, pp, W, H, st.count);
+      const payload = basePayload({ ...st, _kind: 'txt' }, pp, W, H, st.count);
       G.addScripts(payload, await G.scriptsFor(st, 'txt'));
       const job = { txt: true, payload, W, H, R: { x: 0, y: 0, w: W, h: H } };
+      if (payload.enable_hr) { job.outW = Math.round(W * payload.hr_scale / 8) * 8; job.outH = Math.round(H * payload.hr_scale / 8) * 8; job.R = { x: 0, y: 0, w: job.outW, h: job.outH }; }
       const res = await G.forgeRun(job); res.job = job;
-      const nd = new KS.Doc({ name: raw.replace(/[\\/:*?"<>|]/g, '').slice(0, 40) || 'Image IA', width: W, height: H });
+      const nd = new KS.Doc({ name: raw.replace(/[\\/:*?"<>|]/g, '').slice(0, 40) || 'Image IA', width: job.R.w, height: job.R.h });
       KS.addDoc(nd);
       G.addGenLayer(nd, res, null, { name: 'Image IA', prompt: raw, hist: 'Générer une image', noMask: true, index: 0, icon: 'image' });
       if (pp.shown !== raw) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 4000);
@@ -133,7 +145,7 @@
     const up = m.upscaler || (forge.upscalers || []).find(n => /ultrasharp/i.test(n)) || (forge.upscalers || [])[0] || 'Lanczos';
     try {
       const comp = d.composite();
-      const r1 = await G.task('Agrandissement (' + up + ')…', async () => N.forgeUpscale(G.settings().url, { resize_mode: 1, upscaling_resize_w: W, upscaling_resize_h: H, upscaling_crop: false, upscaler_1: up, upscaler_2: 'None', extras_upscaler_2_visibility: 0, gfpgan_visibility: 0, codeformer_visibility: 0, show_extras_results: true }, await pngBytes(comp)));
+      const r1 = await G.task('Agrandissement (' + up + ')…', async () => N.forgeUpscale(G.url(), { resize_mode: 1, upscaling_resize_w: W, upscaling_resize_h: H, upscaling_crop: false, upscaler_1: up, upscaler_2: 'None', extras_upscaler_2_visibility: 0, gfpgan_visibility: 0, codeformer_visibility: 0, show_extras_results: true }, await pngBytes(comp)));
       if (!r1.ok) throw new Error(r1.error);
       let big = await U.canvasFromBlob(new Blob([r1.image], { type: 'image/png' }));
       if (big.width !== W || big.height !== H) big = scaled(big, W, H);
@@ -209,7 +221,7 @@
   // Envoie un infotexte au panneau IA (invite, LoRA, réglages, taille, graine, modèle)
   G.applyInfo = async text => {
     const I = PNG.parseInfo(text), P = I.params;
-    let cat = null; try { cat = N && N.forgeCatalog ? await N.forgeCatalog(G.settings().url) : null; } catch { /* hors ligne */ }
+    let cat = null; try { cat = N && N.forgeCatalog ? await N.forgeCatalog(G.url()) : null; } catch { /* hors ligne */ }
     const loras = I.loras.map(l => { const c = cat && cat.ok && cat.loras.find(x => x.name === l.name || x.alias === l.name); return { name: l.name, weight: l.weight, trigger: c ? c.trigger : '' }; });
     let prompt = I.prompt.replace(/<lora:[^>]+>/g, '').replace(/^\s*newest, year 2026, safe,\s*/i, '');
     for (const l of loras) if (l.trigger) prompt = prompt.split(l.trigger.replace(/,\s*$/, '')).join('');
@@ -282,7 +294,7 @@
     try {
       const forge = await G.forge();
       if (!forge) { status.textContent = 'Forge non joint'; return; }
-      const prog = await N.forgeProgress(G.settings().url, false);
+      const prog = await N.forgeProgress(G.url(), false);
       if (prog.ok && prog.jobs > 0) { status.textContent = 'Forge occupé…'; LV.again = true; return; }
       const k = Math.min(1, st.live.size / Math.max(d.width, d.height));
       const W = r8(d.width * k), H = r8(d.height * k);
@@ -293,7 +305,7 @@
       if (payload.override_settings) payload.override_settings_restore_afterwards = false;   // pas de rechargement à chaque rendu
       status.textContent = 'Rendu…';
       const t0 = performance.now();
-      const r = await N.forgeImg2img(G.settings().url, payload, await pngBytes(scaled(d.composite(), W, H)), null);
+      const r = await N.forgeImg2img(G.url(), payload, await pngBytes(scaled(d.composite(), W, H)), null);
       if (!r.ok) throw new Error(r.error);
       const img = await U.canvasFromBlob(new Blob([r.images[r.images.length - 1]], { type: 'image/png' }));
       LV.last = { canvas: img, doc: d };

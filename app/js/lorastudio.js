@@ -21,7 +21,7 @@
 
   async function ensureForge() {
     if (!N || !N.loraCall) throw new Error('L\'atelier LoRA n\'est disponible que dans l\'application de bureau');
-    const cat = await N.forgeCatalog(G.settings().url);
+    const cat = await N.forgeCatalog(G.url());
     S.cat = cat.ok ? cat : null;
     S.forgeOff = !cat.ok;                 // Forge éteint : l'atelier marche quand même (dossiers mémorisés)
     return cat.ok ? cat : { current: { modules: [] } };
@@ -254,7 +254,7 @@
     if (!ok) return;
     try {
       await busy('Préparation (légendes manquantes, jeu de données)…', async () => {
-        if (!S.forgeOff) await N.forgeUnload(G.settings().url);
+        if (!S.forgeOff) await N.forgeUnload(G.url());
         const r = await call('start', { name: S.cur, dit: m.base_model || info.dit, qwen3: info.qwen3, vae: info.vae, sample_prompt: m.sample_prompt, sample_every: m.sample_every ?? 250 });
         toast(`Entraînement lancé : ${r.total} pas, environ ${fmtDur(r.estimate_s)}`, 'ok', 6000);
       });
@@ -272,7 +272,7 @@
   }
   async function tryLora(name) {
     try {
-      await N.forgeRefreshLoras(G.settings().url);
+      await N.forgeRefreshLoras(G.url());
       const trig = S.data.manifest.trigger || '';
       const list = G.settings().loras.filter(l => l.name !== name).concat({ name, weight: 0.8, trigger: trig });
       G.saveSettings({ loras: list });

@@ -233,7 +233,9 @@
     },
     {
       label: 'IA', items: () => [
+        { label: () => KS.studio && KS.studio.on ? 'Revenir à l\'édition' : 'Studio IA', kb: 'F6', icon: 'sparkles', action: () => C.toggleStudio() },
         { label: 'Panneau IA (modèle, LoRA, réglages)', icon: 'sparkles', action: () => C.openGenPanel() },
+        { label: () => KS.engine && KS.engine.ready() ? 'Arrêter le moteur IA' : 'Démarrer le moteur IA', icon: 'settings', action: () => KS.engine && (KS.engine.ready() ? KS.engine.stop() : KS.engine.ensure()), hidden: !KS.engine },
         { sep: true },
         { label: 'Nouvelle image (nouveau document)', kb: 'Ctrl+Alt+N', icon: 'file-plus', action: () => C.newImageDoc() },
         { label: 'Image dans un calque', icon: 'image', action: () => C.generateImage(), disabled: noDoc },

@@ -68,6 +68,7 @@
         const r = await progress();
         const p = typeof r === 'number' ? r : r && r.p;
         if (p != null) pct.textContent = Math.round(p * 100) + ' %' + (r && r.steps ? ` · étape ${r.step || 0} / ${r.steps}` : '');
+        else if (r && r.text) pct.textContent = String(r.text).slice(0, 90);
         if (r && r.image) { if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(new Blob([r.image], { type: 'image/png' })); shot.src = url; shot.hidden = false; }
       } catch { /* rien */ } finally { busy = false; }
     }, 900);
@@ -148,15 +149,18 @@
     return { prompt, negative: neg, sampler: o.sampler || pre.sampler, scheduler: o.scheduler || pre.scheduler, shown: en, extra };
   };
   let forgeCache = null;
-  G.forge = async (fresh = false) => {
+  // Adresse du moteur : celui que Kanevas démarre (engine.js), sinon l'adresse réglée à la main
+  G.url = () => (KS.engine && KS.engine.url) || G.settings().url;
+  G.forge = async (fresh = false, opts = {}) => {
     if (!N || !N.forgeStatus) return null;
     if (!fresh && forgeCache && Date.now() - forgeCache.t < 15000) return forgeCache.s;
-    const r = await N.forgeStatus(G.settings().url);
+    if (KS.engine && !opts.noStart && !(await KS.engine.ensure())) { forgeCache = { t: Date.now(), s: null, err: KS.engine.error || 'Moteur IA arrêté' }; return null; }
+    const r = await N.forgeStatus(G.url());
     forgeCache = { t: Date.now(), s: r.ok ? r : null, err: r.error };
     return forgeCache.s;
   };
   G.forgeError = () => forgeCache?.err || 'Forge n\'est pas démarré';
-  const forgeProgress = async () => { const r = await N.forgeProgress(G.settings().url, true); return r && r.ok ? { p: r.progress, step: r.step, steps: r.steps, image: r.image } : null; };
+  const forgeProgress = async () => { const r = await N.forgeProgress(G.url(), true); return r && r.ok ? { p: r.progress, step: r.step, steps: r.steps, image: r.image } : null; };
   G.forgeProgress = forgeProgress;
 
   /* ---------------------------------------------------------------- LaMa (suppression) */
@@ -211,7 +215,8 @@
     let R;
     if (whole) R = { x: 0, y: 0, w: src.width, h: src.height };
     else {
-      const pad = Math.round(Math.max(B.w, B.h) * 0.35 + 32);
+      // marge de contexte autour de la zone : réglée dans le Studio (inpaintPad), sinon 35 % de la zone
+      const pad = o.pad != null ? Math.max(16, +o.pad) : Math.round(Math.max(B.w, B.h) * 0.35 + 32);
       R = U.rectIntersect(U.rectInt({ x: B.x - pad, y: B.y - pad, w: B.w + pad * 2, h: B.h + pad * 2 }), { x: 0, y: 0, w: src.width, h: src.height });
     }
     // environ 1 mégapixel, côtés multiples de 64 (taille de travail des modèles récents)
@@ -224,9 +229,10 @@
     const payload = {
       prompt: o.prompt, negative_prompt: o.negative || '', steps: o.steps, cfg_scale: o.cfg, denoising_strength: o.strength,
       width: W, height: H, batch_size: U.clamp(o.count | 0, 1, 4), n_iter: 1, seed: o.seed != null && o.seed !== '' ? +o.seed : -1,
-      mask_blur: 12, inpainting_fill: 1, inpaint_full_res: false, inpainting_mask_invert: 0, resize_mode: 0,
+      mask_blur: o.maskBlur != null ? +o.maskBlur : 12, inpainting_fill: o.fill != null ? +o.fill : 1, inpaint_full_res: false, inpainting_mask_invert: 0, resize_mode: 0,
       save_images: false, send_images: true,
     };
+    if (G.extraParams) Object.assign(payload, G.extraParams(o, 'inpaint'));
     if (o.sampler) payload.sampler_name = o.sampler;
     if (o.scheduler) payload.scheduler = o.scheduler;
     Object.assign(payload, o.extra || {});
@@ -237,17 +243,21 @@
   G.forgeRun = async job => {
     let stop = false;
     const label = job.payload.override_settings?.sd_model_checkpoint ? 'Changement de modèle puis génération avec Forge…' : 'Génération avec Forge…';
-    const r = await G.task(label, () => job.txt ? N.forgeTxt2img(G.settings().url, job.payload) : N.forgeImg2img(G.settings().url, job.payload, job.init, job.mask),
-      { cancel: () => { stop = true; N.forgeInterrupt(G.settings().url); }, progress: N.forgeProgress ? forgeProgress : null });
+    const r = await G.task(label, () => job.txt ? N.forgeTxt2img(G.url(), job.payload) : N.forgeImg2img(G.url(), job.payload, job.init, job.mask),
+      { cancel: () => { stop = true; N.forgeInterrupt(G.url()); }, progress: N.forgeProgress ? forgeProgress : null });
     if (!r.ok) throw new Error(r.error);
     const imgs = [];
-    for (const u8 of r.images) { const c = await fromPng(u8); if (c.width === job.W && c.height === job.H) imgs.push(c); }
+    // taille attendue : celle de la requête, ou après le hires fix
+    const OW = job.outW || job.W, OH = job.outH || job.H;
+    for (const u8 of r.images) { const c = await fromPng(u8); if (c.width === OW && c.height === OH) imgs.push(c); }
     if (!imgs.length) throw new Error(stop ? 'Génération annulée' : 'Forge n\'a renvoyé aucune image');
     let infos = [];
     try { const info = r.info && JSON.parse(r.info); if (info && info.seed != null) G.lastSeed = info.seed; infos = (info && info.infotexts) || []; } catch { /* rien */ }
     // une éventuelle grille ou image de masque arrive en tête
-    const n = job.payload.batch_size || 1;
-    return { variants: imgs.slice(-n).map(c => c.width === job.R.w && c.height === job.R.h ? c : scaled(c, job.R.w, job.R.h)), rect: job.R, infos: infos.slice(-n) };
+    const n = (job.payload.batch_size || 1) * (job.payload.n_iter || 1);
+    const res = { variants: imgs.slice(-n).map(c => c.width === job.R.w && c.height === job.R.h ? c : scaled(c, job.R.w, job.R.h)), rect: job.R, infos: infos.slice(-n) };
+    if (G.onResults) G.onResults(res, job);
+    return res;
   };
 
   /* ---------------------------------------------------------------- calques générés */
@@ -394,7 +404,9 @@
       if (pp.sampler) payload.sampler_name = pp.sampler;
       if (pp.scheduler) payload.scheduler = pp.scheduler;
       if (G.scriptsFor) G.addScripts(payload, await G.scriptsFor(st, 'txt'));
+      if (G.extraParams) Object.assign(payload, G.extraParams(st, 'txt'));
       const job = { txt: true, payload, W, H, R };
+      if (payload.enable_hr) { job.outW = Math.round(W * payload.hr_scale / 8) * 8; job.outH = Math.round(H * payload.hr_scale / 8) * 8; }
       const res = await G.forgeRun(job);
       if (pp.shown !== raw) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 5000);
       res.job = job;
@@ -496,10 +508,10 @@
     const probe = U.getData(scaled(comp, Math.min(256, d.width), Math.min(256, d.height))).data;
     let alphaUsed = false; for (let i = 3; i < probe.length; i += 4) if (probe[i] < 255) { alphaUsed = true; break; }
     try {
-      const r = await G.task('Super résolution avec Forge…', async () => N.forgeUpscale(G.settings().url, {
+      const r = await G.task('Super résolution avec Forge…', async () => N.forgeUpscale(G.url(), {
         resize_mode: 0, upscaling_resize: o.factor, upscaler_1: o.model, upscaler_2: 'None', extras_upscaler_2_visibility: 0,
         gfpgan_visibility: 0, codeformer_visibility: 0, show_extras_results: true,
-      }, await pngBytes(comp)), { cancel: () => N.forgeInterrupt(G.settings().url) });
+      }, await pngBytes(comp)), { cancel: () => N.forgeInterrupt(G.url()) });
       if (!r.ok) throw new Error(r.error);
       let out = await fromPng(r.image);
       if (out.width !== W || out.height !== H) out = scaled(out, W, H);

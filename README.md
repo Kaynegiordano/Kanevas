@@ -75,6 +75,28 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
+## Studio IA autonome (1.2.0)
+- **Moteur intégré** : Kanevas démarre lui-même le moteur de Forge quand on entre dans le Studio IA ou qu'on génère
+  (`launch.py` du dossier de Forge, profil de Kane OS, `--nowebui --port 7862 --server-name 127.0.0.1`, prêt en
+  ~10 s). Si le Forge de Kane OS tourne déjà (7860), il est réutilisé. Voyant « IA » dans la barre de titre :
+  démarrer, arrêter, journal, profil (RTX 5080 / portable 8 Go), démarrage automatique. Le moteur est arrêté en
+  quittant ; un moteur resté actif après un plantage est repris et peut être arrêté.
+- **Studio IA** (bascule Édition ⇄ Studio IA dans la barre de titre, F6) : tous les réglages de Forge dans une
+  colonne à gauche, barre de modes au-dessus de l'image, galerie des résultats à droite.
+  - **Créer** : txt2img, dans un nouveau document (ou un calque).
+  - **Transformer** : img2img de toute l'image (ou de la sélection), force réglable.
+  - **Retoucher la zone peinte** : « Peindre la zone » crée le calque rouge **Zone IA** ; on peint ce qui doit
+    changer (gomme, effacer, inverser, sélection → zone), on décrit le résultat, Générer : seule la zone change.
+  - **Croquis** : « Peindre le croquis » crée le calque **Croquis IA** ; on peint grossièrement formes et couleurs,
+    Forge en fait une vraie image à cet endroit.
+  - **Agrandir** : ESRGAN puis MultiDiffusion.
+- Réglages Forge ajoutés : **hires fix** (agrandissement, agrandisseur, étapes, force, CFG), **refiner**, **lots**
+  (nombre de lots × images par lot), **graine de variation**, retouche (**contenu masqué**, zone seule + marge ou
+  image entière, flou du masque, **soft inpainting**), **Never OOM**, interrompre / passer.
+- **Galerie** : chaque image générée (vignette, ouvrir, ajouter en calque, transformer, réutiliser les réglages,
+  copier, infos) ; **enregistrement automatique** avec les paramètres dans `C:\KaneOS\output\kanevas\<type>\<date>`
+  (jamais dans Images : souvent un dossier OneDrive, où la création récursive de dossiers de Node boucle sans fin).
+
 ## Studio Forge (1.1.0)
 Kanevas pilote le Forge local comme un « mini Forge », avec en plus tout l'éditeur autour (menu **IA**, panneau **IA**).
 - **Nouvelle image** (Ctrl+Alt+N) : txt2img dans un **nouveau document** (taille, formats, « comme l'image »), l'image
@@ -189,3 +211,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.
 - **1.0.7** : génération Forge corrigée : invites en français traduites en anglais sur le PC (fini les filles au hasard), réglages adaptés au modèle anima, force 85 %, invite envoyée affichée ; jointure du développement génératif plus douce.
 - **1.1.0** : Studio Forge : nouvelle image dans un nouveau document, image → image, ADetailer (et retouche seule), agrandir et détailler (MultiDiffusion), Shift, aperçu en direct, PNG Info, IA en direct, atelier LoRA (entraîneur de Forge), découpe pour les réseaux (carrousel, grille du profil), menu IA.
+- **1.2.0** : Studio IA autonome : moteur de Forge démarré par Kanevas, espace Studio IA (Créer, Transformer, Retoucher la zone peinte, Croquis, Agrandir), hires fix, refiner, lots, graine de variation, options de retouche, soft inpainting, Never OOM, galerie et enregistrement automatique.

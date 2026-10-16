@@ -247,6 +247,7 @@
     KS.menus.attach();
     KS.panels.build();
     buildTitleActions();
+    KS.emit('ui-ready');
     buildStatus();
     attachDrop();
     T.groupCurrent = KS.prefs.groupCurrent || {};
