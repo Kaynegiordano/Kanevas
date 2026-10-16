@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('ksNative', {
   aiStatus: () => ipcRenderer.invoke('ai-status'),
   aiDownload: id => ipcRenderer.invoke('ai-download', id),
   aiSegment: (id, input) => ipcRenderer.invoke('ai-segment', id, input),
+  aiTranslate: text => ipcRenderer.invoke('ai-translate', text),
   aiWarm: id => ipcRenderer.invoke('ai-warm', id),
   aiInpaint: (rgba, mask) => ipcRenderer.invoke('ai-inpaint', rgba, mask),
   onAiProgress: fn => ipcRenderer.on('ai-progress', (_e, p) => fn(p)),

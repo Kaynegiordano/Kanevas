@@ -55,6 +55,15 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   modifiable ensuite dans Propriétés. Alt efface.
 - **Barre des tâches contextuelle** (Affichage) : sous l'image, les actions utiles selon la situation (sélection,
   calque généré et ses variantes, calque de pixels) et une invite de génération directe.
+- **Invites en français** (1.0.7) : les modèles d'image ne comprennent que l'anglais ; en français, anima dessinait
+  une fille au hasard qui remplissait la zone. L'invite est maintenant traduite sur le PC par Opus-MT fr→en
+  (Helsinki-NLP, licence CC-BY 4.0, 113 Mo téléchargés une fois, `translate.cjs`) ; la boîte affiche « Envoyé à
+  Forge : … ». Les verbes d'ordre (« ajoute », « dessine »…) sont retirés.
+- **Réglages selon le modèle actif de Forge** : pour anima, préfixe `newest, year 2026, safe`, échantillonneur ER SDE,
+  planificateur simple. Si l'invite ne demande pas de personnage, « girl, woman, man, person… » passent en négatif.
+  Force par défaut 85 % (l'objet se fond mieux dans l'image), 30 étapes, CFG 4,5, bords adoucis.
+- `KANEVAS_PROFILE=<dossier>` : lance Kanevas avec un dossier de données séparé (essais automatisés pendant que
+  l'application habituelle est ouverte).
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
@@ -144,3 +153,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.4** : retouche fluide sur les grandes images (tampon de duplication, correcteurs, pièce, flou, netteté, doigt, densité, éponge).
 - **1.0.5** : Electron 44.7.2 (correctifs de sécurité de Chromium).
 - **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.
+- **1.0.7** : génération Forge corrigée : invites en français traduites en anglais sur le PC (fini les filles au hasard), réglages adaptés au modèle anima, force 85 %, invite envoyée affichée ; jointure du développement génératif plus douce.

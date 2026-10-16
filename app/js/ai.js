@@ -10,7 +10,7 @@
   // Modèle prêt (téléchargé) ; sinon propose de le télécharger
   ai.ensureModel = async () => {
     if (!ai.available) return null;
-    const list = (await N.aiStatus()).filter(m => m.kind !== 'inpaint');
+    const list = (await N.aiStatus()).filter(m => m.kind === 'segment');
     const pref = KS.prefs.aiModel;
     const ready = list.filter(m => m.installed);
     if (ready.length) return (ready.find(m => m.id === pref) || ready[0]).id;
@@ -42,7 +42,7 @@
         ai._progress = null;
         busy = false; m.primary.disabled = false;
         if (!r.ok) { status.textContent = 'Échec : ' + r.error; return false; }
-        if (list.find(m => m.id === choice)?.kind !== 'inpaint') { KS.prefs.aiModel = choice; KS.prefs.save(); }
+        if (list.find(m => m.id === choice)?.kind === 'segment') { KS.prefs.aiModel = choice; KS.prefs.save(); }
         return true;
       } }],
       onClose: v => res(v === 'ok' ? choice : null),
@@ -124,8 +124,8 @@
     const list = await N.aiStatus();
     const body = h('div.form-col', { style: { width: '440px', gap: '10px' } },
       ...list.map(m => h('div.form-row', h('span', { text: m.name, style: { flex: '1' } }), h('span.note', { text: Math.round(m.size / 1048576) + ' Mo' }),
-        m.installed && m.kind === 'inpaint' ? h('span.note', { text: 'Installé' }) : m.installed ? ui.btn(KS.prefs.aiModel === m.id ? 'Utilisé' : 'Utiliser', () => { KS.prefs.aiModel = m.id; KS.prefs.save(); KS.toast('Modèle : ' + m.name, 'ok'); }, '.small' + (KS.prefs.aiModel === m.id ? '.primary' : ''))
-          : ui.btn('Télécharger…', async () => { md.close(); if (m.kind === 'inpaint') await ai.ensureInpaint(true); else await ai.downloadDialog([m]); }, '.small'))),
+        m.installed && m.kind !== 'segment' ? h('span.note', { text: 'Installé' }) : m.installed ? ui.btn(KS.prefs.aiModel === m.id ? 'Utilisé' : 'Utiliser', () => { KS.prefs.aiModel = m.id; KS.prefs.save(); KS.toast('Modèle : ' + m.name, 'ok'); }, '.small' + (KS.prefs.aiModel === m.id ? '.primary' : ''))
+          : ui.btn('Télécharger…', async () => { md.close(); if (m.kind === 'inpaint') await ai.ensureInpaint(true); else if (m.kind === 'translate') await KS.gen.mtReady(true); else await ai.downloadDialog([m]); }, '.small'))),
       h('div.note', { text: 'Les modèles sont rangés dans le dossier de données de Kanevas. Calcul local, rien n\'est envoyé en ligne.' }));
     const md = KS.modal({ title: 'Modèles d\'IA', body, buttons: [{ label: 'Fermer', primary: true }] });
   };

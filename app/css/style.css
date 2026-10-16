@@ -541,7 +541,7 @@ input[type=range].grad-range::-webkit-slider-runnable-track { background: transp
 .empty-note { color: var(--muted); text-align: center; padding: 18px 8px; }
 
 /* ------------------------------------------------------------ toasts */
-#toasts { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 400; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+#toasts { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); z-index: 400; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 .toast { background: var(--panel); border: 1px solid var(--border-2); color: var(--text); padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); animation: rise .15s ease-out; display: flex; gap: 10px; align-items: center; max-width: 600px; }
 .toast.err { border-color: var(--danger); }
 .toast.ok svg { color: var(--ok); }

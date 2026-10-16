@@ -7,7 +7,9 @@ const { execFile } = require('child_process');
 
 // Réutiliser les données existantes (préférences et modèles IA) après le changement de nom.
 const legacyData = ['KaneShop', 'kaneshop'].map(n => path.join(app.getPath('appData'), n)).find(p => fs.existsSync(p));
-if (legacyData) app.setPath('userData', legacyData);
+// KANEVAS_PROFILE : dossier de données séparé (essais automatisés à côté de l'application ouverte)
+if (process.env.KANEVAS_PROFILE) app.setPath('userData', process.env.KANEVAS_PROFILE);
+else if (legacyData) app.setPath('userData', legacyData);
 app.setName('Kanevas');
 if (process.platform === 'win32') app.setAppUserModelId('com.kane.kanevas');
 
@@ -159,14 +161,23 @@ ipcMain.on('show-in-folder', (_e, p) => shell.showItemInFolder(p));
 /* ------------------------------------------------------------------ IA locale */
 // Détourage : BiRefNet (licence MIT), copies publiées par le projet rembg.
 // Suppression d'objets : LaMa (licence Apache 2.0), export ONNX 512×512 de Carve.
+// Traduction des invites : Opus-MT fr-en (Helsinki-NLP, licence CC-BY 4.0), export ONNX de Xenova.
+const MT = 'https://huggingface.co/Xenova/opus-mt-fr-en/resolve/main/';
 const MODELS = {
   'birefnet-lite': { kind: 'segment', name: 'BiRefNet léger (détourage rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
   'birefnet': { kind: 'segment', name: 'BiRefNet complet (détourage, qualité maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
   'lama': { kind: 'inpaint', name: 'LaMa (outil Suppression, remplissage sans invite)', file: 'lama_fp32.onnx', size: 208044816, cpu: true, url: 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx' },
+  'translate-fr-en': { kind: 'translate', name: 'Opus-MT (traduction des invites français → anglais)', dir: 'opus-mt-fr-en', size: 112739047, files: [
+    { file: 'encoder_model_quantized.onnx', size: 50090398, url: MT + 'onnx/encoder_model_quantized.onnx' },
+    { file: 'decoder_model_quantized.onnx', size: 57010810, url: MT + 'onnx/decoder_model_quantized.onnx' },
+    { file: 'tokenizer.json', size: 5637839, url: MT + 'tokenizer.json' },
+  ] },
 };
 const MODEL_URL = m => m.url || 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/' + m.file;
 const modelDir = () => path.join(app.getPath('userData'), 'models');
-const modelPath = id => path.join(modelDir(), MODELS[id].file);
+const modelPath = id => path.join(modelDir(), MODELS[id].dir || MODELS[id].file);
+// Fichiers d'un modèle (un seul pour la plupart, plusieurs pour la traduction)
+const modelFiles = id => { const m = MODELS[id]; return m.files ? m.files.map(f => ({ ...f, path: path.join(modelPath(id), f.file) })) : [{ file: m.file, size: m.size, url: MODEL_URL(m), path: modelPath(id) }]; };
 let ort = null;
 const sessions = {};
 function loadOrt() { if (!ort) ort = require('onnxruntime-node'); return ort; }
@@ -186,35 +197,49 @@ async function session(id, cpuOnly) {
 }
 
 ipcMain.handle('ai-status', () => Object.entries(MODELS).map(([id, m]) => {
-  let installed = false; try { installed = fs.statSync(modelPath(id)).size === m.size; } catch { /* absent */ }
+  let installed = false; try { installed = modelFiles(id).every(f => fs.statSync(f.path).size === f.size); } catch { /* absent */ }
   return { id, kind: m.kind, name: m.name, size: m.size, installed };
 }));
 
 ipcMain.handle('ai-download', async (e, id) => {
   const m = MODELS[id]; if (!m) return { ok: false, error: 'Modèle inconnu' };
-  fs.mkdirSync(modelDir(), { recursive: true });
-  const part = modelPath(id) + '.part';
+  let base = 0, part = null;
   try {
-    const res = await fetch(MODEL_URL(m));
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const out = fs.createWriteStream(part);
-    let got = 0, last = 0;
-    const reader = res.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      got += value.length;
-      if (!out.write(Buffer.from(value))) await new Promise(r => out.once('drain', r));
-      if (got - last > 2e6) { last = got; e.sender.send('ai-progress', { id, got, total: m.size }); }
+    for (const f of modelFiles(id)) {
+      fs.mkdirSync(path.dirname(f.path), { recursive: true });
+      try { if (fs.statSync(f.path).size === f.size) { base += f.size; continue; } } catch { /* à télécharger */ }
+      part = f.path + '.part';
+      const res = await fetch(f.url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const out = fs.createWriteStream(part);
+      let got = 0, last = 0;
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        got += value.length;
+        if (!out.write(Buffer.from(value))) await new Promise(r => out.once('drain', r));
+        if (got - last > 2e6) { last = got; e.sender.send('ai-progress', { id, got: base + got, total: m.size }); }
+      }
+      await new Promise(r => out.end(r));
+      if (fs.statSync(part).size !== f.size) throw new Error('Téléchargement incomplet');
+      fs.renameSync(part, f.path); part = null;
+      base += f.size;
     }
-    await new Promise(r => out.end(r));
-    if (fs.statSync(part).size !== m.size) throw new Error('Téléchargement incomplet');
-    fs.renameSync(part, modelPath(id));
     return { ok: true };
   } catch (err) {
-    try { fs.unlinkSync(part); } catch { /* rien */ }
+    if (part) try { fs.unlinkSync(part); } catch { /* rien */ }
     return { ok: false, error: String(err.message || err) };
   }
+});
+
+// Traduction d'une invite (français → anglais), entièrement locale
+let translator = null;
+ipcMain.handle('ai-translate', async (_e, text) => {
+  try {
+    if (!translator) translator = require('./translate.cjs')(modelPath('translate-fr-en'), loadOrt);
+    return { ok: true, text: await translator(text) };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
 
 // Entrée : tenseur NCHW 1×3×1024×1024 (normalisé côté page) ; sortie : carte 1024×1024 sur 8 bits

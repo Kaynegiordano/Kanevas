@@ -66,8 +66,53 @@
   };
 
   /* ---------------------------------------------------------------- réglages et état de Forge */
-  G.settings = () => Object.assign({ prompt: '', negative: 'lowres, blurry, watermark, text, signature', count: 3, strength: 1, steps: 24, cfg: 5, url: 'http://127.0.0.1:7860' }, KS.prefs.genAI || {});
-  G.saveSettings = o => { const s = { ...G.settings(), ...o }; delete s.prompt; KS.prefs.genAI = s; KS.prefs.save(); };
+  // v2 (1.0.7) : force 85 % (l'objet se fond mieux dans l'image), réglages des versions précédentes oubliés
+  const GEN_DEFAULTS = { negative: 'lowres, blurry, watermark, text, signature, jpeg artifacts', count: 3, strength: 0.85, steps: 30, cfg: 4.5, url: 'http://127.0.0.1:7860', v: 2 };
+  G.settings = () => { const p = KS.prefs.genAI || {}; return Object.assign({ prompt: '' }, GEN_DEFAULTS, p.v === 2 ? p : (p.url ? { url: p.url } : {})); };
+  G.saveSettings = o => { const s = { ...G.settings(), ...o, v: 2 }; delete s.prompt; KS.prefs.genAI = s; KS.prefs.save(); };
+
+  /* ---------------------------------------------------------------- invite : traduction et réglages du modèle */
+  // Les modèles d'image ne comprennent que l'anglais : en français, anima dessine une fille au hasard.
+  const FR = /[àâäçéèêëîïôöûùüÿœæ]|\b(le|la|les|un|une|des|du|de|d'|l'|sur|dans|avec|et|au|aux|sous|pour|qui|petite?s?|grande?s?|rouges?|bleue?s?|verte?s?|noire?s?|blanche?s?|ciel|arbres?|chat|chien|fleurs?|montagnes?|mer|eau|maison|voiture|oiseaux?|poissons?|nuages?|soleil|lune|herbe|bois|pierre|rocher)\b/i;
+  G.looksFrench = t => FR.test(t || '');
+  // « ajoute un bateau » : le verbe d'ordre n'est pas une description, on le retire
+  const stripCmd = t => t.replace(/^\s*(ajoute[rz]?|rajoute[rz]?|mets|mettre|place[rz]?|dessine[rz]?|g[ée]n[èe]re[rz]?|cr[ée]e[rz]?|fais|faire|ins[èe]re[rz]?|add|draw|put|generate|create|make)\s+(moi\s+|me\s+)?/i, '');
+  let mtOk = false;
+  G.mtReady = async (ask = true) => {
+    if (!N || !N.aiTranslate) return false;
+    if (mtOk) return true;
+    const m = (await N.aiStatus()).find(x => x.id === 'translate-fr-en');
+    if (!m) return false;
+    if (m.installed) return (mtOk = true);
+    if (!ask) return false;
+    const id = await ai.downloadDialog([m], {
+      title: 'Traduire les invites en anglais',
+      text: 'Forge et son modèle ne comprennent que l\'anglais : une invite en français donne des images sans rapport (souvent une fille). Kanevas peut la traduire sur votre PC avec Opus-MT (licence CC-BY 4.0, 113 Mo, téléchargé une fois depuis Hugging Face).',
+    });
+    return (mtOk = !!id);
+  };
+  G.toEnglish = async (text, ask = true) => {
+    const t = stripCmd((text || '').trim());
+    if (!t || !G.looksFrench(t)) return t;
+    if (!(await G.mtReady(ask))) return null;
+    const r = await N.aiTranslate(t);
+    if (!r.ok) throw new Error('traduction : ' + r.error);
+    return stripCmd(r.text);
+  };
+  // Réglages propres au modèle actif de Forge
+  G.modelPreset = model => /anima/i.test(model || '')
+    ? { prefix: 'newest, year 2026, safe, ', sampler: 'ER SDE', scheduler: 'simple', style: 'anime' }
+    : { prefix: '', sampler: null, scheduler: null, style: null };
+  const PERSON = /\b(girls?|wom[ae]n|m[ae]n|boys?|persons?|people|humans?|lady|ladies|child(ren)?|kids?|characters?|faces?|portrait|warriors?|knights?|princess|mermaids?|witch|elf|elves|she|he|her|his|couple|crowd|soldiers?|robot)\b/i;
+  const NO_PERSON = '1girl, girl, woman, 1boy, boy, man, person, people, human, character, face';
+  // Invite finale envoyée à Forge
+  G.preparePrompt = async (raw, forge, o) => {
+    let en = await G.toEnglish(raw);
+    if (en == null) { en = stripCmd(raw.trim()); KS.toast('Invite envoyée en français : le résultat risque d\'être sans rapport. Écrivez-la en anglais pour de meilleurs résultats.', 'info', 6000); }
+    const pre = G.modelPreset(forge && forge.model);
+    const neg = [o.negative, PERSON.test(en) ? '' : NO_PERSON, 'nsfw, nude'].filter(Boolean).join(', ');
+    return { prompt: pre.prefix + en, negative: neg, sampler: pre.sampler, scheduler: pre.scheduler, shown: en };
+  };
   let forgeCache = null;
   G.forge = async (fresh = false) => {
     if (!N || !N.forgeStatus) return null;
@@ -144,9 +189,11 @@
     const payload = {
       prompt: o.prompt, negative_prompt: o.negative || '', steps: o.steps, cfg_scale: o.cfg, denoising_strength: o.strength,
       width: W, height: H, batch_size: U.clamp(o.count | 0, 1, 4), n_iter: 1, seed: -1,
-      mask_blur: 4, inpainting_fill: 1, inpaint_full_res: false, inpainting_mask_invert: 0, resize_mode: 0,
+      mask_blur: 12, inpainting_fill: 1, inpaint_full_res: false, inpainting_mask_invert: 0, resize_mode: 0,
       save_images: false, send_images: true,
     };
+    if (o.sampler) payload.sampler_name = o.sampler;
+    if (o.scheduler) payload.scheduler = o.scheduler;
     const job = { init: await pngBytes(init), mask: await pngBytes(mimg), payload, W, H, R };
     return { ...(await G.forgeRun(job)), job };
   };
@@ -206,8 +253,12 @@
     const src = doc.composite();
     try {
       if (prompt) {
-        if (!(await G.forge(true))) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS. Sans invite, la zone est remplie par l\'IA locale.', 'err', 6000); return null; }
-        const res = await G.forgeGenerate(src, alpha, B, { ...G.settings(), ...o, prompt });
+        const forge = await G.forge(true);
+        if (!forge) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS. Sans invite, la zone est remplie par l\'IA locale.', 'err', 6000); return null; }
+        const st = { ...G.settings(), ...o };
+        const pp = await G.preparePrompt(prompt, forge, st);
+        const res = await G.forgeGenerate(src, alpha, B, { ...st, ...pp });
+        if (pp.shown !== prompt) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 5000);
         return G.addGenLayer(doc, res, alpha, { name: 'Génératif : ' + prompt.slice(0, 40), prompt, ...info });
       }
       if (!(await G.lamaReady(true))) return null;
@@ -225,6 +276,16 @@
     const vals = { count: s.count, strength: s.strength, steps: s.steps, cfg: s.cfg };
     const url = h('input.field', { type: 'text', value: s.url, style: { width: '100%' } });
     const status = h('div.note', { text: 'Forge : vérification…' });
+    const sent = h('div.note', { style: { minHeight: '16px' } });
+    let fState = null, tseq = 0;
+    const showSent = U.debounce(async () => {
+      const n = ++tseq, raw = ta.value.trim();
+      if (!raw) { sent.textContent = ''; return; }
+      const pre = G.modelPreset(fState && fState.model);
+      if (G.looksFrench(raw) && !(await G.mtReady(false))) { sent.textContent = 'Invite en français : elle sera traduite en anglais sur votre PC (petit modèle de 113 Mo à télécharger une fois).'; return; }
+      try { const en = await G.toEnglish(raw, false); if (n === tseq) sent.textContent = 'Envoyé à Forge : ' + pre.prefix + en; } catch { sent.textContent = ''; }
+    }, 450);
+    ta.addEventListener('input', showSent);
     const adv = h('div.form-grid', { hidden: true },
       h('label.l', { text: 'À éviter' }), neg,
       h('label.l', { text: 'Variantes' }), ui.seg([['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], String(vals.count), v => { vals.count = +v; }),
@@ -233,7 +294,7 @@
       h('label.l', { text: 'Échelle CFG' }), ui.scrub({ value: vals.cfg, min: 1, max: 15, step: 0.5, onInput: v => { vals.cfg = v; } }),
       h('label.l', { text: 'Adresse de Forge' }), url);
     const advBtn = ui.btn('Paramètres avancés', () => { adv.hidden = !adv.hidden; }, '.small', 'settings');
-    const body = h('div.form-col', { style: { width: '520px', gap: '10px' } }, extra, ta, status, advBtn, adv);
+    const body = h('div.form-col', { style: { width: '520px', gap: '10px' } }, extra, ta, sent, status, advBtn, adv);
     KS.modal({
       title, body,
       buttons: [{ label: 'Annuler', value: null }, { label: 'Générer', primary: true, value: 'ok' }],
@@ -245,8 +306,10 @@
         res({ ...o, prompt: ta.value });
       },
     });
-    const f = await G.forge(true);
-    status.textContent = f ? `Forge prêt : ${f.model || 'modèle actif'} (génération locale sur la carte graphique)` : `${G.forgeError()} : seule la génération sans invite (IA locale) est possible. Lancez Forge depuis Kane OS pour les invites.`;
+    const f = fState = await G.forge(true);
+    showSent();
+    const style = f && G.modelPreset(f.model).style;
+    status.textContent = f ? `Forge prêt : ${String(f.model || 'modèle actif').replace(/\.safetensors.*$/, '')}${style === 'anime' ? ' (modèle de style anime : le résultat suivra ce style)' : ''}. Écrivez en français ou en anglais.` : `${G.forgeError()} : seule la génération sans invite (IA locale) est possible. Lancez Forge depuis Kane OS pour les invites.`;
     status.style.color = f ? 'var(--text-2)' : 'var(--danger, #d05050)';
   });
 
@@ -302,7 +365,7 @@
     sx.drawImage(U.blurCanvas(scaled(comp, W / 8, H / 8), 6), 0, 0, W, H);
     sx.drawImage(comp, dx, dy);
     // masque : tout sauf l'image d'origine, rentrée de quelques pixels sur les côtés agrandis pour fondre la jointure
-    const ov = Math.max(4, Math.round(Math.min(d.width, d.height) * 0.01));
+    const ov = Math.max(8, Math.round(Math.min(d.width, d.height) * 0.025));
     const alpha = U.canvas(W, H), ax = alpha.getContext('2d');
     ax.fillStyle = '#fff'; ax.fillRect(0, 0, W, H);
     const l = dx > 0 ? ov : 0, t = dy > 0 ? ov : 0, r = W - dx - d.width > 0 ? ov : 0, b = H - dy - d.height > 0 ? ov : 0;
@@ -311,8 +374,12 @@
     let res;
     try {
       if (prompt) {
-        if (!(await G.forge(true))) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS (ou laissez l\'invite vide pour l\'IA locale)', 'err', 6000); return; }
-        res = await G.forgeGenerate(src, alpha, { x: 0, y: 0, w: W, h: H }, { ...G.settings(), ...p, prompt, strength: 1 }, true);
+        const forge = await G.forge(true);
+        if (!forge) { KS.toast(G.forgeError() + ' : lancez Forge depuis Kane OS (ou laissez l\'invite vide pour l\'IA locale)', 'err', 6000); return; }
+        const st = { ...G.settings(), ...p };
+        const pp = await G.preparePrompt(prompt, forge, st);
+        res = await G.forgeGenerate(src, alpha, { x: 0, y: 0, w: W, h: H }, { ...st, ...pp, strength: 1 }, true);
+        if (pp.shown !== prompt) KS.toast('Envoyé à Forge : « ' + pp.shown + ' »', 'info', 5000);
       } else {
         if (!(await G.lamaReady(true))) return;
         const r0 = await G.task('Développement par l\'IA locale…', () => G.inpaint(src, alpha, { x: 0, y: 0, w: W, h: H }));
