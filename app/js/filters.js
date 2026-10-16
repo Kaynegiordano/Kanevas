@@ -60,6 +60,38 @@
   }
   function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
+  const { surfaceKernel, medianKernel, morphKernel } = self.KSKernels;
+
+  // Calcul réparti : l'image est découpée en bandes horizontales (avec un recouvrement de `pad`
+  // lignes), chacune calculée par un worker ; même noyau, donc même résultat qu'en un seul bloc.
+  const pool = [];
+  const workers = () => {
+    if (!pool.length && typeof Worker !== 'undefined') {
+      const n = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+      try { for (let i = 0; i < n; i++) pool.push(new Worker('js/filter-worker.js')); } catch (e) { console.warn('workers', e); pool.length = 0; }
+    }
+    return pool;
+  };
+  // un calcul à la fois sur le pool (les aperçus successifs se mettent en file)
+  let queue = Promise.resolve();
+  const par = (...a) => (queue = queue.catch(() => {}).then(() => parRun(...a)));
+  const parRun = (kind, d, out, args, pad) => {
+    const ws = workers(), W = d.width, H = d.height, n = Math.min(ws.length, Math.ceil(H / 64));
+    if (n < 2) { self.KSKernels.run(kind, d.data, W, H, args, out.data, 0, H, 0); return Promise.resolve(out); }
+    const jobs = [];
+    for (let k = 0; k < n; k++) {
+      const a = Math.floor(H * k / n), b = Math.floor(H * (k + 1) / n), s0 = Math.max(0, a - pad), s1 = Math.min(H, b + pad);
+      const strip = d.data.slice(s0 * W * 4, s1 * W * 4);
+      jobs.push(new Promise((res, rej) => {
+        const w = ws[k];
+        w.onmessage = e => { out.data.set(e.data, a * W * 4); res(); };
+        w.onerror = e => rej(new Error(e.message || 'worker'));
+        w.postMessage({ kind, s: strip, W, H: s1 - s0, args, ya: a - s0, yb: b - s0 }, [strip.buffer]);
+      }));
+    }
+    return Promise.all(jobs).then(() => out);
+  };
+
   const defs = {
     gaussianBlur: {
       name: 'Flou gaussien', group: 'Flou',
@@ -111,17 +143,9 @@
       name: 'Flou de surface', group: 'Flou',
       params: [{ id: 'radius', label: 'Rayon', min: 1, max: 20, def: 5, unit: 'px' }, { id: 'threshold', label: 'Seuil', min: 2, max: 255, def: 15, unit: 'niv.' }],
       apply(src, p) {
-        const d = U.getData(src), W = d.width, H = d.height, s = d.data, out = new ImageData(W, H), o = out.data, r = Math.round(p.radius), th = p.threshold;
-        const step = r > 6 ? 2 : 1;
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-          const i = (y * W + x) * 4; let R = 0, G = 0, B = 0, wt = 0;
-          for (let j = -r; j <= r; j += step) { const yy = y + j; if (yy < 0 || yy >= H) continue;
-            for (let k = -r; k <= r; k += step) { const xx = x + k; if (xx < 0 || xx >= W) continue;
-              const q = (yy * W + xx) * 4; const diff = (Math.abs(s[q] - s[i]) + Math.abs(s[q + 1] - s[i + 1]) + Math.abs(s[q + 2] - s[i + 2])) / 3;
-              if (diff > th) continue; const w = 1 - diff / th / 2.5; R += s[q] * w; G += s[q + 1] * w; B += s[q + 2] * w; wt += w; } }
-          o[i] = R / wt; o[i + 1] = G / wt; o[i + 2] = B / wt; o[i + 3] = s[i + 3];
-        }
-        const c = U.canvas(W, H); U.putData(c, out); return c;
+        const d = U.getData(src), W = d.width, H = d.height, out = new ImageData(W, H);
+        const r = Math.round(p.radius);
+        return par('surface', d, out, [r, p.threshold], r).then(() => { const c = U.canvas(W, H); U.putData(c, out); return c; });
       },
     },
     sharpen: {
@@ -170,32 +194,17 @@
       name: 'Médiane', group: 'Bruit',
       params: [{ id: 'radius', label: 'Rayon', min: 1, max: 6, def: 2, unit: 'px' }],
       apply(src, p) {
-        const d = U.getData(src), W = d.width, H = d.height, s = d.data, out = new ImageData(W, H), o = out.data, r = p.radius;
-        const hr = new Uint16Array(256), hg = new Uint16Array(256), hb = new Uint16Array(256);
-        const med = (h, n) => { let acc = 0, half = n >> 1; for (let v = 0; v < 256; v++) { acc += h[v]; if (acc > half) return v; } return 255; };
-        for (let y = 0; y < H; y++) {
-          hr.fill(0); hg.fill(0); hb.fill(0); let n = 0;
-          const y0 = Math.max(0, y - r), y1 = Math.min(H - 1, y + r);
-          for (let yy = y0; yy <= y1; yy++) for (let xx = 0; xx <= Math.min(W - 1, r); xx++) { const q = (yy * W + xx) * 4; hr[s[q]]++; hg[s[q + 1]]++; hb[s[q + 2]]++; n++; }
-          for (let x = 0; x < W; x++) {
-            const i = (y * W + x) * 4;
-            o[i] = med(hr, n); o[i + 1] = med(hg, n); o[i + 2] = med(hb, n); o[i + 3] = s[i + 3];
-            const xo = x - r, xi = x + r + 1;
-            for (let yy = y0; yy <= y1; yy++) {
-              if (xo >= 0) { const q = (yy * W + xo) * 4; hr[s[q]]--; hg[s[q + 1]]--; hb[s[q + 2]]--; n--; }
-              if (xi < W) { const q = (yy * W + xi) * 4; hr[s[q]]++; hg[s[q + 1]]++; hb[s[q + 2]]++; n++; }
-            }
-          }
-        }
-        const c = U.canvas(W, H); U.putData(c, out); return c;
+        const d = U.getData(src), W = d.width, H = d.height, out = new ImageData(W, H);
+        return par('median', d, out, [p.radius], p.radius).then(() => { const c = U.canvas(W, H); U.putData(c, out); return c; });
       },
     },
     despeckle: {
       name: 'Réduction du bruit', group: 'Bruit',
       params: [{ id: 'strength', label: 'Intensité', min: 1, max: 10, def: 5 }, { id: 'detail', label: 'Préserver les détails', min: 0, max: 100, def: 40, unit: '%' }],
       apply(src, p) {
-        const sm = defs.surfaceBlur.apply(src, { radius: Math.ceil(p.strength / 2) + 1, threshold: 6 + p.strength * 5 });
-        const o = sm.getContext('2d'); o.globalAlpha = p.detail / 100 * 0.8; o.drawImage(src, 0, 0); return sm;
+        return defs.surfaceBlur.apply(src, { radius: Math.ceil(p.strength / 2) + 1, threshold: 6 + p.strength * 5 }).then(sm => {
+          const o = sm.getContext('2d'); o.globalAlpha = p.detail / 100 * 0.8; o.drawImage(src, 0, 0); return sm;
+        });
       },
     },
     mosaic: {
@@ -397,11 +406,11 @@
     },
     maximum: {
       name: 'Maximum', group: 'Divers', params: [{ id: 'radius', label: 'Rayon', min: 1, max: 50, def: 2, unit: 'px' }],
-      apply: (src, p) => morph(src, p.radius, Math.max),
+      apply: (src, p) => morph(src, p.radius, true),
     },
     minimum: {
       name: 'Minimum', group: 'Divers', params: [{ id: 'radius', label: 'Rayon', min: 1, max: 50, def: 2, unit: 'px' }],
-      apply: (src, p) => morph(src, p.radius, Math.min),
+      apply: (src, p) => morph(src, p.radius, false),
     },
     offset: {
       name: 'Translation', group: 'Divers',
@@ -415,19 +424,11 @@
       },
     },
   };
-  function morph(src, r, op) {
-    const d = U.getData(src), W = d.width, H = d.height, s = d.data, tmp = new Uint8ClampedArray(s.length);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4;
-      for (let c = 0; c < 3; c++) { let v = s[i + c]; for (let k = -r; k <= r; k++) { const xx = x + k; if (xx >= 0 && xx < W) v = op(v, s[(y * W + xx) * 4 + c]); } tmp[i + c] = v; }
-      tmp[i + 3] = s[i + 3];
-    }
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const i = (y * W + x) * 4;
-      for (let c = 0; c < 3; c++) { let v = tmp[i + c]; for (let k = -r; k <= r; k++) { const yy = y + k; if (yy >= 0 && yy < H) v = op(v, tmp[(yy * W + x) * 4 + c]); } s[i + c] = v; }
-    }
-    const c = U.canvas(W, H); U.putData(c, d); return c;
+  function morph(src, r, isMax) {
+    const d = U.getData(src);
+    morphKernel(d.data, d.width, d.height, Math.round(r), isMax);
+    const c = U.canvas(d.width, d.height); U.putData(c, d); return c;
   }
 
-  KS.Filters = { defs, warp, convolve, sampler, mulberry, makeNoise };
+  KS.Filters = { defs, warp, convolve, sampler, mulberry, makeNoise, par };
 })();

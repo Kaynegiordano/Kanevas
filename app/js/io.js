@@ -116,8 +116,15 @@
   const FROM_PSD = Object.fromEntries(Object.entries(PSD_BLEND).map(([a, b]) => [b, a]));
   const rgbOf = hex => { const c = U.parseHex(hex) || { r: 0, g: 0, b: 0 }; return { r: c.r, g: c.g, b: c.b }; };
   const hexOf = c => c && c.r != null ? U.hex({ r: c.r, g: c.g, b: c.b }) : '#000000';
+  // ag-psd (830 Ko) n'est chargé qu'au premier PSD ouvert ou enregistré : démarrage plus léger
+  let psdLib = null;
+  io.loadPSD = () => psdLib || (psdLib = window.agPsd ? Promise.resolve() : new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'vendor/ag-psd.js';
+    s.onload = () => res(); s.onerror = () => { psdLib = null; rej(new Error('Module PSD indisponible')); };
+    document.head.appendChild(s);
+  }));
   io.readPSD = async f => {
-    if (!window.agPsd) throw new Error('Module PSD indisponible');
+    await io.loadPSD();
     const psd = agPsd.readPsd(f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.byteLength), { skipThumbnail: true, useImageData: false });
     const doc = new KS.Doc({ name: f.name, width: psd.width, height: psd.height });
     let skipped = 0;
@@ -261,6 +268,7 @@
   // Tracé vectoriel → BezierPath ag-psd (points : poignée entrante, ancre, poignée sortante)
   const psdPaths = subpaths => subpaths.map(sp => ({ open: !sp.closed, fillRule: 'non-zero', operation: 'combine', knots: sp.pts.map(p => ({ linked: true, points: [p.ix, p.iy, p.x, p.y, p.ox, p.oy] })) }));
   io.writePSD = async doc => {
+    await io.loadPSD();
     let dropped = 0;
     const kids = new Map();
     for (const L of doc.layers) { const k = L.parent || null; if (!kids.has(k)) kids.set(k, []); kids.get(k).push(L); }

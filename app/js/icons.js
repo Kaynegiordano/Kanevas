@@ -159,6 +159,13 @@
     distort: '<path d="M5 4l15 3-2 13-14-3z"/>',
     cmyk: '<circle cx="8" cy="8" r="4.5"/><circle cx="16" cy="8" r="4.5"/><circle cx="8" cy="16" r="4.5"/><circle cx="16" cy="16" r="4.5" fill="currentColor"/>',
     'object-select': '<rect x="3" y="3" width="15" height="13" rx="1" stroke-dasharray="2.6 2.2"/><path d="M11 9.5l9.5 3.8-4 1.3-1.6 4z" fill="currentColor"/>',
+    remove: '<path d="M5.5 19.5l9-9a2.1 2.1 0 0 1 3 0l.6.6a2.1 2.1 0 0 1 0 3l-6.4 6.4H5.5z"/><path d="M10 20.5h10"/><path d="M6.5 3.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>',
+    'remove-bg': '<path d="M3 7V3h4M17 3h4v4M21 17v4h-4M7 21H3v-4"/><circle cx="12" cy="9.5" r="3"/><path d="M6.8 18.5c.8-2.9 2.9-4.4 5.2-4.4s4.4 1.5 5.2 4.4"/>',
+    'gen-expand': '<rect x="8" y="8" width="8" height="8" rx="1"/><path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>',
+    harmonize: '<circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6"/><path d="M12 7.3v9.4"/>',
+    'adjust-brush': '<path d="M10.5 14.5l9-9a1.4 1.4 0 0 1 2 2l-9 9"/><path d="M9.5 14c-2.2 0-3.5 1.6-3.5 3.5 0 1.3-.8 2.1-2 2.5 2.6 1 7 .6 7.9-2.4"/><circle cx="6" cy="6" r="2"/><path d="M6 1.8v.8M6 9.4v.8M1.8 6h.8M9.4 6h.8"/>',
+    upscale: '<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M14 3h7v7M21 3l-8.5 8.5"/>',
+    more: '<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/>',
     liquify: '<path d="M3 8c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 20c3-3 6 3 9 0s6 3 9 0"/>',
   };
   KS.ICONS = P;

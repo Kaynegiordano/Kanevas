@@ -10,14 +10,14 @@
   // Modèle prêt (téléchargé) ; sinon propose de le télécharger
   ai.ensureModel = async () => {
     if (!ai.available) return null;
-    const list = await N.aiStatus();
+    const list = (await N.aiStatus()).filter(m => m.kind !== 'inpaint');
     const pref = KS.prefs.aiModel;
     const ready = list.filter(m => m.installed);
     if (ready.length) return (ready.find(m => m.id === pref) || ready[0]).id;
     return ai.downloadDialog(list);
   };
-  ai.downloadDialog = list => new Promise(res => {
-    let choice = 'birefnet-lite';
+  ai.downloadDialog = (list, o = {}) => new Promise(res => {
+    let choice = list.some(m => m.id === 'birefnet-lite') ? 'birefnet-lite' : list[0].id;
     const opts = h('div.preset-list');
     const rows = list.map(m => {
       const r = h('div.preset-row' + (m.id === choice ? '.on' : ''), h('span.t', { text: m.name }), h('span.s', { text: Math.round(m.size / 1048576) + ' Mo' }));
@@ -27,11 +27,11 @@
     const bar = h('div', { style: { height: '6px', borderRadius: '4px', background: 'var(--border-2)', overflow: 'hidden', marginTop: '12px' } }, h('div', { style: { height: '100%', width: '0%', background: 'var(--accent)', transition: 'width .2s' } }));
     const status = h('div.note', { style: { marginTop: '6px' } });
     const body = h('div', { style: { width: '460px' } },
-      h('p', { style: { marginTop: '0', color: 'var(--text-2)', lineHeight: '1.5' }, text: 'Le détourage par IA utilise le modèle BiRefNet (licence MIT), qui tourne entièrement sur votre PC (carte graphique via DirectML si possible). Il faut le télécharger une fois depuis GitHub.' }),
+      h('p', { style: { marginTop: '0', color: 'var(--text-2)', lineHeight: '1.5' }, text: o.text || 'Le détourage par IA utilise le modèle BiRefNet (licence MIT), qui tourne entièrement sur votre PC (carte graphique via DirectML si possible). Il faut le télécharger une fois depuis GitHub.' }),
       opts, bar, status);
     let busy = false;
     const m = KS.modal({
-      title: 'Télécharger le modèle de détourage', body,
+      title: o.title || 'Télécharger le modèle de détourage', body,
       buttons: [{ label: 'Annuler', value: null }, { label: 'Télécharger', primary: true, value: 'ok', action: async () => {
         if (busy) return false;
         busy = true; m.primary.disabled = true;
@@ -42,7 +42,7 @@
         ai._progress = null;
         busy = false; m.primary.disabled = false;
         if (!r.ok) { status.textContent = 'Échec : ' + r.error; return false; }
-        KS.prefs.aiModel = choice; KS.prefs.save();
+        if (list.find(m => m.id === choice)?.kind !== 'inpaint') { KS.prefs.aiModel = choice; KS.prefs.save(); }
         return true;
       } }],
       onClose: v => res(v === 'ok' ? choice : null),
@@ -56,12 +56,15 @@
     x.fillStyle = '#fff'; x.fillRect(0, 0, S, S);
     x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, S, S);
     const p = x.getImageData(0, 0, S, S).data, n = S * S, t = new Float32Array(3 * n);
-    for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) t[k * n + i] = (p[i * 4 + k] / 255 - MEAN[k]) / STD[k];
+    // normalisation par tables (256 valeurs par couche) plutôt qu'un calcul par pixel
+    const tab = [0, 1, 2].map(k => Float32Array.from({ length: 256 }, (_, v) => (v / 255 - MEAN[k]) / STD[k]));
+    const [t0, t1, t2] = tab;
+    for (let i = 0, q = 0; i < n; i++, q += 4) { t[i] = t0[p[q]]; t[n + i] = t1[p[q + 1]]; t[2 * n + i] = t2[p[q + 2]]; }
     const r = await N.aiSegment(id, t);
     if (!r.ok) throw new Error(r.error);
     ai.lastEP = r.ep;
     const img = new ImageData(S, S), o = img.data, m = r.mask;
-    for (let i = 0; i < n; i++) o[i * 4 + 3] = m[i] * 255;
+    for (let i = 0; i < n; i++) o[i * 4 + 3] = m[i];
     const mk = U.canvas(S, S); U.putData(mk, img);
     const out = U.canvas(src.width, src.height), ox = out.getContext('2d');
     ox.imageSmoothingQuality = 'high'; ox.drawImage(mk, 0, 0, src.width, src.height);
@@ -121,8 +124,8 @@
     const list = await N.aiStatus();
     const body = h('div.form-col', { style: { width: '440px', gap: '10px' } },
       ...list.map(m => h('div.form-row', h('span', { text: m.name, style: { flex: '1' } }), h('span.note', { text: Math.round(m.size / 1048576) + ' Mo' }),
-        m.installed ? ui.btn(KS.prefs.aiModel === m.id ? 'Utilisé' : 'Utiliser', () => { KS.prefs.aiModel = m.id; KS.prefs.save(); KS.toast('Modèle : ' + m.name, 'ok'); }, '.small' + (KS.prefs.aiModel === m.id ? '.primary' : ''))
-          : ui.btn('Télécharger…', async () => { md.close(); await ai.downloadDialog([m]); }, '.small'))),
+        m.installed && m.kind === 'inpaint' ? h('span.note', { text: 'Installé' }) : m.installed ? ui.btn(KS.prefs.aiModel === m.id ? 'Utilisé' : 'Utiliser', () => { KS.prefs.aiModel = m.id; KS.prefs.save(); KS.toast('Modèle : ' + m.name, 'ok'); }, '.small' + (KS.prefs.aiModel === m.id ? '.primary' : ''))
+          : ui.btn('Télécharger…', async () => { md.close(); if (m.kind === 'inpaint') await ai.ensureInpaint(true); else await ai.downloadDialog([m]); }, '.small'))),
       h('div.note', { text: 'Les modèles sont rangés dans le dossier de données de Kanevas. Calcul local, rien n\'est envoyé en ligne.' }));
     const md = KS.modal({ title: 'Modèles d\'IA', body, buttons: [{ label: 'Fermer', primary: true }] });
   };

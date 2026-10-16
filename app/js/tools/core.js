@@ -8,7 +8,7 @@
   T.layout = [
     ['move'], ['marquee-rect', 'marquee-ellipse', 'marquee-row', 'marquee-col'], ['lasso', 'lasso-poly', 'lasso-magnetic'], ['quick-select', 'object-select', 'wand'], ['crop'], ['eyedropper'],
     null,
-    ['heal-spot', 'heal', 'patch'], ['brush', 'pencil'], ['clone'], ['eraser', 'eraser-magic'], ['gradient', 'bucket'], ['blur', 'sharpen', 'smudge'], ['dodge', 'burn', 'sponge'],
+    ['heal-spot', 'remove', 'heal', 'patch'], ['brush', 'pencil', 'adjust-brush'], ['clone'], ['eraser', 'eraser-magic'], ['gradient', 'bucket'], ['blur', 'sharpen', 'smudge'], ['dodge', 'burn', 'sponge'],
     null,
     ['text'], ['pen'], ['path-select'], ['shape-rect', 'shape-ellipse', 'shape-polygon', 'shape-star', 'shape-line', 'shape-arrow', 'shape-heart'],
     null,

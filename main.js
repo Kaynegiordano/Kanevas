@@ -1,11 +1,11 @@
-﻿// Kanevas â€” processus principal Electron : la fenÃªtre, les boÃ®tes de dialogue
-// de fichiers et l'accÃ¨s disque. Toute l'application vit dans app/ (renderer).
+﻿// Kanevas — processus principal Electron : la fenêtre, les boîtes de dialogue
+// de fichiers et l'accès disque. Toute l'application vit dans app/ (renderer).
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 
-// RÃ©utiliser les donnÃ©es existantes (prÃ©fÃ©rences et modÃ¨les IA) aprÃ¨s le changement de nom.
+// Réutiliser les données existantes (préférences et modèles IA) après le changement de nom.
 const legacyData = ['KaneShop', 'kaneshop'].map(n => path.join(app.getPath('appData'), n)).find(p => fs.existsSync(p));
 if (legacyData) app.setPath('userData', legacyData);
 app.setName('Kanevas');
@@ -13,7 +13,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.kane.kanevas');
 
 let win = null;
 let allowClose = false;
-const pending = [];          // fichiers reÃ§us avant que la page soit prÃªte
+const pending = [];          // fichiers reçus avant que la page soit prête
 
 function filesFromArgv(argv) {
   return argv.slice(app.isPackaged ? 1 : 2).filter(a => {
@@ -50,6 +50,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      // les tâches longues (IA, filtres en parallèle) continuent quand la fenêtre est masquée
+      backgroundThrottling: false,
     },
   });
   if (process.platform === 'win32') {
@@ -65,7 +67,7 @@ function createWindow() {
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
   win.loadFile(path.join(__dirname, 'app', 'index.html'));
 
-  // Pas de navigation (un fichier lÃ¢chÃ© hors zone ne doit pas remplacer l'app)
+  // Pas de navigation (un fichier lâché hors zone ne doit pas remplacer l'app)
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -121,7 +123,7 @@ ipcMain.handle('write-file', (_e, p, data) => {
 
 ipcMain.handle('get-pending', () => pending.splice(0));
 
-// Polices installÃ©es (machine + utilisateur), lues dans le registre
+// Polices installées (machine + utilisateur), lues dans le registre
 ipcMain.handle('list-fonts', () => new Promise(resolve => {
   const keys = [
     'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts',
@@ -154,30 +156,46 @@ ipcMain.on('toggle-devtools', () => { if (win) win.webContents.toggleDevTools();
 ipcMain.on('toggle-fullscreen', () => { if (win) win.setFullScreen(!win.isFullScreen()); });
 ipcMain.on('show-in-folder', (_e, p) => shell.showItemInFolder(p));
 
-/* ------------------------------------------------------------------ IA (dÃ©tourage) */
-// ModÃ¨les BiRefNet (licence MIT), copies publiÃ©es par le projet rembg.
+/* ------------------------------------------------------------------ IA locale */
+// Détourage : BiRefNet (licence MIT), copies publiées par le projet rembg.
+// Suppression d'objets : LaMa (licence Apache 2.0), export ONNX 512×512 de Carve.
 const MODELS = {
-  'birefnet-lite': { name: 'BiRefNet lÃ©ger (rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
-  'birefnet': { name: 'BiRefNet complet (qualitÃ© maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
+  'birefnet-lite': { kind: 'segment', name: 'BiRefNet léger (détourage rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
+  'birefnet': { kind: 'segment', name: 'BiRefNet complet (détourage, qualité maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
+  'lama': { kind: 'inpaint', name: 'LaMa (outil Suppression, remplissage sans invite)', file: 'lama_fp32.onnx', size: 208044816, cpu: true, url: 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx' },
 };
-const MODEL_URL = f => 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/' + f;
+const MODEL_URL = m => m.url || 'https://github.com/danielgatis/rembg/releases/download/v0.0.0/' + m.file;
 const modelDir = () => path.join(app.getPath('userData'), 'models');
 const modelPath = id => path.join(modelDir(), MODELS[id].file);
 let ort = null;
 const sessions = {};
 function loadOrt() { if (!ort) ort = require('onnxruntime-node'); return ort; }
+// Session ONNX (carte graphique via DirectML, sinon processeur), gardée en mémoire
+async function session(id, cpuOnly) {
+  const key = id + (cpuOnly ? ':cpu' : '');
+  if (sessions[key]) return sessions[key];
+  if (!MODELS[id]) throw new Error('Modèle inconnu');
+  const o = loadOrt();
+  let s = null;
+  // LaMa : DirectML échoue sur une multiplication de matrices de son bloc de Fourier, d'où le processeur
+  for (const ep of cpuOnly || MODELS[id].cpu ? [['cpu']] : [['dml'], ['cpu']]) {
+    try { s = await o.InferenceSession.create(modelPath(id), { executionProviders: ep, graphOptimizationLevel: 'all' }); s._ep = ep[0]; break; } catch (err) { console.warn('ORT', ep, err.message); }
+  }
+  if (!s) throw new Error('Impossible de charger le modèle');
+  return (sessions[key] = s);
+}
 
 ipcMain.handle('ai-status', () => Object.entries(MODELS).map(([id, m]) => {
   let installed = false; try { installed = fs.statSync(modelPath(id)).size === m.size; } catch { /* absent */ }
-  return { id, name: m.name, size: m.size, installed };
+  return { id, kind: m.kind, name: m.name, size: m.size, installed };
 }));
 
 ipcMain.handle('ai-download', async (e, id) => {
-  const m = MODELS[id]; if (!m) return { ok: false, error: 'ModÃ¨le inconnu' };
+  const m = MODELS[id]; if (!m) return { ok: false, error: 'Modèle inconnu' };
   fs.mkdirSync(modelDir(), { recursive: true });
   const part = modelPath(id) + '.part';
   try {
-    const res = await fetch(MODEL_URL(m.file));
+    const res = await fetch(MODEL_URL(m));
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const out = fs.createWriteStream(part);
     let got = 0, last = 0;
@@ -190,7 +208,7 @@ ipcMain.handle('ai-download', async (e, id) => {
       if (got - last > 2e6) { last = got; e.sender.send('ai-progress', { id, got, total: m.size }); }
     }
     await new Promise(r => out.end(r));
-    if (fs.statSync(part).size !== m.size) throw new Error('TÃ©lÃ©chargement incomplet');
+    if (fs.statSync(part).size !== m.size) throw new Error('Téléchargement incomplet');
     fs.renameSync(part, modelPath(id));
     return { ok: true };
   } catch (err) {
@@ -199,30 +217,100 @@ ipcMain.handle('ai-download', async (e, id) => {
   }
 });
 
-// EntrÃ©e : tenseur NCHW 1Ã—3Ã—1024Ã—1024 (normalisÃ© cÃ´tÃ© page) ; sortie : carte 1024Ã—1024 dans [0,1]
+// Entrée : tenseur NCHW 1×3×1024×1024 (normalisé côté page) ; sortie : carte 1024×1024 sur 8 bits
 ipcMain.handle('ai-segment', async (_e, id, input) => {
   try {
-    const o = loadOrt();
-    if (!sessions[id]) {
-      let s = null;
-      for (const ep of [['dml'], ['cpu']]) { try { s = await o.InferenceSession.create(modelPath(id), { executionProviders: ep, graphOptimizationLevel: 'all' }); s._ep = ep[0]; break; } catch (err) { console.warn('ORT', ep, err.message); } }
-      if (!s) throw new Error('Impossible de charger le modÃ¨le');
-      sessions[id] = s;
-    }
-    const s = sessions[id];
+    const o = loadOrt(), s = await session(id);
     const t = new o.Tensor('float32', new Float32Array(input.buffer, input.byteOffset, input.byteLength / 4), [1, 3, 1024, 1024]);
     const res = await s.run({ [s.inputNames[0]]: t });
-    const outT = res[s.outputNames[0]];
-    const d = outT.data, n = 1024 * 1024, out = new Float32Array(n);
+    const d = res[s.outputNames[0]].data, n = 1024 * 1024, out = new Uint8ClampedArray(n);
+    // sigmoïde puis normalisation min-max (la sigmoïde est monotone : min et max se lisent avant)
     let mn = Infinity, mx = -Infinity;
-    for (let i = 0; i < n; i++) { const v = 1 / (1 + Math.exp(-d[i])); out[i] = v; if (v < mn) mn = v; if (v > mx) mx = v; }
-    const k = mx - mn || 1;
-    for (let i = 0; i < n; i++) out[i] = (out[i] - mn) / k;
+    for (let i = 0; i < n; i++) { const v = d[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
+    const sg = v => 1 / (1 + Math.exp(-v)), a = sg(mn), k = 255 / ((sg(mx) - a) || 1);
+    for (let i = 0; i < n; i++) out[i] = (sg(d[i]) - a) * k;
     return { ok: true, mask: out, ep: s._ep };
   } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
 
-// Le renderer n'accÃ¨de qu'Ã  des copies identifiÃ©es, jamais Ã  un chemin arbitraire.
+// Préchargement (le premier chargement d'un modèle prend quelques secondes)
+ipcMain.handle('ai-warm', async (_e, id) => { try { await session(id); return { ok: true }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
+
+// Suppression (LaMa) : image RGBA 512×512 (Uint8) + masque 512×512 (Uint8, >127 = à remplacer).
+// Sortie : RGBA 512×512.
+ipcMain.handle('ai-inpaint', async (_e, rgba, mask) => {
+  const S = 512, n = S * S;
+  const img = new Float32Array(3 * n), msk = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const m = mask[i] > 127 ? 1 : 0; msk[i] = m;
+    for (let c = 0; c < 3; c++) img[c * n + i] = m ? 0 : rgba[i * 4 + c] / 255;
+  }
+  const run = async cpuOnly => {
+    const o = loadOrt(), s = await session('lama', cpuOnly);
+    const feeds = {};
+    for (const name of s.inputNames) feeds[name] = /mask/i.test(name) ? new o.Tensor('float32', msk, [1, 1, S, S]) : new o.Tensor('float32', img, [1, 3, S, S]);
+    const res = await s.run(feeds);
+    return { d: res[s.outputNames[0]].data, ep: s._ep };
+  };
+  try {
+    let r;
+    try { r = await run(false); } catch (err) { console.warn('LaMa DML', err.message); r = await run(true); }
+    const { d } = r;
+    // selon l'export, la sortie est dans [0,1] ou [0,255]
+    let mx = 0; for (let i = 0; i < d.length; i += 97) if (d[i] > mx) mx = d[i];
+    const k = mx > 2 ? 1 : 255, out = new Uint8ClampedArray(n * 4);
+    for (let i = 0; i < n; i++) { out[i * 4] = d[i] * k; out[i * 4 + 1] = d[n + i] * k; out[i * 4 + 2] = d[2 * n + i] * k; out[i * 4 + 3] = 255; }
+    return { ok: true, rgba: out, ep: r.ep };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+
+/* ------------------------------------------------------------------ Forge (Stable Diffusion local) */
+// Remplissage et développement génératifs, super résolution : l'API de Forge (lancé par
+// Kane OS avec --api) sur cette machine. Seules les adresses locales sont acceptées.
+const forgeBase = url => {
+  const u = new URL(url || 'http://127.0.0.1:7860');
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) || !/^https?:$/.test(u.protocol)) throw new Error('Adresse de Forge non locale');
+  return u.origin;
+};
+async function forgeCall(base, route, body, timeout = 600000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const res = await fetch(forgeBase(base) + route, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal } : { signal: ctl.signal });
+    const txt = await res.text();
+    if (!res.ok) throw new Error('Forge HTTP ' + res.status + (txt ? ' : ' + txt.slice(0, 300) : ''));
+    return txt ? JSON.parse(txt) : null;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error(timeout < 10000 ? 'Forge ne répond pas' : 'Forge a mis trop de temps à répondre');
+    if (err.cause && err.cause.code === 'ECONNREFUSED') throw new Error('Forge n\'est pas démarré');
+    throw err;
+  } finally { clearTimeout(t); }
+}
+const forgeHandler = fn => async (_e, ...a) => { try { return { ok: true, ...(await fn(...a)) }; } catch (err) { return { ok: false, error: String(err.message || err) }; } };
+ipcMain.handle('forge-status', forgeHandler(async base => {
+  const opt = await forgeCall(base, '/sdapi/v1/options', null, 2500);
+  let upscalers = [];
+  try { upscalers = (await forgeCall(base, '/sdapi/v1/upscalers', null, 4000) || []).map(u => u.name).filter(n => n && n !== 'None'); } catch { /* ancienne API */ }
+  return { model: opt && opt.sd_model_checkpoint, upscalers };
+}));
+// Les images passent en PNG brut entre la page et ce processus ; seul l'appel HTTP est en base64.
+const b64 = u8 => Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64');
+const unb64 = s => new Uint8Array(Buffer.from(String(s).replace(/^data:[^,]*,/, ''), 'base64'));
+ipcMain.handle('forge-img2img', forgeHandler(async (base, payload, init, mask) => {
+  const r = await forgeCall(base, '/sdapi/v1/img2img', { ...payload, init_images: [b64(init)], mask: mask ? b64(mask) : undefined });
+  return { images: ((r && r.images) || []).map(unb64) };
+}));
+ipcMain.handle('forge-upscale', forgeHandler(async (base, payload, png) => {
+  const r = await forgeCall(base, '/sdapi/v1/extra-single-image', { ...payload, image: b64(png) });
+  if (!r || !r.image) throw new Error('Forge n\'a renvoyé aucune image');
+  return { image: unb64(r.image) };
+}));
+ipcMain.handle('forge-progress', forgeHandler(async base => {
+  const r = await forgeCall(base, '/sdapi/v1/progress?skip_current_image=true', null, 3000);
+  return { progress: r ? r.progress : 0 };
+}));
+ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(base, '/sdapi/v1/interrupt', {}, 4000); return {}; }));
+
+// Le renderer n'accède qu'à des copies identifiées, jamais à un chemin arbitraire.
 const recoveryStore = require('./recovery-store.cjs')(path.join(app.getPath('userData'), 'recovery'));
 const recoveryCall = fn => async (_event, ...args) => {
   try { const result = await fn(...args); return { ok: true, ...result }; }

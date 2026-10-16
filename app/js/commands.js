@@ -51,7 +51,12 @@
     const tgt = mask ? L.mask : L;
     if (mask) L.ensureMaskCovers(d.rect); else L.ensureCovers(d.rect);
     const tok = KS.Hist.begin(L, mask ? 'mask' : 'canvas');
-    const res = fn(U.copyCanvas(tgt.canvas), { offset: { x: tgt.x, y: tgt.y }, doc: d });
+    const out = fn(U.copyCanvas(tgt.canvas), { offset: { x: tgt.x, y: tgt.y }, doc: d });
+    // filtres calculés en parallèle : le résultat arrive plus tard (promesse)
+    if (out && typeof out.then === 'function') return out.then(res => finishPixels(d, name, icon, opts, L, mask, tgt, tok, res));
+    return finishPixels(d, name, icon, opts, L, mask, tgt, tok, out);
+  };
+  const finishPixels = (d, name, icon, opts, L, mask, tgt, tok, res) => {
     C.blendResult(d, tgt.canvas, res, tgt.x, tgt.y, opts.ignoreSelection);
     if (mask) L.maskChanged(); else L.touch();
     KS.Hist.commitPixels(d, name, tok, d.selection.active && !opts.ignoreSelection ? U.rectIntersect({ x: d.selection.bounds.x - tgt.x, y: d.selection.bounds.y - tgt.y, w: d.selection.bounds.w, h: d.selection.bounds.h }, { x: 0, y: 0, w: tgt.canvas.width, h: tgt.canvas.height }) : null, icon);
@@ -75,20 +80,19 @@
     const mask = L.editMask && L.mask, tgt = mask ? L.mask : L;
     if (mask) L.ensureMaskCovers(d.rect); else L.ensureCovers(d.rect);
     const src = U.copyCanvas(tgt.canvas);
-    let last = null;
+    let last = null, seq = 0;
     const api = {
       L, src,
       update(fn) {
-        const res = fn(U.copyCanvas(src), { offset: { x: tgt.x, y: tgt.y }, doc: d });
-        const out = U.copyCanvas(src);
-        C.blendResult(d, out, res, tgt.x, tgt.y);
-        last = out;
-        if (mask) { const m = L.mask, keep = m.canvas; m.canvas = out; L.maskChanged(); m.canvas = keep; m._preview = true; }
-        else L.override = { canvas: out, x: L.x, y: L.y };
-        d.changed();
+        const n = ++seq;
+        const r = fn(U.copyCanvas(src), { offset: { x: tgt.x, y: tgt.y }, doc: d });
+        // résultat asynchrone : on ignore celui d'un aperçu dépassé ou annulé entre-temps
+        if (r && typeof r.then === 'function') return r.then(res => { if (n === seq) show(res); });
+        show(r);
       },
-      cancel() { L.override = null; if (mask) L.maskChanged(); L.touch(); d.changed(); },
+      cancel() { seq++; L.override = null; if (mask) L.maskChanged(); L.touch(); d.changed(); },
       commit(name, icon) {
+        seq++;
         L.override = null;
         if (!last) { api.cancel(); return; }
         const tok = KS.Hist.begin(L, mask ? 'mask' : 'canvas');
@@ -98,6 +102,14 @@
         C.rememberFade(d, L, mask ? 'mask' : 'canvas', src, name);
         KS.emit('layer-pixels', d); d.changed();
       },
+    };
+    const show = res => {
+      const out = U.copyCanvas(src);
+      C.blendResult(d, out, res, tgt.x, tgt.y);
+      last = out;
+      if (mask) { const m = L.mask, keep = m.canvas; m.canvas = out; L.maskChanged(); m.canvas = keep; m._preview = true; }
+      else L.override = { canvas: out, x: L.x, y: L.y };
+      d.changed();
     };
     return api;
   };
@@ -830,7 +842,11 @@
       title: def.name, def: { ...def, key: id }, values: vals, width: 520,
       preview: v => pv.update((c, info) => run(c, v, info)),
       cancel: () => pv.cancel(),
-      apply: v => { KS.prefs.filterVals = { ...(KS.prefs.filterVals || {}), [id]: { ...v } }; KS.prefs.save(); pv.update((c, info) => run(c, v, info)); pv.commit(def.name, 'filter'); },
+      apply: async v => {
+        KS.prefs.filterVals = { ...(KS.prefs.filterVals || {}), [id]: { ...v } }; KS.prefs.save();
+        await KS.busy(() => pv.update((c, info) => run(c, v, info)));
+        pv.commit(def.name, 'filter');
+      },
     });
   });
   // Sélection > Agrandir / Sélection similaire (Photoshop) : ajoute les pixels dont la couleur est

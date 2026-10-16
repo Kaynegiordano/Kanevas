@@ -34,6 +34,30 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - **Sélection > Agrandir / Sélection similaire** : ajoute les couleurs proches de la sélection (tolérance de la
   baguette magique), contiguës ou dans toute l'image.
 
+## IA générative et nouveautés façon Photoshop 2026 (1.0.6)
+- **Outil Suppression** (J, avec les correcteurs) : peindre sur ce qui doit disparaître ; au relâchement, l'IA locale
+  LaMa (licence Apache 2.0, 208 Mo, téléchargée une fois après accord) reconstitue le fond. « Échantillonner tous les
+  calques » permet de travailler sur un calque vide. Sans modèle : correcteur localisé.
+- **Supprimer avec l'IA** (Édition, Maj+Suppr) : la sélection est remplacée par les alentours, dans un nouveau calque
+  « Suppression » avec masque (rien n'est détruit).
+- **Remplissage génératif** (Édition, Ctrl+Maj+Alt+G, ou la barre contextuelle) : une invite décrit ce qu'il faut
+  générer dans la sélection ; la génération passe par **Forge** (Stable Diffusion local lancé par Kane OS, avec son
+  modèle actif). 1 à 4 variantes, à parcourir avec ‹ › dans la barre contextuelle, « Générer encore » en ajoute.
+  Le résultat est un calque avec masque de fusion. Invite vide : remplissage par LaMa, sans Forge.
+- **Développement génératif** (Image) : agrandit l'image à un format (16:9, 1:1, 4:5…) ou d'une marge, la zone neuve
+  est générée (Forge avec invite, sinon LaMa) dans un calque placé au-dessus de l'arrière-plan. Une seule étape d'historique.
+- **Super résolution IA** (Image) : ×2, ×3 ou ×4 avec les modèles ESRGAN de Forge (4x-UltraSharp…), dans un nouveau
+  document ; la transparence est conservée.
+- **Harmoniser** (Calque, menu du calque, barre contextuelle) : accorde la lumière, le contraste et la dominante de
+  couleur du calque à ce qu'il y a dessous (mesures en Lab sur le calque et son voisinage), avec aperçu.
+- **Pinceau de réglage** (B, avec le pinceau) : on peint un réglage (éclaircir, assombrir, contraste, saturer,
+  désaturer, réchauffer, refroidir, noir et blanc) ; il vit dans un calque de réglage dont on peint le masque,
+  modifiable ensuite dans Propriétés. Alt efface.
+- **Barre des tâches contextuelle** (Affichage) : sous l'image, les actions utiles selon la situation (sélection,
+  calque généré et ses variantes, calque de pixels) et une invite de génération directe.
+- Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
+  Paramètres avancés). Rien ne part en ligne.
+
 ## Performances (grandes images)
 - Seule la zone modifiée est recomposée (élargie de la portée des styles de calque), par tuiles de 512 px dans de
   petits canevas de travail. Un réglage dépendant du voisinage (Camera Raw : clarté, voile…) recompose tout.
@@ -45,6 +69,11 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   que le rectangle modifié, copié au relâchement ; les tampons du pinceau sont réutilisés d'un trait à l'autre.
 - Zoom arrière : l'écran, le navigateur et l'histogramme lisent une pyramide de copies réduites (1/2, 1/4…)
   de la composition, mise à jour par zones ; vignettes des calques réduites par moitiés successives.
+- Filtres lourds réécrits (1.0.6), résultats identiques au pixel près : Flou de surface et Réduction du bruit
+  répartis sur les cœurs du processeur (workers, `js/kernels.js` + `js/filter-worker.js`), Médiane à médiane
+  suivie, Minimum / Maximum en van Herk (coût constant quel que soit le rayon). Mesuré : Flou de surface ×6 à ×7,
+  Médiane ×7 à ×13, Maximum rayon 50 : 5,4 s → 0,14 s (1,5 Mpx). La bibliothèque PSD n'est chargée qu'au premier PSD.
+  Les tâches longues continuent quand la fenêtre est masquée.
 - Banc d'essai : `tools/bench.js` (à charger dans la page de `app/` servie avec le dossier racine), qui vérifie
   aussi que la composition partielle égale une composition complète. Sur 6000×4000 px à 5 calques (réglage
   Teinte/Saturation, ombre portée), mesuré dans Electron jusqu'à la fin du travail du GPU : pinceau 787 → 19 ms
@@ -114,3 +143,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.0.3** : grandes images bien plus fluides (composition par zones, affichage progressif, pyramide de zoom), outil Pièce, calques de remplissage dynamiques, Correction sélective, Atténuer, Ctrl+F, instantanés, Agrandir / Sélection similaire.
 - **1.0.4** : retouche fluide sur les grandes images (tampon de duplication, correcteurs, pièce, flou, netteté, doigt, densité, éponge).
 - **1.0.5** : Electron 44.7.2 (correctifs de sécurité de Chromium).
+- **1.0.6** : façon Photoshop 2026 : outil Suppression et Supprimer avec l'IA (LaMa local), remplissage et développement génératifs et super résolution (via Forge), Harmoniser, pinceau de réglage, barre des tâches contextuelle ; filtres lourds bien plus rapides ; accents réparés dans les noms des modèles d'IA.

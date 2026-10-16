@@ -213,7 +213,7 @@
     }
     document.body.appendChild(m);
     const r = m.getBoundingClientRect();
-    let left = x, top = y;
+    let left = x, top = opts.up ? y - r.height : y;
     if (left + r.width > window.innerWidth - 4) left = opts.parentRect ? opts.parentRect.left - r.width + 2 : window.innerWidth - r.width - 4;
     if (top + r.height > window.innerHeight - 4) top = Math.max(4, window.innerHeight - r.height - 4);
     m.style.left = left + 'px'; m.style.top = top + 'px';
