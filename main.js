@@ -4,6 +4,8 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, shell, nativeImage } = requir
 const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
+const gpuMemory = require('./gpu-memory.cjs')();
+ipcMain.handle('gpu-memory', () => gpuMemory());
 
 // Réutiliser les données existantes (préférences et modèles IA) après le changement de nom.
 const legacyData = ['KaneShop', 'kaneshop'].map(n => path.join(app.getPath('appData'), n)).find(p => fs.existsSync(p));

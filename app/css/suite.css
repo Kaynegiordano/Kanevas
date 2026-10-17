@@ -1,4 +1,10 @@
 /* Cadre commun aux ateliers et bibliothèque du projet. */
+#gpu-status { display:flex; align-items:center; justify-content:flex-end; gap:9px; min-height:26px; flex-shrink:0; padding:0 14px; border-top:1px solid var(--border); background:var(--chrome); color:var(--text-2); font-size:11px; font-variant-numeric:tabular-nums; }
+#gpu-status progress { appearance:none; width:90px; height:5px; border:0; border-radius:2px; overflow:hidden; background:var(--border-2); }
+#gpu-status progress::-webkit-progress-bar { background:var(--border-2); }
+#gpu-status progress::-webkit-progress-value { background:var(--accent); }
+#gpu-status[data-state="high"] progress::-webkit-progress-value { background:#d78a38; }
+#gpu-status .gpu-memory-value { min-width:132px; text-align:right; }
 #suite-toolbar { display:flex; align-items:center; gap:10px; padding:7px 14px; min-height:48px; background:var(--chrome); border-bottom:1px solid var(--border); flex-shrink:0; }
 #suite-toolbar .ws-switch { margin:0; gap:2px; background:var(--panel-2); flex-shrink:0; }
 #suite-toolbar .ws-btn { height:30px; padding:0 13px; }

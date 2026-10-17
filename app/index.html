@@ -35,6 +35,9 @@
     </section>
     <aside id="dock"></aside>
   </div>
+  <footer id="gpu-status" aria-label="Mémoire graphique (VRAM)" data-state="loading">
+    <span>VRAM</span><progress max="100" value="0" aria-label="Mémoire graphique utilisée" hidden></progress><span class="gpu-memory-value">Lecture…</span>
+  </footer>
 </div>
 <div id="popups"></div>
 <div id="modals"></div>
@@ -42,6 +45,7 @@
 <input type="file" id="file-input" multiple hidden>
 
 <script src="js/util.js"></script>
+<script src="js/gpu-memory.js"></script>
 <script src="js/appearance.js"></script>
 <script src="js/image-preview.js"></script>
 <script src="js/icons.js"></script>

@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('ksNative', {
   forgeTxt2img: (base, payload, firstpass) => ipcRenderer.invoke('forge-txt2img', base, payload, firstpass),
   forgeSetOptions: (base, o) => ipcRenderer.invoke('forge-set-options', base, o),
   forgeMemory: base => ipcRenderer.invoke('forge-memory', base),
+  gpuMemory: () => ipcRenderer.invoke('gpu-memory'),
   forgeRefreshCheckpoints: base => ipcRenderer.invoke('forge-refresh-checkpoints', base),
   forgePresetsWrite: presets => ipcRenderer.invoke('forge-presets-write', presets),
   openForgeOutput: sub => ipcRenderer.invoke('open-forge-output', sub),

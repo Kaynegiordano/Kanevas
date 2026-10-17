@@ -301,26 +301,10 @@
     dt.value = cat ? cat.dtype : 'Automatic'; dt.disabled = !cat;
     dt.addEventListener('change', () => setOptions({ forge_unet_storage_dtype: dt.value }, 'Diffusion in Low Bits : ' + dt.value + ' (au prochain chargement du modèle)'));
     const ref = ebtn('🔄', 'Relire les modèles, modules et LoRA de Forge', async () => { if (!cat) return loadCat(); await N.forgeRefreshCheckpoints(url()); await N.forgeRefreshLoras(url()); loadCat(); });
-    const gpu = h('div.fx-gpu', { title: 'Mémoire de la carte graphique utilisée par Forge' }, h('span', { text: 'VRAM' }), h('div.fx-gpu-bar', h('i')), h('span.fx-gpu-t', { text: '—' }));
-    els.gpu = gpu;
     const c1 = field('Checkpoint', ck), c2 = field('VAE / Text Encoder', mods), c3 = field('Diffusion in Low Bits', dt);
     c1.classList.add('fx-ck'); c2.classList.add('fx-mods'); c3.classList.add('fx-dt');
-    t.replaceChildren(c1, c2, ref, c3, h('div.spacer'), gpu, engineBadge());
-    pollGpu();
+    t.replaceChildren(c1, c2, ref, c3, h('div.spacer'), engineBadge());
   }
-  let gpuBusy = false;
-  async function pollGpu() {
-    if (!SD.on || gpuBusy || !els.gpu || !N.forgeMemory || !(KS.engine && KS.engine.ready()) || document.hidden) return;
-    gpuBusy = true;
-    try {
-      const r = await N.forgeMemory(url());
-      if (r.ok && r.total) {
-        els.gpu.querySelector('i').style.width = Math.round(r.used / r.total * 100) + '%';
-        els.gpu.querySelector('.fx-gpu-t').textContent = `${Math.round(r.used / 1048576)} / ${Math.round(r.total / 1048576)} Mo`;
-      }
-    } catch { /* rien */ } finally { gpuBusy = false; }
-  }
-  setInterval(pollGpu, 3000);
 
   /* ---------------------------------------------------------------- rendu de la page */
   function render() {

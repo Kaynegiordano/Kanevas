@@ -48,7 +48,9 @@
       fullscreen ? button('⛶', 'Voir l’image en plein écran · cliquer autour ou Échap pour fermer', () => KS.preview.open(media, size().w, size().h)) : null);
     if (fullscreen) {
       media.title = 'Double-clic : voir l’image en plein écran';
-      media.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
+      // La capture du pointeur utilisée pour déplacer l'image redirige le double-clic
+      // vers le cadre. Écouter ce cadre couvre les vrais clics comme les images zoomées.
+      area.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
       label.title = 'Voir l’image en plein écran'; label.tabIndex = 0; label.setAttribute('role', 'button');
       label.addEventListener('click', e => { e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
       label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); } }); }
@@ -60,14 +62,18 @@
       if (e.button !== 1 && !(e.button === 0 && (!paint || space))) return;
       e.preventDefault(); e.stopImmediatePropagation(); area.focus();
       drag = { id: e.pointerId, x: e.clientX, y: e.clientY, px: state.x, py: state.y }; dragged = false;
-      try { area.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
     }, true);
     area.addEventListener('pointermove', e => {
       if (!drag || drag.id !== e.pointerId) return; e.preventDefault(); e.stopPropagation();
-      dragged ||= Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 3;
+      if (!dragged) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) <= 3) return;
+        dragged = true;
+        try { area.setPointerCapture(e.pointerId); } catch { /* pointeur synthétique */ }
+      }
       state.fit = false; state.x = drag.px + e.clientX - drag.x; state.y = drag.py + e.clientY - drag.y; render();
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) area.addEventListener(type, e => { if (drag?.id === e.pointerId) drag = null; });
+    area.addEventListener('pointerleave', () => { if (!dragged) drag = null; });
     area.addEventListener('click', e => { if (dragged) { e.preventDefault(); e.stopPropagation(); dragged = false; } });
     area.addEventListener('keydown', e => {
       if (e.key === '+' || e.key === '=') { e.preventDefault(); e.stopPropagation(); zoom(state.scale * 1.25); }

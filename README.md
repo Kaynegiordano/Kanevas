@@ -13,6 +13,17 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Mémoire graphique dans tous les espaces (1.9.2)
+
+- Le double-clic dans les aperçus du Studio ouvre le plein écran avec la souris. La capture du pointeur
+  commence seulement lors d'un déplacement ; un clic sur l'image agrandie la garde ouverte.
+- La jauge **VRAM** reste dans la barre inférieure commune : Projet, Edition, Studio IA, Animation,
+  Animation Vidéo et Montage. Elle se met à jour toutes les trois secondes, même lorsque Studio est arrêté.
+- La lecture vient directement du pilote NVIDIA et couvre l'utilisation de toute la carte graphique.
+  Le survol détaille les cartes présentes ; une utilisation supérieure à 90 % apparaît en orange.
+- Si le pilote ne répond pas, la jauge indique **Indisponible** et réessaie automatiquement ; elle ne conserve
+  pas un ancien chiffre. La lecture reprend dès que la fenêtre redevient visible.
+
 ### Migration définitive et aperçu Studio (1.9.1)
 - Double-clic sur une image du Studio pour l’afficher en plein écran ; Échap ou clic autour pour fermer.
 - Retrait contrôlé des anciennes installations après validation et audit final ; Kane OS regroupe ces activités dans Kane App.

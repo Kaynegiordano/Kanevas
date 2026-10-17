@@ -868,9 +868,6 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-strip-prog { position: relative; display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
 .fx-strip-prog img { height: 110px; border-radius: 6px; }
 .fx-strip-prog .fx-prog { position: static; flex: 1; background: none; }
-.fx-gpu { display: flex; align-items: center; gap: 8px; font: 11.5px var(--mono); color: var(--text-2); padding-bottom: 8px; }
-.fx-gpu-bar { width: 120px; height: 5px; border-radius: 3px; background: var(--border-2); overflow: hidden; }
-.fx-gpu-bar i { display: block; height: 100%; width: 0; background: var(--fx-accent); }
 .fx-eng { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); padding-bottom: 6px; }
 .fx-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .fx-dot.ok { background: #3fb36b; }

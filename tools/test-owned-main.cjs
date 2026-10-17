@@ -22,6 +22,10 @@ app.on('browser-window-created', (_event, win) => {
       const result = await win.webContents.executeJavaScript(`(async()=>{
         await KS.suite.ready;
         const config=await KS.native.engineConfig();
+        const gpu=await KS.native.gpuMemory();
+        if (!gpu.ok || !gpu.total || !gpu.devices.length) throw new Error('Le pilote ne fournit pas la VRAM');
+        await KS.gpuMemory.refresh();
+        if (!['ready','high'].includes(document.querySelector('#gpu-status').dataset.state)) throw new Error('Jauge VRAM indisponible');
         const catalogue=await KS.native.forgeCatalog('http://127.0.0.1:17863');
         const lora=await KS.native.loraCall('info');
         const comfy=await KS.native.svcStatus('comfyui');
@@ -35,6 +39,7 @@ app.on('browser-window-created', (_event, win) => {
       assert(result.lora.ok && path.resolve(result.lora.sd) === path.resolve(owned.components.training.directory));
       assert.equal(result.comfy.dir, owned.components.comfyui.directory); assert.equal(result.animation.dir, owned.components.wallpaper.directory);
       assert(result.migration.active && !result.migration.deletionAllowed);
+      console.log('OK VRAM réelle du pilote NVIDIA via le pont Electron, sans moteur Studio actif');
       await wait(() => win.webContents.mainFrame.frames.some(f => f.url.includes('/kaneclip/app/')));
       const frame = win.webContents.mainFrame.frames.find(f => f.url.includes('/kaneclip/app/'));
       const media = await frame.executeJavaScript('kcNative.ffAvailable()');

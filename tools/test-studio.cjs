@@ -1,6 +1,6 @@
 // Parcours Studio ↔ Édition dans un vrai renderer Electron, sans moteur ni profil utilisateur.
 // Lancer : node_modules/.bin/electron tools/test-studio.cjs
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,11 +8,15 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-studio-'));
 app.setPath('userData', path.join(tmp, 'profile'));
 const preload = path.join(tmp, 'preload.cjs');
 fs.writeFileSync(preload, `
+window.realDoubleClick = (x, y) => require('electron').ipcRenderer.invoke('test-double-click', x, y);
+window.realClick = (x, y) => require('electron').ipcRenderer.invoke('test-click', x, y);
+window.realDrag = (x, y) => require('electron').ipcRenderer.invoke('test-drag', x, y);
 localStorage.setItem('kanevas.prefs', JSON.stringify({ fx: { v: 1, editor: { strength: 0.85 } }, genAI: { v: 2, strength: 1, loras: [{ name: 'obsolete-girl', weight: 1 }] } }));
 window.loraImages = []; window.loraPaths = [];
 window.calls = [];
 window.txtCalls = []; window.extraCalls = []; window.interrupts = 0;
 window.ksNative = {
+  gpuMemory: async () => window.gpuFails ? {ok:false} : {ok:true,used:window.gpuUsed ?? 1302,total:16275,measuredAt:window.gpuStale ? 1 : Date.now(),devices:[{name:'NVIDIA test',used:1302,total:16275}]},
   setTitle() {}, setTitleBar() {}, setZoom() {}, onCloseRequest() {}, onOpenPath() {},
   getPending: async () => [],
   pathForFile: file => 'C:/selected/' + file.name,
@@ -58,12 +62,27 @@ async function scenario() {
   const click = async (label, scope) => { const b = button(label, scope); if (!b) throw new Error('Bouton absent : ' + label); b.click(); await new Promise(r => setTimeout(r, 30)); };
   const doc = name => { const d = new KS.Doc({ name, width: 128, height: 64 }); const c = KS.util.canvas(128, 64); const x = c.getContext('2d'); x.fillStyle = '#3970bb'; x.fillRect(0, 0, 128, 64); d.addLayer(new KS.Layer({ name: 'Base', canvas: c }), 0); return d; };
   const a = doc('Source A'); KS.addDoc(a);
+  await KS.gpuMemory.refresh();
+  const gauge = document.querySelector('#gpu-status');
+  assert(gauge.dataset.state === 'ready' && gauge.textContent.includes('16'), 'La VRAM se lit dans Edition sans démarrer Studio');
+  window.gpuFails = true; await KS.gpuMemory.refresh();
+  assert(gauge.dataset.state === 'unavailable' && !gauge.textContent.includes('302') && gauge.querySelector('progress').hidden, 'Une erreur retire le chiffre périmé au lieu de figer la jauge');
+  window.gpuFails = false; window.gpuUsed = 0; await KS.gpuMemory.refresh();
+  assert(gauge.dataset.state === 'ready' && gauge.querySelector('progress').value === 0, 'La jauge récupère après une erreur et accepte une VRAM utilisée nulle');
+  window.gpuStale = true; await KS.gpuMemory.refresh();
+  assert(gauge.dataset.state === 'unavailable', 'Une mesure trop ancienne est écartée');
+  window.gpuStale = false; window.gpuUsed = 15000; await KS.gpuMemory.refresh();
+  assert(gauge.dataset.state === 'high', 'La jauge signale une VRAM presque pleine');
+  window.gpuUsed = 4000;
+  await new Promise(r => setTimeout(r, 3200));
+  assert(gauge.dataset.state === 'ready' && gauge.querySelector('progress').value === 25, 'Le rafraîchissement automatique continue sans moteur actif');
   assert(!KS.panels.defs.generate && !KS.panels.LAYOUT.some(g => g.tabs.includes('generate')), 'Aucun panneau Img2Img ni Studio IA dans le dock Édition');
   const navTabs = KS.panels.LAYOUT.find(g => g.id === 'g-nav').tabs;
   assert(navTabs.indexOf('aidraw') === navTabs.indexOf('histogram') + 1 && navTabs.indexOf('info') === navTabs.indexOf('aidraw') + 1 && !KS.panels.isVisible('aidraw'), 'Dessin IA est optionnel entre Histogramme et Infos');
   await KS.cmd.sendToStudio('img2img');
   await wait(() => document.querySelector('.fx-left .fx-panel .fx-slider'));
   assert(KS.studio.on && KS.prefs.fx.tab === 'img2img', 'Img2Img ouvre le Studio');
+  assert(gauge.getBoundingClientRect().bottom <= innerHeight && gauge.getBoundingClientRect().height > 0, 'La même jauge reste visible dans Studio IA');
   assert(document.querySelector('.fx-source img').alt === 'Source A', 'Le document envoyé devient la source');
   a.layers[0].ctx.fillStyle = '#cc0011'; a.layers[0].ctx.fillRect(0, 0, 128, 64); a.layers[0].touch(); a.changed();
   const b = doc('Autre document'); KS.addDoc(b);
@@ -89,25 +108,34 @@ async function scenario() {
   await click('+', document.querySelector('.fx-view'));
   assert(+outputZoom.dataset.scale > oldScale, 'Le résultat possède des commandes de zoom indépendantes de la source');
   const zoomedMedia = outputZoom.querySelector('img');
-  outputZoom.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 50, button: 0, clientX: 30, clientY: 30, bubbles: true }));
-  outputZoom.dispatchEvent(new PointerEvent('pointermove', { pointerId: 50, clientX: 65, clientY: 50, bubbles: true }));
-  outputZoom.dispatchEvent(new PointerEvent('pointerup', { pointerId: 50, button: 0, bubbles: true }));
-  assert(zoomedMedia.style.transform.includes('translate(35px, 20px)'), 'Glisser déplace l’image dans son aperçu');
+  const panRect = zoomedMedia.getBoundingClientRect();
+  await window.realDrag(Math.round(panRect.left + panRect.width / 2), Math.round(panRect.top + panRect.height / 2));
+  assert(zoomedMedia.style.transform.includes('translate(35px, 20px)'), 'Glisser déplace l’image dans son aperçu : ' + zoomedMedia.style.transform);
   await click('Image entière', document.querySelector('.fx-view'));
   assert(+outputZoom.dataset.scale === oldScale && zoomedMedia.style.transform.includes('translate(0px, 0px)'), 'Image entière réinitialise le zoom et le déplacement du cadre');
     const docsBeforePreview = KS.state.docs.length;
-    zoomedMedia.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    const imageRect = zoomedMedia.getBoundingClientRect();
+    await window.realDoubleClick(Math.round(imageRect.left + imageRect.width / 2), Math.round(imageRect.top + imageRect.height / 2));
     await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+    const fullImageRect = document.querySelector('.iv-lightbox .iv-media').getBoundingClientRect();
+    await window.realClick(Math.round(fullImageRect.left + fullImageRect.width / 2), Math.round(fullImageRect.top + fullImageRect.height / 2));
+    assert(!!document.querySelector('.iv-lightbox'), 'Un vrai clic sur l’image ne ferme pas le plein écran');
     assert(KS.state.docs.length === docsBeforePreview, 'Le double-clic affiche le résultat en plein écran sans ouvrir un document dans l’Édition');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.querySelector('.fx-view .iv-scale').click();
   await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
   assert(KS.modalOpen() && document.querySelector('.iv-lightbox img').src === zoomedMedia.src, 'Cliquer sur la barre au-dessus ouvre la même image en plein écran');
-  document.querySelector('.iv-fullscreen .iv-viewport').click();
+  const outsideRect = document.querySelector('.iv-fullscreen .iv-viewport').getBoundingClientRect();
+  await window.realClick(Math.round(outsideRect.left + 4), Math.round(outsideRect.top + 4));
   assert(!KS.modalOpen(), 'Cliquer autour de l’image ferme le plein écran');
   await click('⛶', document.querySelector('.fx-source'));
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert(!KS.modalOpen() && +sourceZoom.dataset.scale === 1, 'Échap ferme le plein écran sans changer le zoom de la source');
+  const sourceRect = document.querySelector('.fx-source .iv-media').getBoundingClientRect();
+  await window.realDoubleClick(Math.round(sourceRect.left + sourceRect.width / 2), Math.round(sourceRect.top + sourceRect.height / 2));
+  await wait(() => !!document.querySelector('.iv-lightbox'));
+  assert(KS.state.docs.length === docsBeforePreview, 'Le vrai double-clic fonctionne aussi sur la source Img2Img');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
   const dropData = new DataTransfer(); dropData.items.add(new File(['test'], 'test.png', { type: 'image/png' }));
   await KS.cmd.toggleStudio(false);
   window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dropData, bubbles: true, cancelable: true }));
@@ -384,6 +412,26 @@ app.whenReady().then(async () => {
   let win;
   try {
     win = new BrowserWindow({ show: false, width: 1440, height: 1000, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false, offscreen: true } });
+    ipcMain.handle('test-double-click', async (_event, x, y) => {
+      win.webContents.sendInputEvent({ type:'mouseMove', x, y });
+      for (const clickCount of [1, 2]) {
+        win.webContents.sendInputEvent({ type:'mouseDown', x, y, button:'left', clickCount });
+        win.webContents.sendInputEvent({ type:'mouseUp', x, y, button:'left', clickCount });
+      }
+    });
+    ipcMain.handle('test-click', (_event, x, y) => {
+      win.webContents.sendInputEvent({ type:'mouseMove', x, y });
+      win.webContents.sendInputEvent({ type:'mouseDown', x, y, button:'left', clickCount:1 });
+      win.webContents.sendInputEvent({ type:'mouseUp', x, y, button:'left', clickCount:1 });
+    });
+    ipcMain.handle('test-drag', async (_event, x, y) => {
+      win.webContents.sendInputEvent({ type:'mouseMove', x, y });
+      win.webContents.sendInputEvent({ type:'mouseDown', x, y, button:'left', clickCount:1 });
+      await new Promise(r => setTimeout(r, 30));
+      win.webContents.sendInputEvent({ type:'mouseMove', x:x+35, y:y+20, button:'left' });
+      await new Promise(r => setTimeout(r, 30));
+      win.webContents.sendInputEvent({ type:'mouseUp', x:x+35, y:y+20, button:'left', clickCount:1 });
+    });
     const errors = [];
     win.webContents.on('console-message', details => { if (details.level === 'error') { errors.push(details.message); console.error(details.message); } });
     await win.loadFile(process.env.KANEVAS_TEST_APP_PATH || path.join(__dirname, '../app/index.html'));

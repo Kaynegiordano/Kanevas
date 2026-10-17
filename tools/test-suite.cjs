@@ -50,6 +50,9 @@ async function scenario() {
   const creating = S.newProject(); await wait(() => !!document.querySelector('.modal input'));
   document.querySelector('.modal input').value = 'Illustration de test'; click('Enregistrer'); await creating;
   check(document.body.classList.contains('suite-home') && !!document.querySelector('#suite-toolbar'), 'Accueil Projet et navigation commune');
+  await KS.gpuMemory.refresh();
+  const gpuVisible = () => { const r = document.querySelector('#gpu-status').getBoundingClientRect(); return r.height >= 20 && r.bottom <= innerHeight && r.width <= innerWidth; };
+  check(gpuVisible() && document.querySelector('#gpu-status').dataset.state === 'ready', 'VRAM du pilote visible dès le Projet');
   check([...document.querySelectorAll('#suite-toolbar .ws-btn')].map(b => b.textContent).join('|') === 'Projet|Edition|Studio IA|Animation|Animation Vidéo|Montage', 'Navigation demandée, Montage en dernier');
   document.querySelector('.ws-btn[data-v="video"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 80 }));
   check([...document.querySelectorAll('.menu .mi .lb')].some(b => b.textContent === 'Arrêter'), 'Le clic droit sur une app propose Arrêter');
@@ -59,6 +62,7 @@ async function scenario() {
   d.addLayer(new KS.Layer({ name: 'Base', canvas: base }), 0);
   const top = KS.util.canvas(128, 64); top.getContext('2d').fillStyle = '#dda238'; top.getContext('2d').fillRect(20, 15, 40, 25);
   d.addLayer(new KS.Layer({ name: 'Détail', canvas: top }), 1); KS.addDoc(d); await KS.cmd.toggleStudio(false);
+  check(gpuVisible(), 'VRAM visible dans Edition');
   const first = await S.capture(); check(!!first.snapshotPath, 'Capture avec document natif et aperçu séparés');
   const duplicate = await S.capture(); check(first.id === duplicate.id, 'Capturer sans modification réutilise la version existante');
   d.layers[1].ctx.fillStyle = '#ee2345'; d.layers[1].ctx.fillRect(30, 10, 20, 20); d.layers[1].touch(); d.history.push({ name: 'Retouche', undo() {}, redo() {} });
@@ -71,6 +75,7 @@ async function scenario() {
   await S.home(); S.selected = second.id; await S.refresh();
   check(document.querySelector('.suite-detail h3').textContent === second.name, 'La sélection de bibliothèque affiche ses actions');
   await S.animate(second); check(S.project.animation?.item === second.id && WX.el.wallpaper.ready, 'Création et liaison d’une animation par le véritable pont preload');
+  check(gpuVisible(), 'VRAM visible dans Animation avec son cadre intégré');
   const dossier = S.project.animation.dossier;
   await S.resumeAnimation(); check(S.project.animation.dossier === dossier, 'Reprendre l’animation conserve son projet et ses zones');
   const canceled = S.animate(first); await wait(() => KS.modalOpen()); click('Annuler'); await canceled;
@@ -96,11 +101,13 @@ async function scenario() {
   check((await WX.request('video', 'state')).events === after.events, 'Revenir au projet restaure son montage et ses médias');
   await WX.stop('video'); check(!WX.el.video.frame, 'Arrêter Montage sauvegarde puis décharge son interface');
   await S.openVideo(); check((await WX.request('video', 'state')).events === after.events, 'Rouvrir Montage après arrêt retrouve sa timeline');
+  check(gpuVisible(), 'VRAM visible dans Montage');
   await S.toComfy(first); check(WX.el.comfyui.ready, 'Image injectée dans le nœud LoadImage par le véritable pont ComfyUI');
   const wf = { nodes: [{ id: 7, type: 'LoadImage' }, { id: 9, type: 'LoadImage' }] };
   await WX.request('comfyui', 'workflow', { workflow: wf });
   const multiple = S.toComfy(second); await wait(() => !!document.querySelector('.modal select')); click('Utiliser cette entrée'); await multiple;
   const state = await WX.request('comfyui', 'image', { name: 'test.png' }); check(state.nodes?.length === 2, 'Plusieurs entrées de workflow : choix explicite du nœud');
+  check(gpuVisible(), 'VRAM visible dans Animation Vidéo');
   const rejected = await WX.request('comfyui', 'workflow', { workflow: {} }).then(() => false, () => true); check(rejected, 'Un workflow au mauvais format produit une erreur lisible');
   const beforeCount = S.project.items.length;
   await S.collect([{ canvas: top, info: 'prompt\nSeed: 123', kind: 'txt2img' }]);
@@ -173,7 +180,7 @@ app.whenReady().then(async () => {
     reply('engine-start', () => { engineState = 'ready'; return engineStatus(); });
     reply('engine-stop', () => { engineState = 'off'; return engineStatus(); });
     reply('forge-status', () => ({ ok: true }));
-    reply('forge-memory', () => ({ ok: true, used: 0, total: 0 }));
+    reply('gpu-memory', () => ({ ok:true, used:1302, total:16275, measuredAt:Date.now(), devices:[{name:'NVIDIA test',used:1302,total:16275}] }));
     reply('forge-catalog', () => ({ ok: true, models: [{ title: 'Studio-test', name: 'Studio-test' }], current: { model: 'Studio-test', modules: [] }, loras: [], modules: [], samplers: ['Euler'], schedulers: ['Automatic'], scripts: [], styles: [], presets: {}, upscalers: ['Lanczos'] }));
     reply('app-version', () => 'test'); reply('update-state', () => ({ state: 'none' })); reply('update-check', () => ({ state: 'none' }));
     reply('recovery-list', () => ({ ok: true, entries: [] })); reply('recovery-write', () => ({ ok: true })); reply('recovery-remove', () => ({ ok: true }));
@@ -226,6 +233,7 @@ app.whenReady().then(async () => {
     console.log('OK Après rechargement complet : projet, bibliothèque et montage retrouvés');
     for (const width of [1440, 1024]) {
       win.setSize(width, 1000); await new Promise(r => setTimeout(r, 350));
+      assert(await win.webContents.executeJavaScript('document.querySelector("#gpu-status").getBoundingClientRect().bottom <= innerHeight'));
       assert(await win.webContents.executeJavaScript('document.querySelector("#suite-toolbar").scrollWidth <= document.querySelector("#suite-toolbar").clientWidth + 1 && document.querySelector("#suite-home").scrollWidth <= document.querySelector("#suite-home").clientWidth + 1'));
       console.log('OK Mise en page Projet à ' + width + ' px');
       if (process.env.KANEVAS_TEST_SCREENSHOT) fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-' + width + '.png'), (await win.webContents.capturePage()).toPNG());
