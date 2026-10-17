@@ -46,6 +46,8 @@ if (!app.requestSingleInstanceLock()) {
     require('./services.cjs')({
       getWin: () => win,
       root: () => engineDirs().root,
+      managed: () => managedRuntime.read(),
+      environment: id => managedRuntime.environment(id),
       engine: {
         url: () => engine.url,
         // Forge de Kane OS s'il tourne, sinon le moteur de Kanevas (démarré à la demande de Wallpaper)
@@ -61,6 +63,16 @@ if (!app.requestSingleInstanceLock()) {
           await forgeCall(base, '/sdapi/v1/unload-checkpoint', {}, 60000);
         },
       },
+    });
+    require('./runtime-migration-host.cjs')({ getWin: () => win, directories: engineDirs, managed: managedRuntime,
+      idle: async () => {
+        if (animationBusy || engine.state === 'starting') throw new Error('Attendez la fin des tâches en cours');
+        for (const port of [7860, 7862, 8188, 8780]) {
+          const net = require('node:net');
+          const busy = await new Promise(resolve => { const socket = net.connect({ host: '127.0.0.1', port }); socket.setTimeout(500); socket.on('connect', () => { socket.destroy(); resolve(true); }); socket.on('error', () => resolve(false)); socket.on('timeout', () => { socket.destroy(); resolve(false); }); });
+          if (busy) throw new Error('Arrêtez les moteurs Studio, Forge, Animation et ComfyUI avant de basculer les copies');
+        }
+      }, reset: () => { forgeDirs = null; integrationRoot = ''; engine.state = 'off'; engine.url = ''; engineEmit(); },
     });
     createWindow();
   });
@@ -450,7 +462,9 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
     i2i: { sampler_name: pick('i2i_sampler'), scheduler: pick('i2i_scheduler'), steps: pick('i2i_step'), cfg_scale: pick('i2i_cfg'), distilled_cfg_scale: pick('i2i_dcfg'), batch_size: pick('i2i_batch_size'),
       width: pick('i2i_width'), height: pick('i2i_height') },
   } : {};
-  const dirs = { data: flags.data_dir || '', models: flags.model_ref || '', lora: flags.lora_dir || '' };
+  const owned = managedRuntime.read();
+  const dirs = owned.active ? { data: owned.components.studio.directory, models: owned.models, lora: path.join(owned.models, 'Lora') }
+    : { data: flags.data_dir || '', models: flags.model_ref || '', lora: flags.lora_dir || '' };
   if (dirs.data) { forgeDirs = dirs; try { fs.writeFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), JSON.stringify(dirs)); } catch { /* rien */ } }
   return {
     adModels, upscalers, dirs,
@@ -468,20 +482,24 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
 // Les dossiers de Forge viennent de son API (cmd-flags) ; la passerelle tourne avec le Python du venv de Forge
 // et réutilise son extension d'entraînement (lora_bridge.py). Aucun chemin n'est accepté de la page.
 let forgeDirs = null;
-const loadDirs = () => { if (!forgeDirs) try { forgeDirs = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), 'utf8')); } catch { /* jamais vu */ } };
+const loadDirs = () => {
+  if (!forgeDirs) try { forgeDirs = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), 'utf8')); } catch { /* jamais vu */ }
+  const managed = managedRuntime.read();
+  if (managed.active) forgeDirs = { data: managed.components.studio.directory, models: managed.models, lora: path.join(managed.models, 'Lora') };
+};
 const bridgePath = () => path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'lora_bridge.py');
 const insideDir = (root, p) => { const r = path.resolve(root) + path.sep; const q = path.resolve(p); return q.startsWith(r); };
 ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
   try {
     // dossiers mémorisés au dernier contact avec Forge : l'atelier marche aussi Forge éteint (carte graphique libre)
-    if (!forgeDirs) try { forgeDirs = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'forge-dirs.json'), 'utf8')); } catch { /* jamais vu */ }
+    loadDirs();
     if (!forgeDirs || !forgeDirs.data) throw new Error('Démarrez Forge une fois depuis Kane OS : Kanevas y lit ses dossiers (entraîneur, modèles)');
     const py = path.join(forgeDirs.data, 'venv', 'Scripts', 'python.exe');
     if (!fs.existsSync(py)) throw new Error('Python de Forge introuvable : ' + py);
     if (!/^[a-z_]+$/.test(cmd)) throw new Error('Commande invalide');
     const input = JSON.stringify({ ...args, data_dir: forgeDirs.data, model_ref: forgeDirs.models, lora_dir: forgeDirs.lora });
     const out = await new Promise((resolve, reject) => {
-      const child = require('child_process').spawn(py, [bridgePath(), cmd], { cwd: forgeDirs.data, windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+      const child = require('child_process').spawn(py, [bridgePath(), cmd], { cwd: forgeDirs.data, windowsHide: true, env: { ...managedRuntime.environment('studio'), PYTHONIOENCODING: 'utf-8' } });
       let so = '', se = '';
       child.stdout.on('data', d => { so += d; });
       child.stderr.on('data', d => { se += d; if (se.length > 20000) se = se.slice(-20000); });
@@ -631,6 +649,7 @@ ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(b
 // (port 7860), il est réutilisé : jamais deux copies des modèles en mémoire vidéo.
 const ENGINE_PORT = 7862;
 const studioRuntime = require('./studio-runtime.cjs')(app.getPath('userData'));
+const managedRuntime = require('./managed-runtimes.cjs')(app.getPath('userData'));
 let integrationRoot = '';
 const engine = { state: 'off', url: '', pid: null, ours: false, log: [], error: '', profile: '', startedAt: 0 };
 const engineLog = line => { engine.log.push(line); if (engine.log.length > 400) engine.log.splice(0, engine.log.length - 400); };
@@ -639,6 +658,9 @@ const engineStatus = () => ({ state: engine.state, url: engine.url, ours: engine
 const ping = async (url, ms = 1500) => { try { const r = await fetch(url + '/sdapi/v1/options', { signal: AbortSignal.timeout(ms) }); return r.ok; } catch { return false; } };
 function engineDirs() {
   loadDirs();
+  const owned = managedRuntime.read();
+  if (owned.active) return { root: owned.source, data: owned.components.studio.directory, runtime: owned.components.studio.directory,
+    python: owned.components.studio.python, models: owned.models, profiles: owned.profiles, shareExternal: false, managed: true };
   const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
   const root = integrationRoot ||= studioRuntime.read().kaneRoot || path.dirname(data);
   let profiles = [];
@@ -649,6 +671,7 @@ function engineDirs() {
 ipcMain.handle('engine-config', () => engineDirs());
 ipcMain.handle('engine-config-save', async (_e, options) => {
   try {
+    if (managedRuntime.read().active) throw new Error('Les moteurs sont gérés par Kanevas. Utilisez Migration vers Kanevas pour revenir à la configuration précédente.');
     if (engine.ours && ['ready', 'starting'].includes(engine.state) || await ping('http://127.0.0.1:' + ENGINE_PORT, 800)) throw new Error('Arrêtez le Studio avant de changer son moteur');
     const value = studioRuntime.save(options, engineDirs());
     if (engine.state === 'external') { engine.state = 'off'; engine.url = ''; engineEmit(); }
@@ -667,7 +690,13 @@ async function engineStart(profileId) {
   if (engine.state === 'ready' || engine.state === 'starting') return engineStatus();
   const d = engineDirs();
   // moteur resté actif (Kanevas fermé brutalement) : on le reprend, il pourra être arrêté
-  if (await ping('http://127.0.0.1:' + ENGINE_PORT, 1200)) { engine.state = 'ready'; engine.url = 'http://127.0.0.1:' + ENGINE_PORT; engine.ours = true; engine.pid = pidOnPort(ENGINE_PORT); engineEmit(); return engineStatus(); }
+  if (await ping('http://127.0.0.1:' + ENGINE_PORT, 1200)) {
+    if (d.managed) {
+      try { require('./local-process.cjs').identify({ port: ENGINE_PORT, script: path.join(d.runtime, 'launch.py'), python: d.python }); }
+      catch { engine.state = 'error'; engine.error = 'L’ancien moteur Studio occupe le port. Arrêtez-le avant d’ouvrir la copie Kanevas.'; engineEmit(); return engineStatus(); }
+    }
+    engine.state = 'ready'; engine.url = 'http://127.0.0.1:' + ENGINE_PORT; engine.ours = true; engine.pid = pidOnPort(ENGINE_PORT); engineEmit(); return engineStatus();
+  }
   if (await ping('http://127.0.0.1:7860', 1200)) {
     if (d.shareExternal) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; engine.ours = false; }
     else { engine.state = 'error'; engine.error = 'Arrêtez le moteur Forge externe avant de démarrer le moteur Studio séparé, pour libérer la mémoire GPU.'; }
@@ -685,7 +714,7 @@ async function engineStart(profileId) {
   engineLog('> ' + args);
   const child = require('child_process').spawn(py, ['launch.py'], {
     cwd: d.runtime, windowsHide: true,
-    env: { ...process.env, COMMANDLINE_ARGS: args, SD_WEBUI_RESTARTING: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
+    env: { ...managedRuntime.environment('studio'), COMMANDLINE_ARGS: args, SD_WEBUI_RESTARTING: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
   });
   engine.pid = child.pid;
   const onData = buf => String(buf).split(/\r?\n|\r/).forEach(l => { if (l.trim()) engineLog(l.slice(0, 400)); });

@@ -40,6 +40,11 @@ async function scenario() {
   const wait = async fn => { const end = Date.now() + 15000; while (!fn() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); if (!fn()) throw new Error('Timeout renderer'); };
   const click = label => { const b = [...document.querySelectorAll('.modal button')].find(b => b.textContent === label); if (!b) throw new Error('Bouton modal absent : ' + label); b.click(); };
   await KS.suite.ready; await KS.suite.home();
+  await KS.dialogs.runtimeMigration();
+  check(document.querySelector('.modal').textContent.includes('Aucune installation source') && ![...document.querySelectorAll('.modal button')].some(b=>/Supprimer/.test(b.textContent)), 'La migration expose ses étapes et ne propose aucune suppression des sources');
+  check([...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Activer les copies vérifiées').disabled, 'La bascule reste indisponible sans copie vérifiée et testée');
+  click('Fermer');
+
   const S = KS.suite, WX = KS.ws;
   check(S.project.name === 'Kane App', 'Le projet par défaut Mon atelier devient Kane App');
   const creating = S.newProject(); await wait(() => !!document.querySelector('.modal input'));
@@ -153,6 +158,9 @@ app.whenReady().then(async () => {
       res.setHeader('Content-Type', 'text/html'); res.end('<html><head></head><body>Workflow de test</body></html>');
     });
     kc.setup(() => win); store = require(path.join(root, 'suite-host.cjs'))(() => win);
+    const managed = require(path.join(root, 'managed-runtimes.cjs'))(app.getPath('userData'));
+    require(path.join(root, 'runtime-migration-host.cjs'))({ getWin:()=>win, managed, directories:()=>({root:tmp,python:process.execPath}), idle:async()=>{}, reset(){} });
+
     require(path.join(root, 'services.cjs'))({ getWin: () => win, root: () => tmp, engine: { forgeUrl: async () => 'http://127.0.0.1:7862', state: () => 'off', start() {}, release: async () => { gpuReleases++; } } });
     const reply = (ch, fn) => { ipcMain.removeHandler(ch); ipcMain.handle(ch, fn); };
     reply('kc:ff-available', () => ({ path: 'test-ffmpeg' }));

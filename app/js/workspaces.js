@@ -206,6 +206,7 @@
     sync();
   }, 0));
   KS.beforeClose = async () => {
+    try { if ((await N.runtimeMigrationState?.())?.running) { KS.toast('La migration continue. Attendez sa fin avant de quitter Kanevas.', 'info', 5000); return false; } } catch { /* version sans migration */ }
     if (WX.el.video?.ready) { try { await WX.request('video', 'save'); } catch (e) { KS.toast(e.message, 'err'); return false; } }
     if (WX.el.wallpaper?.ready) { try { await WX.request('wallpaper', 'flush'); } catch (e) { KS.toast(e.message, 'err'); return false; } }
     // Le dialogue natif de KaneClip reste disponible pour un montage non rattaché au projet.

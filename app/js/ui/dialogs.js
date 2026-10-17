@@ -532,6 +532,7 @@
       h('label.l', { text: 'Accent de Kane App' }), accRow,
       h('label.l', { text: 'Couleurs des espaces' }), KS.appearance.controls(),
       h('label.l', { text: 'Studio IA' }), ui.btn('Configurer le moteur local…', () => D.enginePrefs(), '.small'),
+      h('label.l', { text: 'Applications intégrées' }), ui.btn('Migration vers Kanevas…', () => D.runtimeMigration(), '.small'),
       h('label.l', { text: "Taille de l'interface" }), ui.seg([['0.9', '90 %'], ['1', '100 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.5', '150 %']], String(P.uiScale || 1), v => set('uiScale', +v)),
       h('label.l', { text: 'Molette' }), ui.seg([['zoom', 'Zoome'], ['scroll', 'Fait défiler']], P.wheelZoom ? 'zoom' : 'scroll', v => set('wheelZoom', v === 'zoom')),
       h('label.l', { text: 'États d\'historique' }), ui.scrub({ value: P.historySize, min: 5, max: 300, onChange: v => set('historySize', v) }),
@@ -548,6 +549,10 @@
     if (!N?.engineConfig) return KS.toast('Disponible dans l’application de bureau.', 'info');
     if (KS.studioApi?.isBusy()) return KS.toast('Attendez la fin de la génération avant de changer le moteur.', 'info');
     const config = await N.engineConfig();
+    if (config.managed) return KS.modal({ title: 'Moteurs gérés par Kanevas', width: 640,
+      body: h('div.form-col', h('p', { text: 'Le Studio utilise sa copie vérifiée dans les données de Kanevas.' }), h('div.note', { text: config.runtime }),
+        h('p.note', { text: 'Les modèles communs restent dans ' + config.models + '. Les anciennes installations sont conservées.' })),
+      buttons: [{ label: 'Fermer' }, { label: 'Gérer la migration…', primary: true, action: () => D.runtimeMigration() }] });
     let directory = config.runtime, models = config.models, shareExternal = config.shareExternal;
     const runtimeText = h('div.note', { text: directory }), modelsText = h('div.note', { text: models });
     const body = h('div.form-col', { style: { gap: '12px' } },
@@ -561,6 +566,45 @@
       if (!r.ok) { KS.toast(r.error, 'err', 6000); return false; }
       KS.toast('Configuration du moteur enregistrée.', 'ok');
     } }] });
+  };
+
+  let migrationView = null;
+  KS.native?.onRuntimeMigration?.(value => migrationView?.(value));
+  D.runtimeMigration = async () => {
+    const N = KS.native;
+    if (!N?.runtimeMigrationState) return KS.toast('Disponible dans l’application de bureau.', 'info');
+    const status = h('div.note', { role: 'status', 'aria-live': 'polite' }), rows = h('div.form-col');
+    const buttons = {};
+    const action = (key, label) => buttons[key] = ui.btn(label, async () => {
+      if (KS.studioApi?.isBusy() || await KS.trainTab?.running()) return KS.toast('Attendez la fin des tâches IA et de l’entraînement.', 'info');
+      const result = await N.runtimeMigrationRun(key);
+      if (!result.ok) KS.toast(result.error, 'err', 6000);
+      if (result.ok && ['activate', 'rollback'].includes(key)) KS.trainTab?.invalidate();
+      update(await N.runtimeMigrationState());
+    }, '.small');
+    const labels = { studio: 'Studio IA', comfyui: 'Animation Vidéo · ComfyUI', wallpaper: 'Animation', training: 'Entraînement LoRA', media: 'Montage · FFmpeg' };
+    const phases = { inventoried: 'Inventorié', copying: 'Copie en cours', verified: 'Copie vérifiée', probed: 'Environnement testé' };
+    const update = value => {
+      const components = Object.entries(value.report?.components || {});
+      const copied = components.length === 4 && components.every(([, c]) => ['verified', 'probed'].includes(c.phase));
+      const tested = copied && components.every(([, c]) => c.phase === 'probed') && value.report.integrityCheckedAt && value.report.media?.phase === 'probed';
+      status.textContent = value.error || (value.running ? 'Opération en cours… ' + (labels[value.progress?.component] || '') + (value.progress?.files ? ' · ' + value.progress.files + ' fichiers' : '') : value.active ? 'Kanevas utilise ses copies des moteurs.' : 'Les installations actuelles sont encore utilisées.');
+      rows.replaceChildren(h('div.note', { text: value.destination }), ...components.map(([id, c]) => h('div.note', { text: labels[id] + ' · ' + (phases[c.phase] || c.phase) + ' · ' + (c.bytes / 2 ** 30).toFixed(1) + ' Go' })));
+      if (value.report?.media) rows.append(h('div.note', { text: 'Montage · FFmpeg · ' + (phases[value.report.media.phase] || value.report.media.phase) }));
+      buttons.copy.disabled = value.running || value.active;
+      buttons.verify.disabled = value.running || !copied;
+      buttons.probe.disabled = value.running || !copied || !value.report?.integrityCheckedAt;
+      buttons.activate.disabled = value.running || value.active || !tested;
+      buttons.rollback.disabled = value.running || !value.active;
+    };
+    const body = h('div.form-col', { style: { gap: '12px' } },
+      h('p', { text: 'Les moteurs, extensions, environnements Python et projets sont copiés dans les données de Kanevas. Les modèles communs restent partagés dans leur dossier actuel.' }),
+      status, rows,
+      h('div.form-row', action('copy', '1. Copier les moteurs'), action('verify', '2. Vérifier les fichiers'), action('probe', '3. Tester les environnements')),
+      h('div.form-row', action('activate', 'Activer les copies vérifiées'), action('rollback', 'Revenir aux installations précédentes')),
+      h('p.note', { text: 'Aucune installation source n’est supprimée. Les générations, entraînements, workflows et animations sur vos projets restent à valider avant tout retrait des anciens moteurs. Arrêtez les moteurs avant de basculer.' }));
+    KS.modal({ title: 'Migration des applications vers Kanevas', body, width: 760, buttons: [{ label: 'Fermer', primary: true }], onClose: () => { migrationView = null; } });
+    migrationView = update; update(await N.runtimeMigrationState());
   };
 
   /* ---------------------------------------------------------------- raccourcis, à propos */

@@ -216,6 +216,7 @@
     document.addEventListener('visibilitychange', resetDrop);
     window.addEventListener('drop', async e => {
       e.preventDefault(); resetDrop();
+      if (KS.studio?.on) return;
       const files = [...e.dataTransfer.files];
       const d = KS.state.doc;
       const onCanvas = d && e.target.closest && e.target.closest('#viewport');

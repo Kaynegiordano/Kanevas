@@ -35,7 +35,8 @@ function setup(getWin) {
   const pending = [];
   const send = (channel, payload) => { try { if (frame && !frame.isDestroyed()) frame.send(channel, payload); } catch { frame = null; } };
   const dir = path.join(__dirname, 'kaneclip');
-  const tools = require(path.join(dir, 'media-tools.cjs'))({ app: appProxy, send });
+  const managed = require('./managed-runtimes.cjs')(app.getPath('userData'));
+  const tools = require(path.join(dir, 'media-tools.cjs'))({ app: appProxy, send, binary: () => { const value = managed.read(); return value.active ? value.media.ffmpeg : null; } });
   const ai = require(path.join(dir, 'ai-upscale.cjs'))({ app: appProxy, send, tools });
   const appUrl = 'file:///' + path.join(dir, 'app').replace(/\\/g, '/');
   const fromKc = e => { const u = e.senderFrame && e.senderFrame.url || ''; return decodeURIComponent(u).replace(/\\/g, '/').toLowerCase().startsWith(decodeURIComponent(appUrl).toLowerCase()); };

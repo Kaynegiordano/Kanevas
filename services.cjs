@@ -10,18 +10,19 @@ const { spawn, execFileSync } = require('child_process');
 
 const RELAY_PORT = 8601;
 
-module.exports = function services({ getWin, root, engine }) {
+module.exports = function services({ getWin, root, engine, managed = () => ({ active: false }), environment = () => process.env }) {
+  const directory = (id, legacy) => { const value = managed(); return value.active ? value.components[id].directory : legacy; };
   const runtime = path.join(__dirname.replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked'), 'animation-runtime.py');
   const SV = {
     comfyui: {
       name: 'ComfyUI', port: 8188, ping: '/system_stats',
-      dir: () => path.join(root(), 'ComfyUI'),
+      dir: () => directory('comfyui', path.join(root(), 'ComfyUI')),
       check: d => fs.existsSync(path.join(d, 'main.py')) && fs.existsSync(path.join(d, 'venv', 'Scripts', 'python.exe')),
       cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', path.join(d, 'main.py'), '--port', '8188', '--listen', '127.0.0.1', '--disable-auto-launch', '--enable-manager', '--output-directory', path.join(root(), 'output', 'comfyui')]],
     },
     wallpaper: {
       name: 'Wallpaper Engine Animator', port: 8780, ping: '/api/projets',
-      dir: () => path.join(root(), 'wallpaper-engine-animator'),
+      dir: () => directory('wallpaper', path.join(root(), 'wallpaper-engine-animator')),
       check: d => fs.existsSync(path.join(d, 'outils', 'peintre.py')) && fs.existsSync(path.join(d, 'venv', 'Scripts', 'python.exe')),
       cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', runtime, '--server', path.join(d, 'outils', 'peintre.py'), '--port', '8780', '--sans-navigateur']],
       env: async () => ({ WEA_FORGE_URL: await engine.forgeUrl(), WEA_LANCEUR_URL: 'http://127.0.0.1:' + RELAY_PORT }),
@@ -50,16 +51,21 @@ module.exports = function services({ getWin, root, engine }) {
     } catch { return null; }
   };
   const log = (id, line) => { const L = st[id].log; L.push(line); if (L.length > 600) L.splice(0, L.length - 600); };
+  const adoptable = id => {
+    if (!managed().active) return true;
+    const d = SV[id].dir();
+    try { return !!require('./local-process.cjs').identify({ port: SV[id].port, script: path.join(d, id === 'comfyui' ? 'main.py' : 'outils/peintre.py'), python: path.join(d, 'venv/Scripts/python.exe') }); } catch { return false; }
+  };
 
   async function start(id) {
     const S = st[id], D = SV[id];
     if (S.state === 'ready' || S.state === 'external' || S.state === 'starting') return status(id);
-    if (await ping(id)) { S.state = 'external'; S.ours = false; emit(id); return status(id); }      // lancé par Kane OS
+    if (await ping(id)) { S.state = adoptable(id) ? 'external' : 'error'; S.error = S.state === 'error' ? 'Une ancienne installation occupe le port. Arrêtez-la dans KaneOS avant d’ouvrir cette copie Kanevas.' : ''; S.ours = false; emit(id); return status(id); }
     const d = D.dir();
     if (!D.check(d)) { S.state = 'error'; S.error = D.name + ' introuvable ou incomplet : ' + d; emit(id); return status(id); }
     if (id === 'wallpaper') startRelay();
     const [py, args] = D.cmd(d);
-    const env = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1', ...(D.env ? await D.env() : {}) };
+    const env = { ...environment(id), PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1', ...(D.env ? await D.env() : {}) };
     S.forge = env.WEA_FORGE_URL || '';
     S.log = []; S.error = ''; S.state = 'starting'; S.ours = true; emit(id);
     log(id, '> ' + [py, ...args].join(' '));
@@ -117,7 +123,7 @@ module.exports = function services({ getWin, root, engine }) {
   ipcMain.handle('svc-status', async (_e, id) => {
     if (!SV[id]) throw new Error('Service inconnu');
     const S = st[id];
-    if (S.state === 'off' && await ping(id, 700)) { S.state = 'external'; S.ours = false; }
+    if (S.state === 'off' && await ping(id, 700)) { S.state = adoptable(id) ? 'external' : 'error'; S.error = S.state === 'error' ? 'Une ancienne installation occupe le port. Arrêtez-la dans KaneOS.' : ''; S.ours = false; }
     else if (S.state === 'external' && !(await ping(id, 900))) S.state = 'off';
     return status(id);
   });

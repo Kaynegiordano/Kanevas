@@ -13,6 +13,22 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Moteurs gérés par Kanevas (1.9.0)
+- L’import d’images dans **Lora** reste dans l’atelier d’entraînement. Un dépôt dans le Studio
+  ne crée plus implicitement de documents dans **Edition**.
+- **Préférences > Applications intégrées > Migration vers Kanevas** copie les moteurs du Studio,
+  ComfyUI, Animation et sd-scripts dans **KanevasData**, avec leurs environnements Python,
+  extensions, nœuds et données. Les chemins internes et lanceurs Python sont adaptés dans les copies.
+- Les fichiers sont contrôlés par **SHA256**, les environnements Python testés et les points d’entrée
+  revérifiés avant activation. **Montage** reçoit aussi son propre FFmpeg vérifié et sa licence.
+- Après bascule, le Studio, les services et l’atelier Lora utilisent les copies. Une ancienne instance
+  sur le même port est signalée au lieu d’être reprise à leur place.
+- Les modèles communs, caches et le Python Windows de base restent partagés. Les sources restent
+  conservées : **aucune suppression automatique**, même après activation. Le retour à la configuration
+  précédente garde les copies et leurs nouvelles données.
+- Les usages sur les projets personnels — entraînement complet, vidéo générative et rendu d’animation —
+  restent à valider avant tout retrait des anciennes applications. Détails et contrôles : [MIGRATION.md](MIGRATION.md).
+
 ### Aperçus et mémoire d’Animation (1.8.2)
 - Au-dessus de chaque aperçu du Studio : **Image entière** recentre et ajuste l’image au cadre,
   **100 %** affiche sa taille réelle. Le pourcentage et **⛶** ouvrent un aperçu plein écran,

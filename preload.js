@@ -151,5 +151,8 @@ contextBridge.exposeInMainWorld('ksNative', {
   animationRun: (dossier, operation, body) => ipcRenderer.invoke('animation-run', dossier, operation, body),
   animationGPUState: () => ipcRenderer.invoke('animation-gpu-state'),
   onAnimationGPU: fn => ipcRenderer.on('animation-gpu', (_e, state) => fn(state)),
+  runtimeMigrationState: () => ipcRenderer.invoke('runtime-migration-state'),
+  runtimeMigrationRun: action => ipcRenderer.invoke('runtime-migration-run', action),
+  onRuntimeMigration: fn => ipcRenderer.on('runtime-migration', (_e, state) => fn(state)),
 });
 }

@@ -9,11 +9,23 @@ app.setPath('userData', path.join(tmp, 'profile'));
 const preload = path.join(tmp, 'preload.cjs');
 fs.writeFileSync(preload, `
 localStorage.setItem('kanevas.prefs', JSON.stringify({ fx: { v: 1, editor: { strength: 0.85 } }, genAI: { v: 2, strength: 1, loras: [{ name: 'obsolete-girl', weight: 1 }] } }));
+window.loraImages = []; window.loraPaths = [];
 window.calls = [];
 window.txtCalls = []; window.extraCalls = []; window.interrupts = 0;
 window.ksNative = {
   setTitle() {}, setTitleBar() {}, setZoom() {}, onCloseRequest() {}, onOpenPath() {},
   getPending: async () => [],
+  pathForFile: file => 'C:/selected/' + file.name,
+  pickImagePaths: async () => window.loraPaths,
+  loraThumb: async () => ({ ok: false }),
+  loraCall: async (cmd, args = {}) => {
+    if (cmd === 'info') return { ok: true, presets: { style: { label: 'Style' } }, scopes: { full: { label: 'Full', hint: '', summary: 'All' } },
+      resolutions: [512,1024], optimizers: { adamw8bit: 'AdamW' }, dits: [], fewshot_resolutions: [512,1024], sd_scripts: 'C:/training', tagger: true };
+    if (cmd === 'list') return { ok: true, projects: window.loraImages.length ? [{ name: 'Import-test', count: window.loraImages.length }] : [] };
+    if (cmd === 'import') { window.loraImages.push(...args.paths.map(p => ({file: p.split('/').pop(),path:p}))); return {ok:true,name:'Import-test',added:args.paths.length,count:window.loraImages.length}; }
+    if (cmd === 'load') return { ok:true,manifest:{},images:window.loraImages,runs:[] };
+    return {ok:true,status:null};
+  },
   forgeStatus: async () => { if (window.holdStatus) await new Promise(resolve => { window.releaseStatus = resolve; }); return { ok: true }; },
   forgeCatalog: async () => ({ ok: true, models: [{ title: 'Studio-model', name: 'Studio-model' }],
     loras: [{ name: 'test', alias: 'Illustration', weight: 0.7, trigger: 'painted', negative: 'bad lines', rel: 'Art', mtime: 1 }],
@@ -345,6 +357,21 @@ async function scenario() {
   await wait(() => !!window.cutFiles?.length);
   assert(window.cutFiles.every(f => f.data.length > 100 && /_\d+\.jpg$/.test(f.name)), 'La découpe exporte les panneaux de l’image du Studio');
   KS.state.doc = priorDoc;
+  await KS.cmd.openStudioTab('train'); await wait(() => !!document.querySelector('.lt-drop'));
+  const beforeLoraDocs = KS.state.docs.length, loraDrop = new DataTransfer();
+  loraDrop.items.add(new File([bytes], 'training-a.png', {type:'image/png'}));
+  loraDrop.items.add(new File([bytes], 'training-b.png', {type:'image/png'}));
+  document.querySelector('.lt-drop').dispatchEvent(new DragEvent('drop', { dataTransfer:loraDrop, bubbles:true, cancelable:true }));
+  await wait(() => window.loraImages.length === 2 && document.querySelectorAll('.lt-cell').length === 2);
+  await new Promise(r => setTimeout(r,100));
+  assert(KS.state.docs.length === beforeLoraDocs && KS.prefs.fx.tab === 'train', 'Importer plusieurs images par dépôt dans Lora ne crée aucun document dans Edition');
+  window.loraPaths = ['C:/selected/picked.png']; document.querySelector('.lt-drop').click();
+  await wait(() => window.loraImages.length === 3);
+  assert(KS.state.docs.length === beforeLoraDocs, 'Choisir les images dans Lora les garde aussi dans cet atelier');
+  window.dispatchEvent(new DragEvent('drop', { dataTransfer:loraDrop, bubbles:true, cancelable:true }));
+  await new Promise(r => setTimeout(r,100));
+  assert(KS.state.docs.length === beforeLoraDocs, 'Un dépôt ailleurs dans le Studio ne passe pas implicitement dans Edition');
+  await KS.cmd.openStudioTab('txt2img');
   return results;
 }
 

@@ -195,9 +195,10 @@
     folder.addEventListener('input', () => { S.folder = folder.value; });
     const drop = h('div.fx-dropzone.lt-drop', h('div', { text: '...or drop images here (ou cliquez pour les choisir)' }));
     drop.addEventListener('click', async () => { const paths = await N.pickImagePaths(); if (paths.length) importFrom({ paths }).catch(() => {}); });
-    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragenter', e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+    drop.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-    drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); const paths = [...e.dataTransfer.files].map(x => N.pathForFile(x)).filter(Boolean); if (paths.length) importFrom({ paths }).catch(() => {}); });
+    drop.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); KS.resetDrop?.(); drop.classList.remove('over'); const paths = [...e.dataTransfer.files].map(x => N.pathForFile(x)).filter(Boolean); if (paths.length) importFrom({ paths }).catch(() => {}); });
     const gallery = h('div.lt-gallery');
     for (const im of (S.data ? S.data.images : [])) {
       const x = h('button.lt-x', { text: '×', title: 'Retirer cette image du projet' }); x.addEventListener('click', e => { e.stopPropagation(); removeImage(im.file); });
@@ -301,6 +302,7 @@
   }
 
   KS.trainTab = {
+    invalidate() { stopPoll(); S.info = null; S.data = null; S.projects = []; S.run = null; S.checked = 0; if (root?.isConnected) KS.trainTab.render(root); },
     async render(el) {
       root = el;
       el.replaceChildren(h('div.fx-panel', h('div.fx-note', { text: 'Lecture de l\'entraîneur de Forge…' })));
