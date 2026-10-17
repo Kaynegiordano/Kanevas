@@ -11,6 +11,23 @@ module.exports = function installSuiteBridge(kind) {
       const entry = pending.get(e.data.id); if (!entry) return;
       clearTimeout(entry.timer); pending.delete(e.data.id); entry.resolve(e.data);
     });
+    const request = (op, args) => new Promise(resolve => {
+      const id = crypto.randomUUID();
+      const timer = setTimeout(() => { pending.delete(id); resolve({ok:false,error:'Animation ne répond pas. Réessayez.'}); }, 120000);
+      pending.set(id, {resolve,timer});
+      window.parent.postMessage({kv:'suite-native-request',op,id,...args}, '*');
+    });
+    // Le prompt() de la page autonome n'est pas pris en charge dans Electron.
+    // Le sélecteur et le dépôt passent par le même import que le bouton Kane App.
+    window.creer = async file => {
+      try {
+        if (!file || file.size > 100 * 1024 * 1024) throw new Error('Choisissez une image de moins de 100 Mo');
+        if (typeof statut === 'function') statut('Ouverture de l’image…');
+        const response = await request('animation-import', {name:file.name,data:new Uint8Array(await file.arrayBuffer())});
+        if (!response.ok) throw new Error(response.error);
+        if (response.opened === false && typeof statut === 'function') statut('Ouverture annulée.');
+      } catch (error) { if (typeof statut === 'function') statut('Ouverture impossible : ' + error.message); }
+    };
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
       const route = /^\/p\/([^/]+)\/(super|animer|video|sam)$/.exec(url.pathname);

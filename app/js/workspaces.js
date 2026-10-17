@@ -30,7 +30,7 @@
     const subtitle = id === 'video' ? KS.suite?.project?.name || W.engine : E.title || W.engine;
     const controls = [h('div.wx-identity', h('b', { text: W.label }), h('span', { text: subtitle, title: subtitle }))];
     if (id === 'wallpaper') {
-      controls.push(btn('Animer le document', () => C.toWallpaper(), !KS.state.doc),
+      controls.push(btn('Ouvrir une image…', () => KS.suite.importAnimation()), btn('Animer le document', () => C.toWallpaper(), !KS.state.doc),
         btn('Reprendre l’animation', () => KS.suite.resumeAnimation(), !KS.suite?.project?.animation),
         btn('Exporter la boucle', () => WX.request(id, 'export'), !up(s)));
     } else if (id === 'comfyui') {
@@ -183,6 +183,13 @@
       const expected = id === 'comfyui' ? 'http://127.0.0.1:8188' : id === 'wallpaper' ? 'http://127.0.0.1:8780' : 'null';
       if (e.origin !== expected && !(id === 'video' && e.origin === 'file://')) return;
       const m = e.data;
+      if (m.kv === 'suite-native-request' && id === 'wallpaper' && m.op === 'animation-import') {
+        let result;
+        try { const opened = await KS.suite.run('Ouverture de l’image dans Animation', () => KS.suite.importAnimation({ name:m.name, data:m.data })); result = { ok:true, opened }; }
+        catch (err) { result = { ok:false, error:err.message }; }
+        if (E.frame?.contentWindow === e.source) e.source.postMessage({ kv:'suite-native-response', id:m.id, ...result }, e.origin);
+        return;
+      }
       if (m.kv === 'suite-native-request' && id === 'wallpaper' && m.op === 'animation-run') {
         let result;
         if (KS.studioApi.isBusy()) result = { ok: false, error: 'Le Studio génère encore une image. Attendez sa fin avant Animation.' };

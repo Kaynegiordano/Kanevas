@@ -13,6 +13,17 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Import Animation et sorties communes (1.9.3)
+
+- **Ouvrir une image…** est visible dans la barre Animation. Le choix de fichier et le dépôt dans l'atelier
+  utilisent aussi l'import Kane App, sans boîte `prompt()` incompatible avec Electron ni document parasite dans Edition.
+- Les sorties vont dans **C:\KaneOS\output**, puis **studio**, **animation**, **comfyui**, **montage**, **lora**
+  (et **edition** par défaut pour les enregistrements de l'éditeur). Les exports manuels peuvent garder une destination choisie.
+- Animation y range chaque projet avec sa source, ses zones et ses exports. Les anciens projets sont copiés
+  sans écraser les dossiers existants ni supprimer les originaux.
+- Les LoRA entraînés sont stockés dans output/lora et restent accessibles au catalogue Studio par une jonction.
+  La configuration des sorties Studio est sauvegardée avant modification ; les autres paramètres sont conservés.
+
 ### Mémoire graphique dans tous les espaces (1.9.2)
 
 - Le double-clic dans les aperçus du Studio ouvre le plein écran avec la souris. La capture du pointeur

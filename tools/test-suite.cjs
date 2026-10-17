@@ -11,9 +11,13 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-suite-'));
 app.setPath('userData', path.join(tmp, 'profile'));
 const kc = require(path.join(root, 'kaneclip-host.cjs')); kc.registerScheme();
 let win, store, servers = [], errors = [], updates = 0, gpuReleases = 0, animationState = 'libre', animationPosts = 0;
-const projects = path.join(tmp, 'animation-projects'); fs.mkdirSync(projects);
+const projects = path.join(tmp, 'output', 'animation'); fs.mkdirSync(projects, {recursive:true});
 fs.mkdirSync(path.join(tmp, 'wallpaper-engine-animator'), { recursive: true });
 fs.writeFileSync(path.join(tmp, 'wallpaper-engine-animator', 'config.json'), JSON.stringify({ projets: projects }));
+const legacyProject=path.join(tmp,'wallpaper-engine-animator','Ancien projet');
+fs.mkdirSync(path.join(legacyProject,'peinture'),{recursive:true});
+fs.writeFileSync(path.join(legacyProject,'scene.png'),nativeImage.createFromBitmap(Buffer.alloc(128*64*4,255),{width:128,height:64}).toPNG());
+fs.writeFileSync(path.join(legacyProject,'peinture','peinture.json'),'{"zones":[],"reglages":{"force":0.6}}');
 async function listen(port, handler) {
   const server = http.createServer(handler); await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); }); servers.push(server);
 }
@@ -130,6 +134,12 @@ async function scenario() {
   await S.home(); check(!document.body.classList.contains('ws-ext') && !KS.studio.on, 'Retour Projet cohérent après les trois ateliers');
   const modal = KS.modal({ title: 'Annulation', body: KS.h('p', { text: 'test' }), buttons: [{ label: 'Annuler', value: false }] }); modal.close(null);
   check(await modal.done === null, 'Fermer une boîte de dialogue résout également son résultat');
+  WX.go('wallpaper');
+  const oldAnimationItem = S.project.animation.item, oldDocumentCount = KS.state.docs.length;
+  [...WX.el.wallpaper.bar.querySelectorAll('button')].find(b=>b.textContent==='Ouvrir une image…').click();
+  await wait(() => KS.modalOpen()); click('Nouvelle animation');
+  await wait(() => S.project.animation.item !== oldAnimationItem && !S.tasks.some(t => t.phase === 'running'));
+  check(KS.state.docs.length === oldDocumentCount && (await WX.request('wallpaper','state')).width === 128, 'Ouvrir une image depuis Animation charge la source sans ouvrir de document Edition');
   return { results, projectId, first: first.path, second: second.path, dossier };
 }
 app.whenReady().then(async () => {
@@ -170,6 +180,7 @@ app.whenReady().then(async () => {
 
     require(path.join(root, 'services.cjs'))({ getWin: () => win, root: () => tmp, engine: { forgeUrl: async () => 'http://127.0.0.1:7862', state: () => 'off', start() {}, release: async () => { gpuReleases++; } } });
     const reply = (ch, fn) => { ipcMain.removeHandler(ch); ipcMain.handle(ch, fn); };
+    reply('open-dialog', () => [{ name:'Image choisie.png',data:new Uint8Array(fs.readFileSync(path.join(projects,'Animation-test','scene.png'))) }]);
     reply('kc:ff-available', () => ({ path: 'test-ffmpeg' }));
     reply('kc:probe', (_e, p) => { const size = nativeImage.createFromPath(p).getSize(); return { ok: true, path: p, name: path.basename(p), kind: 'image', size: fs.statSync(p).size, video: { ...size, codec: 'png', fps: 0 } }; });
     reply('kc:proxy-path', () => null);
@@ -209,6 +220,28 @@ app.whenReady().then(async () => {
     const invalid = await win.webContents.executeJavaScript('KS.native.animationRun("../outside", "animer", {})');
     assert(!invalid.ok && animationPosts === 2);
     console.log('OK Animation automatique, vrai pont du cadre, décharge Studio avant/après, réservation GPU et segmentation synchrone');
+    if (process.env.KANEVAS_TEST_WALLPAPER_HTML) {
+      const waitRenderer = async code => { for (let i=0;i<200;i++) { if (await win.webContents.executeJavaScript(code)) return; await new Promise(r=>setTimeout(r,20)); } throw new Error('Import Animation bloqué : '+code); };
+      for (const mode of ['selection','depot']) {
+        const before = await win.webContents.executeJavaScript('({item:KS.suite.project.animation.item,docs:KS.state.docs.length})');
+        await animationFrame.executeJavaScript(`(async()=>{
+          window.prompt=()=>{throw new Error('prompt interdit dans Electron')};
+          const response=await fetch('/p/Animation-test/image?import');
+          const file=new File([await response.blob()],'Image importée.png',{type:'image/png'}), dt=new DataTransfer();dt.items.add(file);
+          if (${JSON.stringify(mode)}==='selection') {const input=document.getElementById('fichier');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));}
+          else window.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));
+        })()`);
+        await waitRenderer('KS.modalOpen()');
+        await win.webContents.executeJavaScript('[...document.querySelectorAll(".modal button")].find(b=>b.textContent==="Nouvelle animation").click()');
+        await waitRenderer('KS.suite.project.animation.item !== '+JSON.stringify(before.item)+' && !KS.suite.tasks.some(t=>t.phase==="running")');
+        assert.equal(await win.webContents.executeJavaScript('KS.state.docs.length'),before.docs);
+        assert(await animationFrame.executeJavaScript('IW===128 && IH===64 && IMG.complete'));
+        console.log('OK Import Animation par '+mode+' : image visible, sans prompt() ni document Edition');
+      }
+      await animationFrame.executeJavaScript('creer(new File(["image invalide"],"invalide.png",{type:"image/png"}))');
+      assert(await animationFrame.executeJavaScript('document.getElementById("statut").textContent.startsWith("Ouverture impossible")'));
+      console.log('OK Une image illisible affiche une erreur au lieu de rester sur Chargement');
+    }
     const palettes = await win.webContents.executeJavaScript('(async()=>{const out={};for(const id of ["wallpaper","video","comfyui"]){const theme=KS.suite.theme(id);await KS.ws.request(id,"theme",theme);out[id]=theme.colors["--accent"];}return out;})()');
     for (const [id, url] of [['wallpaper', '127.0.0.1:8780'], ['video', '/kaneclip/app/'], ['comfyui', '127.0.0.1:8188']]) {
       const frame = win.webContents.mainFrame.frames.find(f => decodeURIComponent(f.url).replace(/\\/g, '/').includes(url));
@@ -219,6 +252,9 @@ app.whenReady().then(async () => {
     assert.equal(fs.readFileSync(result.second).length > 0, true);
     assert.equal(fs.readdirSync(path.join(projects, result.dossier, 'work', 'sources')).length, 1);
     console.log('OK La source Animation précédente est sauvegardée avant remplacement');
+    assert.equal(fs.readFileSync(path.join(projects,'Ancien projet','peinture','peinture.json'),'utf8'),fs.readFileSync(path.join(legacyProject,'peinture','peinture.json'),'utf8'));
+    assert(fs.existsSync(path.join(legacyProject,'scene.png')));
+    console.log('OK Ancien projet copié dans output/animation avec ses zones ; original conservé');
     if (process.env.KANEVAS_TEST_SCREENSHOT) {
       for (const [id, command] of [['animation', 'KS.suite.resumeAnimation()'], ['video', 'KS.suite.openVideo()']]) {
         await win.webContents.executeJavaScript(command); await new Promise(r => setTimeout(r, 300));

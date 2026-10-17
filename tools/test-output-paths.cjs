@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-outputs-'));
+const outputs = require('../output-paths.cjs')(() => tmp);
+for (const id of ['studio','animation','comfyui','montage','lora','edition']) assert.equal(outputs.directory(id), path.join(tmp,'output',id));
+assert.throws(() => outputs.directory('../ailleurs'));
+const runtime = path.join(tmp,'runtime'); fs.mkdirSync(runtime);
+fs.writeFileSync(path.join(runtime,'config.json'), JSON.stringify({sd_model_checkpoint:'conservé',outdir_txt2img_samples:'ancien'}));
+outputs.configureStudio(runtime);
+const config = JSON.parse(fs.readFileSync(path.join(runtime,'config.json')));
+assert.equal(config.sd_model_checkpoint,'conservé');
+assert.equal(config.outdir_txt2img_samples,path.join(tmp,'output','studio','txt2img'));
+assert.equal(JSON.parse(fs.readFileSync(path.join(runtime,'config.json.before-output'))).outdir_txt2img_samples,'ancien');
+outputs.configureStudio(runtime);
+assert.equal(outputs.loraDirectory(path.join(tmp,'models')),path.join(tmp,'output','lora'));
+assert.equal(fs.realpathSync(path.join(tmp,'models','Lora','KaneApp')),fs.realpathSync(outputs.directory('lora')));
+outputs.loraDirectory(path.join(tmp,'models'));
+console.log('OK Sorties communes, configuration Studio conservée/sauvegardée et LoRA accessibles au catalogue sans duplication');

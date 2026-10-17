@@ -32,6 +32,7 @@ function exposeKaneClip() {
   ipcRenderer.send('kc:hello');
   contextBridge.exposeInMainWorld('kcNative', {
     openDialog: inv('open-dialog'), saveDialog: inv('save-dialog'), readText: inv('read-text'), writeFile: inv('write-file'),
+    outputDir: inv('output-dir'),
     exists: inv('exists'), stat: inv('stat'), listDir: inv('list-dir'), places: inv('places'), getPending: inv('get-pending'),
     userData: inv('user-data'), defaultDir: inv('default-dir'), tempDir: inv('temp-dir'), removeDir: inv('remove-dir'),
     ffAvailable: inv('ff-available'), probe: inv('probe'), waveform: inv('waveform'), thumbs: inv('thumbs'),

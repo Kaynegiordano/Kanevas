@@ -23,7 +23,7 @@ const MIME = {
   '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
 };
 
-function setup(getWin) {
+function setup(getWin, { output } = {}) {
   const dataDir = path.join(app.getPath('userData'), 'kaneclip');
   fs.mkdirSync(dataDir, { recursive: true });
   // les outils de KaneClip rangent leurs caches et modèles dans « userData » : celui de l'espace Vidéo
@@ -73,7 +73,8 @@ function setup(getWin) {
     return r.canceled ? [] : r.filePaths;
   });
   H('save-dialog', async (_e, opts = {}) => {
-    const r = await dialog.showSaveDialog(getWin(), { title: opts.title || 'Enregistrer sous', defaultPath: opts.defaultPath, filters: opts.filters });
+    const defaultPath = output && (!opts.defaultPath || !path.isAbsolute(opts.defaultPath)) ? path.join(output(), opts.defaultPath || 'Sans titre') : opts.defaultPath;
+    const r = await dialog.showSaveDialog(getWin(), { title: opts.title || 'Enregistrer sous', defaultPath, filters: opts.filters });
     return r.canceled ? null : r.filePath;
   });
   H('read-text', (_e, p) => { try { return { ok: true, text: fs.readFileSync(p, 'utf8') }; } catch (err) { return { ok: false, error: String(err.message || err) }; } });
@@ -104,7 +105,8 @@ function setup(getWin) {
   });
   H('get-pending', () => pending.splice(0));
   H('user-data', () => dataDir);
-  H('default-dir', () => { try { return app.getPath('videos'); } catch { return os.homedir(); } });
+  H('default-dir', () => { if (output) return output(); try { return app.getPath('videos'); } catch { return os.homedir(); } });
+  H('output-dir', () => output ? output() : null);
   H('temp-dir', () => { const d = path.join(app.getPath('temp'), 'KaneClip', 'job-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)); fs.mkdirSync(d, { recursive: true }); return d; });
   H('remove-dir', (_e, d) => { try { if (!d || !d.startsWith(path.join(app.getPath('temp'), 'KaneClip'))) return false; fs.rmSync(d, { recursive: true, force: true }); return true; } catch { return false; } });
   /* ffmpeg */

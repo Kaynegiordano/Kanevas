@@ -416,7 +416,7 @@
     const lp = KC.project.loop;
     const hasLoop = lp.out > lp.in + 1e-6;
     const baseName = KC.project.path ? U.stripExt(U.base(KC.project.path)) : (KC.project.info.title || 'Sans titre');
-    let dir = KC.prefs.renderDir || (KC.project.path ? U.dir(KC.project.path) : await N.defaultDir());
+    let dir = (await N.outputDir?.()) || KC.prefs.renderDir || (KC.project.path ? U.dir(KC.project.path) : await N.defaultDir());
     const list = h('div.fmt-list');
     const right = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 } });
     const nameIn = h('input.field', { value: baseName, style: { flex: 1 } });

@@ -43,7 +43,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   pending.push(...filesFromArgv(process.argv));
   app.whenReady().then(() => {
-    kcHost.setup(() => win);
+    kcHost.setup(() => win, { output: () => outputPaths.directory('montage') });
     require('./suite-host.cjs')(() => win);
     require('./services.cjs')({
       getWin: () => win,
@@ -155,7 +155,7 @@ ipcMain.handle('read-file', (_e, p) => {
 ipcMain.handle('save-dialog', async (_e, opts = {}) => {
   const r = await dialog.showSaveDialog(win, {
     title: opts.title || 'Enregistrer sous',
-    defaultPath: opts.defaultPath,
+    defaultPath: opts.defaultPath && path.isAbsolute(opts.defaultPath) ? opts.defaultPath : path.join(outputPaths.directory('edition'), opts.defaultPath || 'Sans titre'),
     filters: opts.filters,
   });
   return r.canceled ? null : r.filePath;
@@ -489,6 +489,7 @@ const loadDirs = () => {
   const managed = managedRuntime.read();
   if (managed.active) forgeDirs = { data: managed.components.studio.directory, models: managed.models, lora: path.join(managed.models, 'Lora') };
 };
+const outputPaths = require('./output-paths.cjs')(() => engineDirs().root || app.getPath('userData'));
 const bridgePath = () => path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'lora_bridge.py');
 const insideDir = (root, p) => { const r = path.resolve(root) + path.sep; const q = path.resolve(p); return q.startsWith(r); };
 ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
@@ -499,7 +500,8 @@ ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
     const py = path.join(forgeDirs.data, 'venv', 'Scripts', 'python.exe');
     if (!fs.existsSync(py)) throw new Error('Python de Forge introuvable : ' + py);
     if (!/^[a-z_]+$/.test(cmd)) throw new Error('Commande invalide');
-    const input = JSON.stringify({ ...args, data_dir: forgeDirs.data, model_ref: forgeDirs.models, lora_dir: forgeDirs.lora });
+    const output_dir = cmd === 'start' ? outputPaths.loraDirectory(forgeDirs.models) : outputPaths.directory('lora');
+    const input = JSON.stringify({ ...args, data_dir: forgeDirs.data, model_ref: forgeDirs.models, lora_dir: forgeDirs.lora, output_dir });
     const out = await new Promise((resolve, reject) => {
       const child = require('child_process').spawn(py, [bridgePath(), cmd], { cwd: forgeDirs.data, windowsHide: true, env: { ...managedRuntime.environment('studio'), PYTHONIOENCODING: 'utf-8' } });
       let so = '', se = '';
@@ -605,11 +607,9 @@ ipcMain.handle('forge-presets-write', async (_e, presets) => {
 });
 // Dossiers de sortie de Forge (output\txt2img-images…), là où il range les images qu'il enregistre
 ipcMain.handle('open-forge-output', async (_e, sub) => {
-  loadDirs();
-  const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
-  const allowed = ['txt2img-images', 'img2img-images', 'extras-images', 'txt2img-grids', 'img2img-grids', ''];
-  let d = path.join(data, 'output', allowed.includes(sub) ? sub : '');
-  if (!fs.existsSync(d)) d = path.join(data, 'output');
+  const folders = {'txt2img-images':'txt2img', 'img2img-images':'img2img', 'extras-images':'extras', 'txt2img-grids':'grids/txt2img', 'img2img-grids':'grids/img2img'};
+  const d = path.join(outputPaths.directory('studio'), folders[sub] || '');
+  await ensureDir(d);
   if (fs.existsSync(d)) shell.openPath(d);
 });
 // Fiche d'un LoRA, au même format que l'éditeur de Forge (<lora>.json à côté du fichier), et son aperçu
@@ -707,6 +707,8 @@ async function engineStart(profileId) {
   const py = d.python;
   if (!fs.existsSync(py) || !fs.existsSync(path.join(d.runtime, 'launch.py'))) { engine.state = 'error'; engine.error = 'Moteur Studio introuvable : ' + d.runtime; engineEmit(); return engineStatus(); }
   const prof = d.profiles.find(p => p.id === profileId) || d.profiles[0];
+  try { outputPaths.configureStudio(d.runtime); }
+  catch (err) { engine.state = 'error'; engine.error = 'Dossier de sortie Studio : ' + err.message; engineEmit(); return engineStatus(); }
   let args = prof ? prof.args : `--api --model-ref "${d.models.replace(/\\/g, '/')}"`;
   if (studioRuntime.read().models) args = args.replace(/--model-ref\s+(?:"[^"]*"|'[^']*'|\S+)/g, '') + ` --model-ref "${d.models.replace(/\\/g, '/')}"`;
   args = args.replace(/--port\s+\d+/g, '').replace(/--nowebui/g, '').replace(/--listen/g, '').replace(/--server-name\s+\S+/g, '') + ` --nowebui --port ${ENGINE_PORT} --server-name 127.0.0.1 --skip-prepare-environment`;   // joignable seulement depuis ce PC
@@ -764,14 +766,11 @@ ipcMain.handle('engine-log', () => engine.log.join('\n'));
 app.on('will-quit', () => { if (!globalThis.__kvKeepEngine) engineKill(); });
 
 // Résultats enregistrés automatiquement (comme le dossier « outputs » de Forge), avec leurs paramètres.
-// Dossier : <Kane OS>\output\kanevas (à côté des sorties de Forge), sinon le dossier de données de Kanevas.
+// Dossier commun : <Kane OS>\output\studio, indépendant de l'emplacement du moteur.
 // Jamais dans « Images » : chez beaucoup, c'est un dossier OneDrive à la demande, et la création récursive de
 // dossiers de Node y boucle sans fin (dans du code natif), ce qui figeait toute l'application.
 function outputsRoot() {
-  loadDirs();
-  const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
-  const kane = path.join(path.dirname(data), 'output');
-  return fs.existsSync(kane) ? path.join(kane, 'kanevas') : path.join(app.getPath('userData'), 'outputs');
+  return outputPaths.directory('studio');
 }
 // Crée les dossiers un par un (sans « recursive »), en tâche de fond
 async function ensureDir(dir) {

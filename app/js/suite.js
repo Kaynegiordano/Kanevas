@@ -180,12 +180,26 @@
     drawer.hidden = true;
   };
   async function modalChoice(title, message, buttons) { return (await KS.modal({ title, body: h('p', { text: message }), buttons }).done); }
+  S.importAnimation = async file => {
+    await S.ready;
+    if (!file) file = (await N.openDialog({ title:'Ouvrir une image dans Animation', multi:false, filters:[{name:'Images',extensions:['png','jpg','jpeg','webp','bmp','gif','avif']}] }))?.[0];
+    if (!file) return;
+    if (file.error) throw new Error(file.error);
+    if (!file.data || file.data.byteLength > 100 * 1024 * 1024) throw new Error('Choisissez une image de moins de 100 Mo');
+    let canvas;
+    try { canvas = await KS.io.canvasFromEntry(file); }
+    catch { throw new Error('Cette image est illisible ou son format n’est pas pris en charge.'); }
+    const data = new Uint8Array(await (await U.blobFromCanvas(canvas)).arrayBuffer());
+    const r = await call('capture', { name:String(file.name || 'Image').replace(/\.[^.]+$/, '') + '.png', data, source:'wallpaper' });
+    adopt(r.project); S.selected = r.item.id;
+    return S.animate(r.item);
+  };
   S.animate = async it => {
     if (it.kind !== 'image') throw new Error('Choisissez une image pour l’animation');
     const project = S.project.id, linked = S.project.animation;
     const decision = linked ? await modalChoice('Animation du projet', 'Reprendre les zones existantes avec cette version, ou créer une autre animation ?',
       [{ label: 'Annuler', value: null }, { label: 'Nouvelle animation', value: 'new' }, { label: 'Mettre à jour la source', primary: true, value: 'update' }]) : 'new';
-    if (!decision) return;
+    if (!decision) return false;
     await KS.ws.ensure('wallpaper');
     const f = await N.readFile(it.path); if (f.error) throw new Error(f.error);
     let dossier;
@@ -196,6 +210,7 @@
     const p = await call('animation', { project, value: { dossier, item: it.id, updated: Date.now() } }); adopt(p);
     await KS.ws.request('wallpaper', 'open', { dossier });
     drawer.hidden = true; KS.toast(decision === 'update' ? 'Source mise à jour. Les zones sont conservées ; vérifiez-les avant de régénérer.' : 'Animation prête : peignez les zones à mettre en mouvement.', 'ok', 4500);
+    return true;
   };
   S.resumeAnimation = async () => {
     const link = S.project.animation; if (!link) return KS.ws.go('wallpaper');

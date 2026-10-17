@@ -352,7 +352,7 @@ def cmd_start(a):
         sample_file = t.write_sample_prompts(text, resolution, work / "sample_prompts.txt")
     per_epoch = max(1, count * repeats * len(resolutions))
     total = epochs * per_epoch if epochs > 0 else int(m.get("steps") or 2000)
-    out_dir = LIB.lora_dir / "forge-mine" / s.sanitize(name) / run_id
+    out_dir = (Path(a["output_dir"]) if a.get("output_dir") else LIB.lora_dir / "forge-mine") / s.sanitize(name) / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
     scope = m.get("scope") if m.get("scope") in sc.SCOPES else sc.DEFAULT
     command = t.build_command(

@@ -11,6 +11,7 @@ const { spawn, execFileSync } = require('child_process');
 const RELAY_PORT = 8601;
 
 module.exports = function services({ getWin, root, engine, managed = () => ({ active: false }), environment = () => process.env }) {
+  const outputs = require('./output-paths.cjs')(root);
   const directory = (id, legacy) => { const value = managed(); return value.active ? value.components[id].directory : legacy; };
   const runtime = path.join(__dirname.replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked'), 'animation-runtime.py');
   const SV = {
@@ -18,14 +19,14 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
       name: 'ComfyUI', port: 8188, ping: '/system_stats',
       dir: () => directory('comfyui', path.join(root(), 'ComfyUI')),
       check: d => fs.existsSync(path.join(d, 'main.py')) && fs.existsSync(path.join(d, 'venv', 'Scripts', 'python.exe')),
-      cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', path.join(d, 'main.py'), '--port', '8188', '--listen', '127.0.0.1', '--disable-auto-launch', '--enable-manager', '--output-directory', path.join(root(), 'output', 'comfyui')]],
+      cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', path.join(d, 'main.py'), '--port', '8188', '--listen', '127.0.0.1', '--disable-auto-launch', '--enable-manager', '--output-directory', outputs.directory('comfyui')]],
     },
     wallpaper: {
       name: 'Wallpaper Engine Animator', port: 8780, ping: '/api/projets',
       dir: () => directory('wallpaper', path.join(root(), 'wallpaper-engine-animator')),
       check: d => fs.existsSync(path.join(d, 'outils', 'peintre.py')) && fs.existsSync(path.join(d, 'venv', 'Scripts', 'python.exe')),
       cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', runtime, '--server', path.join(d, 'outils', 'peintre.py'), '--port', '8780', '--sans-navigateur']],
-      env: async () => ({ WEA_FORGE_URL: await engine.forgeUrl(), WEA_LANCEUR_URL: 'http://127.0.0.1:' + RELAY_PORT }),
+      env: async () => ({ WEA_FORGE_URL: await engine.forgeUrl(), WEA_LANCEUR_URL: 'http://127.0.0.1:' + RELAY_PORT, WEA_PROJETS: await weaProjects() }),
     },
   };
   // ComfyUI refuse les requêtes « cross-site » (protection CSRF) : vue de Kanevas, sa page dans le cadre en est une.
@@ -186,15 +187,26 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
     } catch (err) { return { ok: false, error: String(err.message || err) }; }
   });
   // Sorties à reprendre : images et vidéos de ComfyUI, vidéos exportées par Wallpaper
-  const weaProjects = () => {
-    const d = SV.wallpaper.dir();
-    try { const c = JSON.parse(fs.readFileSync(path.join(d, 'config.json'), 'utf8')); if (c.projets && fs.existsSync(c.projets)) return c.projets; } catch { /* config absente */ }
-    return d;
-  };
+  let animationProjects;
+  const weaProjects = () => animationProjects ||= (async () => {
+    const dest = outputs.directory('animation'), runtime = SV.wallpaper.dir();
+    let config = {}; try { config = JSON.parse(await fs.promises.readFile(path.join(runtime, 'config.json'), 'utf8')); } catch { /* sans config */ }
+    for (const source of new Set([runtime, config.projets, environment('wallpaper').WEA_PROJETS].filter(Boolean))) {
+      if (path.resolve(source).toLowerCase() === path.resolve(dest).toLowerCase()) continue;
+      for (const item of await fs.promises.readdir(source, {withFileTypes:true}).catch(() => [])) {
+        const from = path.join(source, item.name), target = path.join(dest, item.name);
+        if (!item.isDirectory() || !fs.existsSync(path.join(from, 'scene.png')) || fs.existsSync(target)) continue;
+        const temp = path.join(dest, '._import-' + require('node:crypto').randomUUID());
+        await fs.promises.cp(from, temp, {recursive:true,errorOnExist:true,force:false});
+        await fs.promises.rename(temp, target); // L'original est conservé ; aucun projet existant n'est écrasé.
+      }
+    }
+    return dest;
+  })().catch(error => { animationProjects = null; throw error; });
   ipcMain.handle('wea-update', async (_e, dossier, data) => {
     try {
       if (typeof dossier !== 'string' || !dossier || /[\\/]/.test(dossier) || dossier === '.' || dossier === '..') throw new Error('Projet Animation invalide');
-      const dir = path.resolve(weaProjects(), dossier), base = path.resolve(weaProjects());
+      const base = path.resolve(await weaProjects()), dir = path.resolve(base, dossier);
       if (!dir.startsWith(base + path.sep)) throw new Error('Projet Animation invalide');
       const state = await new Promise((resolve, reject) => {
         http.get(`http://127.0.0.1:8780/p/${encodeURIComponent(dossier)}/etat`, { timeout: 4000 }, r => {
@@ -230,12 +242,12 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
   ipcMain.handle('svc-outputs', async (_e, id, limit = 60) => {
     const out = [];
     if (id === 'comfyui') await walk(path.join(root(), 'output', 'comfyui'), 3, out);
-    else if (id === 'wallpaper') await walk(weaProjects(), 3, out, p => /[\\/]a poster video[\\/]/i.test(p) && /\.mp4$/i.test(p));
+    else if (id === 'wallpaper') await walk(await weaProjects(), 3, out, p => /[\\/]a poster video[\\/]/i.test(p) && /\.mp4$/i.test(p));
     out.sort((a, b) => b.mtime - a.mtime);
     return out.slice(0, limit);
   });
-  ipcMain.handle('svc-open-folder', (_e, id) => {
-    const d = id === 'comfyui' ? path.join(root(), 'output', 'comfyui') : id === 'wallpaper' ? weaProjects() : null;
+  ipcMain.handle('svc-open-folder', async (_e, id) => {
+    const d = id === 'comfyui' ? outputs.directory('comfyui') : id === 'wallpaper' ? await weaProjects() : null;
     if (d && fs.existsSync(d)) shell.openPath(d);
   });
   return { status };
