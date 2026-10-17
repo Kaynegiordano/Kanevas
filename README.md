@@ -13,6 +13,22 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Remplissage génératif simplifié (1.8.1)
+- Dans Edition, sélectionner une zone puis **Remplissage génératif** : le même panneau **Dessin IA**
+  s’ouvre depuis la barre contextuelle, les menus et le raccourci. Décrire uniquement le changement souhaité.
+- Modèle, LoRA et poids actifs, styles, invite négative, étapes, CFG et échantillonneur de **Studio IA > Créer**
+  sont partagés. La description de la scène et ses mots déclencheurs ne sont pas recopiés.
+- Force **50 %** par défaut, avec **40 %** (douce) ou **60 %** (marquée). L’ancienne valeur 85 % est migrée.
+  Un résultat par défaut ; les variantes et le lien vers les réglages du Studio sont repliés.
+- La sélection est envoyée en inpaint et le résultat reste sur un nouveau calque masqué, annulable.
+  Les scripts de génération, Hires et la retouche automatique des visages sont écartés de ce remplissage local.
+- La demande en français est traduite suivant l’option du Studio. Si la traduction est activée mais indisponible,
+  la génération attend une traduction fonctionnelle ou une demande en anglais au lieu d’envoyer une invite incomprise.
+- **Supprimer** conserve le remplissage local sans description. Les LoRA de personnage et styles actifs peuvent
+  encore influencer le sujet : leur liste est visible dans les réglages repliés.
+- Validation : parcours Electron, migration des préférences, requêtes à 40/50/60 %, traduction, LoRA, masques,
+  annulation et raccourcis. Réponses de génération simulées : pas de comparaison de qualité sur GPU réel.
+
 ### Kane App, Studio et apparence (1.8.0)
 - L’interface porte le nom **Kane App** ; le projet par défaut « Mon atelier » est renommé. L’installateur,
   les mises à jour et les documents conservent leur compatibilité Kanevas.

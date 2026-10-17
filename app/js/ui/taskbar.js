@@ -6,7 +6,7 @@
   const h = KS.h, ui = KS.ui, C = KS.cmd, T = KS.tools, G = KS.gen;
   const D = () => KS.state.doc;
   const HIDE_TOOLS = new Set(['crop', 'transform', 'text', 'pen', 'path-select']);
-  let bar = null, mode = null, queued = false;
+  let bar = null, queued = false;
 
   const btn = (icon, label, fn, cls = '') => {
     const b = h('button.ctx-btn' + cls, { 'data-tip': label }, h('span', { html: KS.icon(icon) }), h('span.t', { text: label }));
@@ -20,18 +20,10 @@
   });
 
   function content(d) {
-    if (mode === 'prompt') {
-      const inp = h('input.field.ctx-prompt', { type: 'text', placeholder: 'Décrivez ce qu\'il faut générer (vide : remplir avec les alentours)', spellcheck: false });
-      inp.value = KS.state.lastPrompt || '';
-      const go = () => { const p = inp.value; KS.state.lastPrompt = p; mode = null; render(); C.generativeFill(p); };
-      inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') go(); else if (e.key === 'Escape') { mode = null; render(); } });
-      setTimeout(() => inp.focus(), 0);
-      return [h('span.ctx-ico', { html: KS.icon('sparkles') }), inp, btn('sparkles', 'Générer', go, '.primary'), iconOnly('settings', 'Ouvrir le Studio IA', () => { KS.state.lastPrompt = inp.value; mode = null; render(); C.openGenPanel(); }), iconOnly('close', 'Fermer', () => { mode = null; render(); })];
-    }
     const L = d.active;
     if (d.selection.active) {
       return [
-        btn('sparkles', 'Remplissage génératif', () => { mode = 'prompt'; render(); }, '.primary'),
+        btn('sparkles', 'Remplissage génératif', () => C.generativeFill(), '.primary'),
         btn('remove', 'Supprimer', () => C.removeSelection()),
         btn('mask', 'Masque', () => C.addMask('selection')),
         btn('select-invert', 'Intervertir', () => C.invertSelection()),
@@ -72,13 +64,11 @@
     const tool = T.current?.id;
     const show = d && KS.prefs.ctxBar !== false && !HIDE_TOOLS.has(tool) && !d.quickMask;
     bar.hidden = !show;
-    if (!show) { mode = null; return; }
-    if (mode === 'prompt' && !d.selection.active) mode = null;
-    bar.classList.toggle('prompt', mode === 'prompt');
+    if (!show) return;
     bar.replaceChildren(...content(d));
   }
   const queue = () => { if (queued) return; queued = true; requestAnimationFrame(render); };
-  KS.taskbar = { render: queue, prompt: () => { mode = 'prompt'; queue(); } };
+  KS.taskbar = { render: queue, prompt: () => C.generativeFill() };
   for (const ev of ['doc', 'selection', 'active-layer', 'layers', 'tool', 'gen', 'quickmask', 'history']) KS.on(ev, queue);
   // pendant un geste sur l'image, la barre s'efface pour ne pas gêner
   document.addEventListener('pointerdown', e => { if (bar && e.target.id === 'view') bar.classList.add('ghost'); }, true);

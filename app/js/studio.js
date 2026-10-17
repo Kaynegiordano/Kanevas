@@ -32,7 +32,7 @@
     v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, seeded: false, presetName: '',
     lora: { q: '', sort: 'new' },
     painter: { size: 40, color: '#ff7a30', erase: false },
-    editor: { target: 'selection', strength: 0.85, variants: 1, loraOpen: false },
+    editor: { target: 'selection', prompt: '', strength: 0.5, variants: 1, fillVersion: 1 },
     t2i: { ...COMMON(), width: 1920, height: 1024, enable_hr: false, hr_upscaler: 'Latent', hr_second_pass_steps: 32, denoising_strength: 0.6, hr_scale: 2, hr_resize_x: 0, hr_resize_y: 0,
       hr_distilled_cfg: 3, hr_cfg: 4, hr_checkpoint_name: 'Use same checkpoint', hr_additional_modules: ['Use same choices'], hr_sampler_name: 'Use same sampler', hr_scheduler: 'Use same scheduler',
       hr_prompt: '', hr_negative_prompt: '' },
@@ -55,6 +55,9 @@
     return o;
   };
   const FX = merge(DEF, KS.prefs.fx && KS.prefs.fx.v === 1 ? KS.prefs.fx : null);
+  // Migration vers la force modérée du nouveau remplissage.
+  if (!KS.prefs.fx?.editor?.fillVersion) FX.editor.strength = 0.5;
+  FX.editor.strength = U.clamp(+FX.editor.strength || 0.5, 0.4, 0.6);
   for (const k of ['t2i', 'i2i']) FX[k].ad.units = [0, 1, 2, 3].map(i => ({ ...AD_UNIT(), ...((FX[k].ad.units || [])[i] || {}) }));
   for (const k of ['t2i', 'i2i']) { FX[k].seed = -1; FX[k].subseed = -1; }
   KS.prefs.fx = FX;
@@ -563,7 +566,7 @@
         const s = h('button.fx-skip', { text: 'Passer l’image', title: 'Passer à l\'image suivante du lot (Alt+Entrée)' }); s.addEventListener('click', skip);
         g.replaceChildren(...(BUSY ? [i, s] : [i]));
       } else {
-        const d = D(), unavailable = c === EDIT && (!d || !FX.t2i.prompt.trim() || (FX.editor.target === 'selection' && !d.selection.bounds));
+        const d = D(), unavailable = c === EDIT && (!d || !FX.editor.prompt.trim() || (FX.editor.target === 'selection' && !d.selection.bounds));
         const b = h('button.fx-generate', { text: c === EDIT ? 'Ajouter le dessin' : 'Générer', title: 'Générer (Ctrl+Entrée)', disabled: unavailable }); b.addEventListener('click', () => c.action ? c.action() : generate(c.k));
         g.replaceChildren(b);
       }
@@ -1186,17 +1189,20 @@
   };
   const skip = () => { if (BUSY) N.forgeSkip(url()); };
   let warnedFr = false;
-  async function english(t) {
+  async function english(t, required = false) {
     if (!t || FX.translate === false || !G.looksFrench(t)) return t;
     const tags = [];
     const body = t.replace(/<[^>]+>/g, m => { tags.push(m); return ' '; }).replace(/\s{2,}/g, ' ').trim();
     const en = await G.toEnglish(body, true);
-    if (en == null) { if (!warnedFr) KS.toast('Invite envoyée en français : Forge risque de dessiner autre chose.', 'info', 5000); warnedFr = true; return t; }
+    if (en == null) {
+      if (required) throw new Error('La traduction est nécessaire pour cette demande en français. Installez le traducteur proposé ou écrivez la demande en anglais.');
+      if (!warnedFr) KS.toast('Invite envoyée en français : Forge risque de dessiner autre chose.', 'info', 5000); warnedFr = true; return t;
+    }
     return [en, tags.join(' ')].filter(Boolean).join(' ');
   }
-  async function payloadFor(k, st) {
+  async function payloadFor(k, st, strictPrompt = false) {
     const p = {
-      prompt: await english(st.prompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
+      prompt: await english(st.prompt, strictPrompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
       sampler_name: st.sampler_name, scheduler: st.scheduler, steps: +st.steps, width: +st.width, height: +st.height, n_iter: +st.n_iter, batch_size: +st.batch_size,
       cfg_scale: +st.cfg_scale, distilled_cfg_scale: +st.distilled_cfg_scale, seed: -1, save_images: FX.saveImages !== false, send_images: true, alwayson_scripts: {},
     };
@@ -1520,21 +1526,27 @@
   function renderEditorDraw() {
     if (!editorRoot) return;
     const scroll = editorRoot.scrollTop;
-    EDIT.left = h('div.fx-left');
-    const loras = h('details.edraw-details', { open: FX.editor.loraOpen }, h('summary', { text: 'Choisir les LoRA' }), EDIT.left);
-    loras.addEventListener('toggle', () => { FX.editor.loraOpen = loras.open; save(); });
-    EDIT.left.replaceChildren(cat ? loraTab(EDIT) : h('div.fx-info', { text: 'Démarrez le moteur pour afficher les mêmes LoRA que dans le Studio.' }),
-      ...(!cat ? [tbtn('Charger les LoRA', () => ensureCat())] : []));
+    const prompt = h('textarea.fx-ta', { rows: 2, placeholder: 'Ex. : une petite étoile dorée sur le mur', spellcheck: false,
+      'aria-label': 'Décrivez uniquement ce que vous voulez ajouter ou modifier' });
+    prompt.value = FX.editor.prompt;
+    prompt.addEventListener('input', () => { FX.editor.prompt = prompt.value; save(); renderGenButtons(); });
+    EDIT.genbox = h('div.fx-genbox');
+    const loras = [...FX.t2i.prompt.matchAll(/<(?:lora|lyco):([^:>]+)(?::([^>]+))?>/gi)]
+      .map(m => m[1] + ' × ' + (m[2] || '1'));
     editorStatus = h('div.edraw-status', { role: 'status', 'aria-live': 'polite' });
     editorModel = h('div.fx-info.edraw-model');
     editorRoot.replaceChildren(
-      h('div.fx-info', { text: 'Réglages partagés avec txt2img.' }), editorModel,
-      select('Ajouter le dessin…', [['selection', 'Dans la sélection'], ['layer', 'Sur un nouveau calque']], FX.editor, 'target', '', refreshEditorDraw),
-      editorStatus, promptRow(EDIT, { compact: true }),
-      h('details.edraw-details', h('summary', { text: 'Force et variantes' }),
-        slider('Force de transformation de la zone', FX.editor, 'strength', 0, 1, 0.01, 'Dans la sélection : une force élevée permet d’ajouter un nouvel élément.'),
-        slider('Variantes', FX.editor, 'variants', 1, 4, 1)), loras,
-      tbtn('Réglages complets dans le Studio', () => C.openStudioTab('txt2img'), '.sm'));
+      select('Ajouter le dessin…', [['selection', 'Dans la sélection'], ['layer', 'Sur un nouveau calque']], FX.editor, 'target', '', renderEditorDraw),
+      editorStatus, field('Que voulez-vous ajouter ou modifier ?', prompt),
+      EDIT.genbox,
+      FX.editor.target === 'selection' ? select('Force', [['0.4', 'Douce · 40 %'], ['0.5', 'Équilibrée · 50 %'], ['0.6', 'Marquée · 60 %']], FX.editor, 'strength') : null,
+      FX.editor.target === 'selection' ? h('div.fx-info', { text: 'Commencez à 50 %. Augmentez si le changement est trop discret.' }) : null,
+      h('details.edraw-details', h('summary', { text: 'Réglages du Studio utilisés' }), editorModel,
+        h('div.fx-info', { text: 'Même modèle, styles, LoRA et réglages de génération que Créer. La description du Studio est remplacée par votre demande ci-dessus.' }),
+        h('div.fx-info', { text: 'LoRA actifs : ' + (loras.join(', ') || 'aucun') }),
+        h('div.fx-info', { text: 'Un LoRA de personnage ou un style peut influencer le sujet. Ajustez-le dans le Studio si nécessaire.' }),
+        slider('Variantes', FX.editor, 'variants', 1, 4, 1),
+        tbtn('Modifier dans le Studio IA', () => C.openStudioTab('txt2img'), '.sm')));
     refreshEditorDraw(); editorRoot.scrollTop = scroll;
   }
   KS.panels.register('aidraw', {
@@ -1548,11 +1560,24 @@
     show() { renderEditorDraw(); },
   });
   C.openEditorDraw = async () => { await C.toggleStudio(false); KS.panels.focus('aidraw'); };
+  // Tous les accès au remplissage partagent ce panneau et le même moteur.
+  C.generativeFill = async prompt => {
+    const d = D();
+    if (!d?.selection.bounds) return KS.toast('Sélectionnez d’abord la zone à modifier.', 'info');
+    FX.editor.target = 'selection';
+    if (prompt !== undefined) FX.editor.prompt = String(prompt);
+    save(); await C.openEditorDraw();
+    if (prompt !== undefined && String(prompt).trim()) return C.editorDraw();
+    editorRoot?.querySelector('textarea')?.focus();
+  };
   C.editorDraw = async () => {
     if (BUSY || PREPARING) return interrupt();
     const d = D(), mode = FX.editor.target, st = clone(FX.t2i), options = clone(FX.editor);
+    // Garder les réseaux actifs, jamais la scène précédente ni ses mots déclencheurs.
+    const tags = st.prompt.match(/<(?:lora|lyco):[^>]+>/gi) || [];
+    st.prompt = [...new Set([options.prompt.trim(), ...tags])].filter(Boolean).join(' ');
     if (!d) return KS.toast('Ouvrez un document pour ajouter un dessin.', 'info');
-    if (!st.prompt.trim()) return KS.toast('Décrivez le dessin à ajouter.', 'info');
+    if (!options.prompt.trim()) return KS.toast('Décrivez le dessin à ajouter.', 'info');
     if (mode === 'selection' && !d.selection.bounds) return KS.toast('Sélectionnez d’abord la zone à dessiner.', 'info');
     const width = d.width, height = d.height, alpha = mode === 'selection' ? d.selection.snapshot() : null;
     const initial = alpha ? U.copyCanvas(d.composite()) : null;
@@ -1560,10 +1585,11 @@
     try {
       if (await trainingRuns() || prep.canceled) return;
       if (!(await ensureCat()) || prep.canceled) return;
-      const p = await payloadFor('t2i', { ...st, enable_hr: false, script: 'None', n_iter: 1, batch_size: U.clamp(+options.variants || 1, 1, 4) });
+      const p = await payloadFor('t2i', { ...st, enable_hr: false, script: 'None',
+        ad: mode === 'selection' ? { ...st.ad, enabled: false } : st.ad, n_iter: 1, batch_size: U.clamp(+options.variants || 1, 1, 4) }, true);
       let initBytes = null, maskBytes = null;
       if (alpha) {
-        Object.assign(p, { denoising_strength: +options.strength, resize_mode: 0, mask_blur: 4,
+        Object.assign(p, { denoising_strength: U.clamp(+options.strength || 0.5, 0.4, 0.6), resize_mode: 0, mask_blur: 4,
           inpainting_mask_invert: 0, inpainting_fill: 1, inpaint_full_res: 1, inpaint_full_res_padding: 32 });
         initBytes = await pngBytes(initial); maskBytes = await pngBytes(maskCanvas(alpha));
       } else { const size = fitDoc(d); p.width = size.w; p.height = size.h; }

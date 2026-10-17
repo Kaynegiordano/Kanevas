@@ -1,14 +1,12 @@
-Kane App 1.8.0 — Zoom du Studio et interface flat
+Kane App 1.8.1 — Remplissage génératif simplifié
 
-- « Mon atelier » devient Kane App. Navigation : Projet, Edition, Studio IA, Animation, Animation Vidéo, Montage. Montage est placé en dernier.
-- Style plus plat dans l’application et les ateliers intégrés, surfaces unies et accents discrets. Les couleurs de chaque espace se personnalisent dans Préférences et sont conservées au redémarrage.
-- Zoom à la molette dans les sources et résultats du Studio, boutons − / +, Ajuster et 100 %. Glisser déplace l’image ; dans les masques et croquis, bouton central ou Espace + glisser déplace sans peindre. Le zoom ne modifie pas les pixels générés.
-- « Découper » utilise l’image active du Studio, même sans document ouvert dans Edition, et exporte ses panneaux. « Entraîner un LoRA » est renommé « Lora ».
-- Clic droit sur un espace > Arrêter : arrêt du moteur Studio, sauvegarde des zones d’Animation, sauvegarde du montage et annulation des rendus avant déchargement. L’arrêt explicite d’un moteur externe vérifie l’identité du processus.
-- Préférences > Configurer le moteur local : runtime Python et modèles séparés, option pour réutiliser ou non le Forge de KaneOS. Les autres applications gardent leur dossier KaneOS.
+- Un seul parcours dans Edition : sélectionner une zone, ouvrir Remplissage génératif, décrire le changement, puis Ajouter le dessin. Les menus et la barre contextuelle ouvrent le même panneau Dessin IA.
+- Réutilisation des réglages de Studio IA > Créer : modèle, LoRA et poids actifs, styles, invite négative, étapes, CFG et échantillonneur. La description précédente du Studio n’est plus recopiée : une ancienne scène de personnage ne contamine plus directement la demande locale.
+- Force à 50 % par défaut, avec trois choix : douce 40 %, équilibrée 50 %, marquée 60 %. Migration de l’ancienne valeur de 85 %. Un seul résultat par défaut, options et variantes repliées.
+- Inpaint sur la sélection, résultat sur un nouveau calque masqué et annulation en une étape. Hires, scripts et retouche automatique des visages ne s’appliquent pas à ce remplissage local. Ctrl+Entrée démarre ou interrompt.
+- Lorsque la traduction du Studio est activée, une traduction française indisponible bloque la génération avec un message explicatif. Les balises LoRA sont conservées pendant la traduction.
+- Supprimer garde son comportement de suppression locale. La liste des LoRA actifs et un lien vers le Studio restent accessibles dans les réglages repliés. Un LoRA de personnage ou un style peut toujours influencer le résultat.
 
-Le backend de génération reste actuellement basé sur Forge : cette version prépare une configuration séparée, sans installer ni copier un runtime. Ne retirez les fichiers de Forge qu’après avoir préparé un moteur distinct fonctionnel.
+Validation : parcours Electron du Studio et de la suite, migration depuis les anciennes préférences, forces 40/50/60 %, partage des LoRA et réglages, traduction, masques, annulation, raccourcis et mise en page. Réponses Forge et ComfyUI simulées ; aucune comparaison de qualité sur GPU réel.
 
-Les installateurs et le canal de mise à jour restent nommés Kanevas pour préserver la compatibilité des installations existantes.
-
-Validation : tests Electron du zoom, de la peinture et de la découpe, navigation et couleurs jusque dans les trois cadres intégrés, arrêt/reprise de Montage et rechargement des projets. Interface Wallpaper réelle avec serveur de test ; réponses Forge, ComfyUI et métadonnées ffprobe simulées. Configuration persistante et identification des processus testées séparément. Mises en page 1000/1024/1440 px contrôlées.
+Installateur et canal de mise à jour Kanevas conservés pour les installations existantes.

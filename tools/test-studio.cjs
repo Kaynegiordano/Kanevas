@@ -8,6 +8,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-studio-'));
 app.setPath('userData', path.join(tmp, 'profile'));
 const preload = path.join(tmp, 'preload.cjs');
 fs.writeFileSync(preload, `
+localStorage.setItem('kanevas.prefs', JSON.stringify({ fx: { v: 1, editor: { strength: 0.85 } }, genAI: { v: 2, strength: 1, loras: [{ name: 'obsolete-girl', weight: 1 }] } }));
 window.calls = [];
 window.txtCalls = []; window.extraCalls = []; window.interrupts = 0;
 window.ksNative = {
@@ -239,6 +240,7 @@ async function scenario() {
   drawDoc.selection.rect({ x: 20, y: 10, w: 30, h: 25 }, 'new', 0); KS.emit('selection', drawDoc);
   KS.prefs.fx.t2i.prompt = 'golden star <lora:test:0.6>'; KS.prefs.fx.t2i.negative_prompt = 'noise';
   KS.prefs.fx.t2i.styles = ['Shared style']; KS.prefs.fx.t2i.sampler_name = 'Euler'; KS.prefs.fx.t2i.scheduler = 'Automatic'; KS.prefs.fx.t2i.steps = 19; KS.prefs.fx.t2i.cfg_scale = 5;
+  KS.prefs.fx.t2i.ad.enabled = true; KS.prefs.fx.t2i.ad.units[0].ad_prompt = 'a woman';
   const beforePanel = window.calls.length + window.txtCalls.length;
   await KS.cmd.openEditorDraw();
   await wait(() => drawDoc.view.init && KS.view.w > 0);
@@ -247,14 +249,15 @@ async function scenario() {
   const drawRoot = document.querySelector('.edraw');
   const panelBox = drawRoot.closest('.pbody').getBoundingClientRect(), addBox = drawRoot.querySelector('.fx-generate').getBoundingClientRect();
   assert(addBox.top >= panelBox.top && addBox.bottom <= panelBox.bottom, 'Le bouton Ajouter le dessin est visible sans faire défiler le panneau');
-  assert(drawRoot.querySelector('textarea').value === KS.prefs.fx.t2i.prompt && drawRoot.textContent.includes('Studio-model'), 'Le panneau reprend l’invite, les LoRA et le modèle du Studio');
-  const loraCard = drawRoot.querySelector('[data-lora="test"]'); loraCard.click(); loraCard.click();
-  const weight = drawRoot.querySelector('.fx-lchip .fx-num'); weight.value = '0.9'; weight.dispatchEvent(new Event('change'));
-  assert(KS.prefs.fx.t2i.prompt.includes('<lora:test:0.9>') && KS.prefs.fx.t2i.negative_prompt.includes('bad lines'), 'Choisir un LoRA et son poids dans Dessin IA met à jour les réglages partagés');
+  assert(drawRoot.querySelector('textarea').value === '' && drawRoot.textContent.includes('Studio-model'), 'La demande locale démarre vide et garde le modèle du Studio');
+  assert(KS.prefs.fx.editor.strength === 0.5, 'L’ancienne force de 85 % est migrée à 50 %');
   const expectedPrompt = KS.prefs.fx.t2i.prompt;
+  const localPrompt = drawRoot.querySelector('textarea'); localPrompt.value = 'a small wooden bridge'; localPrompt.dispatchEvent(new Event('input'));
   await KS.cmd.editorDraw();
   const request = window.calls.at(-1);
-  assert(request.payload.prompt === expectedPrompt && request.payload.styles[0] === 'Shared style' && request.payload.sampler_name === 'Euler' && request.payload.steps === 19 && request.payload.cfg_scale === 5 && request.url === KS.gen.url(), 'Le dessin utilise le même prompt, LoRA, styles, échantillonnage et moteur que le Studio');
+  assert(request.payload.prompt === 'a small wooden bridge <lora:test:0.6>' && request.payload.styles[0] === 'Shared style' && request.payload.sampler_name === 'Euler' && request.payload.steps === 19 && request.payload.cfg_scale === 5 && request.payload.negative_prompt === 'noise' && request.url === KS.gen.url(), 'La demande remplace la scène du Studio et conserve LoRA, styles, échantillonnage et moteur');
+  assert(request.payload.denoising_strength === 0.5 && request.payload.seed === -1 && request.mask && !request.payload.enable_hr && !request.payload.alwayson_scripts.ADetailer, 'Le remplissage est un inpaint à 50 %, avec masque, graine aléatoire et sans retouche automatique des visages');
+  assert(KS.prefs.fx.t2i.prompt === expectedPrompt, 'La demande locale ne modifie pas la description du Studio');
   const generated = drawDoc.layers.at(-1), maskData = generated.mask.canvas.getContext('2d');
   assert(drawDoc.layers.length === 2 && generated.mask && maskData.getImageData(30, 20, 1, 1).data[0] > 200 && maskData.getImageData(100, 50, 1, 1).data[0] === 0 && !KS.studio.on, 'Le dessin dans la sélection crée un calque masqué et reste dans l’Édition');
   assert(drawDoc.layers[0].ctx.getImageData(0, 0, 1, 1).data[2] === 187, 'Le dessin IA préserve les pixels du calque original');
@@ -266,9 +269,31 @@ async function scenario() {
   assert(document.querySelector('#studio textarea').value === expectedPrompt, 'Les modifications du panneau se retrouvent dans le Studio');
   const studioPrompt = document.querySelector('#studio textarea'); studioPrompt.value = 'a silver moon <lora:test:0.4>'; studioPrompt.dispatchEvent(new Event('input'));
   await KS.cmd.openEditorDraw();
-  assert(document.querySelector('.edraw textarea').value === studioPrompt.value, 'Les modifications du Studio se retrouvent dans le panneau de l’Édition');
+  assert(document.querySelector('.edraw textarea').value === 'a small wooden bridge', 'Changer la scène du Studio ne remplace pas la demande locale');
   const beforeDrawT2I = window.txtCalls.length; await KS.cmd.editorDraw();
   assert(window.txtCalls.length === beforeDrawT2I + 1 && drawDoc.layers.length === 2 && !drawDoc.layers.at(-1).mask && !KS.studio.on, 'Le mode nouveau calque dessine sans sélection avec txt2img');
+  assert(window.txtCalls.at(-1).prompt === 'a small wooden bridge <lora:test:0.4>', 'Les poids LoRA modifiés dans le Studio sont relus à la génération suivante');
+  drawDoc.selection.rect({ x: 20, y: 10, w: 30, h: 25 }, 'new', 0);
+  await KS.cmd.generativeFill();
+  for (const force of [0.4, 0.6]) {
+    const forceSelect = document.querySelectorAll('.edraw select')[1];
+    forceSelect.value = String(force); forceSelect.dispatchEvent(new Event('change'));
+    await KS.cmd.generativeFill('a stone path');
+    assert(window.calls.at(-1).payload.denoising_strength === force && window.calls.at(-1).payload.prompt === 'a stone path <lora:test:0.4>', 'Le remplissage depuis le menu partage la force ' + force + ' et les LoRA actifs');
+  }
+  const beforeEmpty = window.calls.length;
+  await KS.cmd.generativeFill('');
+  assert(window.calls.length === beforeEmpty && document.querySelector('.edraw .fx-generate').disabled && !KS.modalOpen(), 'Une demande vide ouvre le panneau sans génération ni ancien dialogue avancé');
+  await KS.cmd.generativeFill();
+  assert(!KS.modalOpen() && KS.panels.isVisible('aidraw'), 'Le menu Remplissage ouvre le même panneau simple');
+  KS.prefs.fx.editor.prompt = 'une petite maison'; KS.prefs.fx.translate = true;
+  const oldEnglish = KS.gen.toEnglish; KS.gen.toEnglish = async () => null;
+  await KS.cmd.editorDraw();
+  assert(window.calls.length === beforeEmpty, 'Une traduction indisponible ne lance pas une génération française incomprise');
+  KS.gen.toEnglish = async () => 'a small house';
+  await KS.cmd.editorDraw();
+  assert(window.calls.at(-1).payload.prompt === 'a small house <lora:test:0.4>', 'La traduction conserve les balises LoRA et traduit uniquement la demande locale');
+  KS.gen.toEnglish = oldEnglish; KS.prefs.fx.translate = false;
   const interruptsBeforeDraw = window.interrupts, layersBeforeCancel = drawDoc.layers.length;
   window.holdGeneration = true; key(document.querySelector('.edraw textarea'));
   await wait(() => !!window.releaseGeneration);

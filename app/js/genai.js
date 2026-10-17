@@ -366,15 +366,6 @@
     status.style.color = f ? 'var(--text-2)' : 'var(--danger, #d05050)';
   });
 
-  C.generativeFill = async prompt => {
-    const d = D(); if (!d) return;
-    if (!d.selection.active) { KS.toast('Sélectionnez d\'abord la zone à générer', 'info'); return; }
-    const o = prompt === undefined ? await G.promptDialog() : { ...G.settings(), prompt };
-    if (!o) return;
-    const B = U.rectIntersect(U.rectInt(d.selection.bounds), d.rect); if (!B) return;
-    const alpha = U.copyCanvas(d.selection.mask);
-    await G.fillRegion(d, alpha, B, o);
-  };
   // Supprimer la sélection avec l'IA : le remplissage va dans un nouveau calque
   C.removeSelection = async () => {
     const d = D(); if (!d) return;
