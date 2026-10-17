@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: kcm:; media-src 'self' blob: kcm:; connect-src 'self' kcm:; frame-src 'self' file: http://127.0.0.1:8188 http://127.0.0.1:8780; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'">
 <title>Kanevas</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -81,6 +81,7 @@
 <script src="js/tools/brush-gesture.js"></script>
 <script src="js/ui/taskbar.js"></script>
 <script src="js/studio.js"></script>
+<script src="js/workspaces.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

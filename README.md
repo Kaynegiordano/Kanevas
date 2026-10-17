@@ -75,6 +75,23 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
+## ComfyUI, Wallpaper et Vidéo dans Kanevas (1.6.0)
+- Trois nouveaux espaces à côté d'Édition et Studio IA, dans la barre du haut : **ComfyUI**, **Wallpaper** et **Vidéo**.
+  Chaque espace garde sa page quand on passe de l'un à l'autre.
+- **ComfyUI** : son éditeur de graphes, démarré par Kanevas sur un clic (ou repris s'il tourne déjà dans Kane OS),
+  arrêté en quittant. « Envoyer l'image du document » la dépose dans son dossier input (nœud Load Image, nom copié) ;
+  « Sorties » liste les images et vidéos d'output\comfyui : ouvrir dans l'Édition, ajouter en calque, envoyer au
+  Studio IA (Img2Img, Extras) ou à la Vidéo.
+- **Wallpaper** (Wallpaper Engine Animator) : démarré en entrant dans l'espace. « Animer l'image du document » crée
+  le projet et l'ouvre. Le fond sous les découpes est redessiné par **le moteur Forge de Kanevas** (WEA_FORGE_URL ;
+  un relais local sur le port 8601 répond comme le lanceur Kane OS pour le démarrer au besoin). « Vidéos exportées »
+  envoie les MP4 à la Vidéo.
+- **Vidéo** : KaneClip intégré (copie de C:\KaneOS\KaneClip dans kaneclip/, `node tools/sync-kaneclip.cjs` pour
+  la mettre à jour). Ses fonctions du processus principal passent par des canaux « kc:… » (kaneclip-host.cjs),
+  ffmpeg est celui de KaneClip installé, sinon winget / PATH. « Ajouter l'image du document » la pose sur la timeline ;
+  un montage non enregistré est proposé à l'enregistrement en quittant Kanevas.
+- Menu IA de l'Édition : Envoyer à ComfyUI, Animer dans Wallpaper, Ajouter à la Vidéo.
+
 ## Img2Img dans le Studio IA
 - Le Studio reprend les thèmes et la couleur d'accent de l'Édition. Les actions sous les résultats sont
   regroupées : Édition, Transformer, Agrandir et Fichiers.

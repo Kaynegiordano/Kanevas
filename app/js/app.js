@@ -231,6 +231,7 @@
       KS.switchDoc(d);
       if (!(await KS.closeDoc(d))) return;
     }
+    if (KS.beforeClose && !(await KS.beforeClose())) return;     // espaces intégrés (montage non enregistré…)
     for (const d of KS.state.docs.slice()) await KS.recovery.forget(d);
     KS.prefs.save();
     KS.native.confirmClose();

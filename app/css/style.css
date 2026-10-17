@@ -1016,3 +1016,33 @@ body.studio #studio-bar { display: flex; }
 .ga-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ga-cell:hover { border-color: var(--accent); }
 .ga-k { position: absolute; left: 4px; bottom: 4px; font-size: 9.5px; padding: 1px 5px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; }
+
+/* Espaces intégrés : ComfyUI, Wallpaper, Vidéo (KaneClip) */
+#ws-ext { display: none; }
+body.ws-ext #main > :not(#ws-ext), body.ws-ext #optionsbar { display: none !important; }
+body.ws-ext #ws-ext { display: flex; flex: 1; min-width: 0; min-height: 0; background: var(--bg); }
+.wx-ws { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.wx-ws[hidden] { display: none; }
+.wx-bar { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 10px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.wx-title { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.wx-title svg { width: 16px; height: 16px; color: var(--accent); }
+.wx-sub { color: var(--text-2); font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.wx-sep { width: 1px; height: 22px; background: var(--border-2); margin: 0 2px; }
+.wx-note { font-size: 11.5px; color: var(--muted); }
+.wx-bar .btn.on { border-color: var(--accent); color: var(--accent); }
+.wx-body { flex: 1; min-height: 0; display: flex; }
+.wx-frame { flex: 1; min-width: 0; display: flex; }
+.wx-iframe { flex: 1; width: 100%; height: 100%; border: 0; background: #111; }
+.wx-empty { margin: auto; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: var(--text-2); padding: 24px; }
+.wx-empty .wx-icon svg { width: 46px; height: 46px; opacity: .5; }
+.wx-empty b { font-size: 18px; color: var(--text); }
+.wx-msg { color: var(--muted); font-size: 12.5px; }
+.wx-side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px; overflow: auto; background: var(--panel); border-left: 1px solid var(--border); }
+.wx-side[hidden] { display: none; }
+.wx-side-h { display: flex; align-items: center; gap: 6px; }
+.wx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.wx-cell { position: relative; padding: 0; aspect-ratio: 1; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel-2); cursor: pointer; }
+.wx-cell img, .wx-cell video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wx-cell:hover { border-color: var(--accent); }
+.wx-badge { position: absolute; left: 4px; bottom: 4px; font-size: 10px; padding: 1px 5px; border-radius: 6px; background: rgba(0,0,0,.6); color: #fff; }

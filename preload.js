@@ -1,6 +1,60 @@
 // Pont minimal et sûr entre la page et le processus principal.
 const { contextBridge, ipcRenderer, webUtils, webFrame } = require('electron');
 
+// Ce préchargement tourne aussi dans les cadres des espaces intégrés (nodeIntegrationInSubFrames) :
+//   - la page de Kanevas reçoit ksNative ;
+//   - le cadre de KaneClip (kaneclip/app, espace « Vidéo ») reçoit kcNative, relié aux canaux « kc:… » ;
+//   - le cadre de Wallpaper Engine Animator (127.0.0.1:8780) ouvre le projet demandé par Kanevas (?kv_projet=…) ;
+//   - les autres cadres (ComfyUI…) ne reçoivent rien.
+if (!process.isMainFrame) {
+  const loc = window.location;
+  if (loc.protocol === 'file:' && /\/kaneclip\/app\//i.test(decodeURIComponent(loc.pathname).replace(/\\/g, '/'))) exposeKaneClip();
+  else if (loc.origin === 'http://127.0.0.1:8780') {
+    const q = new URLSearchParams(loc.search).get('kv_projet');
+    if (q) try { localStorage.setItem('atelier_projet', q); } catch { /* stockage indisponible */ }
+  }
+} else exposeKanevas();
+
+function exposeKaneClip() {
+  const inv = ch => (...a) => ipcRenderer.invoke('kc:' + ch, ...a);
+  const on = ch => fn => ipcRenderer.on(ch, (_e, p) => fn(p));
+  let closeFn = null;
+  // Kanevas demande au montage s'il peut fermer (projet non enregistré) : réponse par message à la page
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || !e.data || e.data.kv !== 'close-request') return;
+    if (closeFn) closeFn(); else window.parent.postMessage({ kv: 'kc-close-ok' }, '*');
+  });
+  window.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('in-kanevas'));
+  ipcRenderer.send('kc:hello');
+  contextBridge.exposeInMainWorld('kcNative', {
+    openDialog: inv('open-dialog'), saveDialog: inv('save-dialog'), readText: inv('read-text'), writeFile: inv('write-file'),
+    exists: inv('exists'), stat: inv('stat'), listDir: inv('list-dir'), places: inv('places'), getPending: inv('get-pending'),
+    userData: inv('user-data'), defaultDir: inv('default-dir'), tempDir: inv('temp-dir'), removeDir: inv('remove-dir'),
+    ffAvailable: inv('ff-available'), probe: inv('probe'), waveform: inv('waveform'), thumbs: inv('thumbs'),
+    jobStart: inv('job-start'), jobCancel: inv('job-cancel'), proxyPath: inv('proxy-path'), proxyStart: inv('proxy-start'),
+    keyInterval: inv('keyint'), encoders: inv('encoders'),
+    aiStatus: inv('ai-status'), aiInstall: inv('ai-install'), aiStart: inv('ai-start'), aiCancel: inv('ai-cancel'),
+    onAiInstallProgress: on('ai-install-progress'), onAiProgress: on('ai-progress'), onAiDone: on('ai-done'),
+    cacheSize: inv('cache-size'), cacheClear: inv('cache-clear'),
+    autosaveWrite: inv('autosave-write'), autosaveRead: inv('autosave-read'), autosaveClear: inv('autosave-clear'),
+    listFonts: inv('list-fonts'), onJobProgress: on('job-progress'), onJobDone: on('job-done'),
+    pathForFile: f => { try { return webUtils.getPathForFile(f); } catch { return null; } },
+    confirmClose: () => window.parent.postMessage({ kv: 'kc-close-ok' }, '*'),
+    setTitle: t => window.parent.postMessage({ kv: 'kc-title', title: String(t || '') }, '*'),
+    setTitleBar: () => {},
+    toggleDevTools: () => ipcRenderer.send('kc:toggle-devtools'),
+    toggleFullscreen: () => ipcRenderer.send('kc:toggle-fullscreen'),
+    showInFolder: p => ipcRenderer.send('kc:show-in-folder', p),
+    openPath: p => ipcRenderer.send('kc:open-path', p),
+    onOpenPath: on('open-path'),
+    onCloseRequest: fn => { closeFn = fn; },
+    appVersion: inv('app-version'), updateState: inv('update-state'), updateCheck: inv('update-check'),
+    updateDownload: inv('update-download'), updateInstall: () => {}, onUpdateStatus: () => {},
+    setZoom: () => {},
+  });
+}
+
+function exposeKanevas() {
 contextBridge.exposeInMainWorld('ksNative', {
   openDialog: opts => ipcRenderer.invoke('open-dialog', opts),
   readFile: p => ipcRenderer.invoke('read-file', p),
@@ -71,4 +125,18 @@ contextBridge.exposeInMainWorld('ksNative', {
   updateInstall: () => ipcRenderer.send('update-install'),
   onUpdateStatus: fn => ipcRenderer.on('update-status', (_e, s) => fn(s)),
   setZoom: f => webFrame.setZoomFactor(f),
+  // espaces intégrés : ComfyUI, Wallpaper Engine Animator, Vidéo (KaneClip)
+  svcStatus: id => ipcRenderer.invoke('svc-status', id),
+  svcStart: id => ipcRenderer.invoke('svc-start', id),
+  svcStop: id => ipcRenderer.invoke('svc-stop', id),
+  svcLog: id => ipcRenderer.invoke('svc-log', id),
+  svcOutputs: (id, limit) => ipcRenderer.invoke('svc-outputs', id, limit),
+  svcOpenFolder: id => ipcRenderer.invoke('svc-open-folder', id),
+  onSvc: fn => ipcRenderer.on('svc', (_e, s) => fn(s)),
+  comfyUpload: (name, data) => ipcRenderer.invoke('comfy-upload', name, data),
+  weaNew: (name, data) => ipcRenderer.invoke('wea-new', name, data),
+  kcStage: (name, data) => ipcRenderer.invoke('kc-stage', name, data),
+  kcOpen: files => ipcRenderer.invoke('kc-open', files),
+  kcUrl: () => ipcRenderer.invoke('kc-url'),
 });
+}

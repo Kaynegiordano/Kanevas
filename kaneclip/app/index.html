@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: kcm:; media-src 'self' blob: kcm:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' kcm:">
+<title>KaneClip</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/workspace.css">
+</head>
+<body class="theme-dark">
+<div id="app">
+  <header id="titlebar">
+    <div class="brand" title="KaneClip"><span class="brand-mark"></span><span class="brand-name">KaneClip</span></div>
+    <nav id="menubar"></nav>
+    <div class="drag-region"><span id="doc-title"></span></div>
+  </header>
+  <div id="toolbar"></div>
+  <div id="upper">
+    <section id="dock" class="pane">
+      <div class="pane-caption"><span id="dock-caption">Médias du projet</span><span class="pane-caption-detail">Bibliothèque</span></div>
+      <div class="dock-tabs" id="dock-tabs"></div>
+      <div class="dock-body" id="dock-body"></div>
+    </section>
+    <div class="splitter v" data-split="dock"></div>
+    <section id="preview-pane" class="pane"></section>
+    <section id="inspector-pane" class="pane" aria-label="Propriétés de la sélection"></section>
+    <section id="master-pane" class="pane"></section>
+  </div>
+  <div class="splitter h" data-split="upper"></div>
+  <section id="timeline" class="pane">
+    <div id="timeline-tools" role="toolbar" aria-label="Outils de montage"></div>
+    <div id="tl-head">
+      <div id="tl-clock"></div>
+      <div id="tl-ruler-wrap"><canvas id="tl-ruler"></canvas></div>
+    </div>
+    <div id="tl-main">
+      <div id="tl-headers"><div id="tl-headers-inner"></div></div>
+      <div id="tl-canvas-wrap"><canvas id="tl-canvas"></canvas><div id="tl-empty"></div></div>
+      <div id="tl-vscroll"><div class="thumb"></div></div>
+    </div>
+    <div id="tl-foot">
+      <div id="tl-hscroll"><div class="thumb"></div></div>
+      <div id="tl-zoom"></div>
+    </div>
+  </section>
+  <div id="transport" role="toolbar" aria-label="Commandes de lecture"></div>
+  <footer id="statusbar"></footer>
+</div>
+<svg id="svg-filters" width="0" height="0" style="position:absolute;width:0;height:0" aria-hidden="true"><defs></defs></svg>
+<div id="windows"></div>
+<div id="popups"></div>
+<div id="modals"></div>
+<div id="toasts"></div>
+
+<script src="js/util.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/project.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/media.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/widgets.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/preview.js"></script>
+<script src="js/panels.js"></script>
+<script src="js/windows.js"></script>
+<script src="js/dialogs.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/updates.js"></script>
+<script src="js/menus.js"></script>
+<script src="js/workspace.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1598,6 +1598,8 @@
   KS.studioApi = {
     addToPrompt: async (text) => { const st = FX.t2i; st.prompt = (st.prompt ? st.prompt.replace(/\s+$/, '') + ' ' : '') + text; save(); FX.tab = 'txt2img'; await C.toggleStudio(true); if (N.forgeRefreshLoras && KS.engine && KS.engine.ready()) { await N.forgeRefreshLoras(url()); await loadCat(); } render(); },
     reloadCat: loadCat, cat: () => cat, selected: () => selItem('t2i'),
+    // une image venue d'un autre espace (sortie ComfyUI…) vers img2img, Inpaint, Extras ou txt2img
+    sendCanvas: (canvas, info, target = 'img2img') => sendTo(target, { canvas, info: info || '', kind: 'import' }),
   };
 
   /* ---------------------------------------------------------------- paramètres des commandes de l'espace Édition (remplissage génératif…) */

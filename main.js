@@ -13,6 +13,10 @@ else if (legacyData) app.setPath('userData', legacyData);
 app.setName('Kanevas');
 if (process.platform === 'win32') app.setAppUserModelId('com.kane.kanevas');
 
+// Espace « Vidéo » (KaneClip intégré) : son protocole média doit être déclaré avant que l'application soit prête
+const kcHost = require('./kaneclip-host.cjs');
+kcHost.registerScheme();
+
 let win = null;
 let allowClose = false;
 const pending = [];          // fichiers reçus avant que la page soit prête
@@ -35,7 +39,21 @@ if (!app.requestSingleInstanceLock()) {
     files.forEach(p => win.webContents.send('open-path', p));
   });
   pending.push(...filesFromArgv(process.argv));
-  app.whenReady().then(createWindow);
+  app.whenReady().then(() => {
+    kcHost.setup(() => win);
+    require('./services.cjs')({
+      getWin: () => win,
+      root: () => path.dirname(engineDirs().data),
+      engine: {
+        url: () => engine.url,
+        // Forge de Kane OS s'il tourne, sinon le moteur de Kanevas (démarré à la demande de Wallpaper)
+        forgeUrl: async () => engine.url || (await ping('http://127.0.0.1:7860', 800) ? 'http://127.0.0.1:7860' : 'http://127.0.0.1:' + ENGINE_PORT),
+        state: () => engine.state,
+        start: () => engineStart(),
+      },
+    });
+    createWindow();
+  });
 }
 
 function createWindow() {
@@ -52,6 +70,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,
+      // le préchargement sert aussi les cadres des espaces intégrés (KaneClip, Wallpaper) : voir preload.js
+      nodeIntegrationInSubFrames: true,
+      autoplayPolicy: 'no-user-gesture-required',
       // les tâches longues (IA, filtres en parallèle) continuent quand la fenêtre est masquée
       backgroundThrottling: false,
     },
@@ -76,6 +97,8 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // un cadre intégré (Wallpaper…) qui retient la fermeture par beforeunload ne bloque pas Kanevas une fois la fermeture confirmée
+  win.webContents.on('will-prevent-unload', e => { if (allowClose) e.preventDefault(); });
   win.on('close', e => {
     if (allowClose) return;
     e.preventDefault();
@@ -617,7 +640,8 @@ ipcMain.handle('engine-status', async () => {
   return engineStatus();
 });
 ipcMain.handle('engine-profiles', () => { const d = engineDirs(); return { data: d.data, profiles: d.profiles.map(p => ({ id: p.id, name: p.name, args: p.args })) }; });
-ipcMain.handle('engine-start', async (_e, profileId) => {
+ipcMain.handle('engine-start', (_e, profileId) => engineStart(profileId));
+async function engineStart(profileId) {
   if (engine.state === 'ready' || engine.state === 'starting') return engineStatus();
   if (await ping('http://127.0.0.1:7860', 1200)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; engine.ours = false; engineEmit(); return engineStatus(); }
   // moteur resté actif (Kanevas fermé brutalement) : on le reprend, il pourra être arrêté
@@ -657,7 +681,7 @@ ipcMain.handle('engine-start', async (_e, profileId) => {
     }
   })();
   return engineStatus();
-});
+}
 // Processus qui écoute sur un port (pour arrêter un moteur repris après un plantage de Kanevas)
 function pidOnPort(port) {
   try {
