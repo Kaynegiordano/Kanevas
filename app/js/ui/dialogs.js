@@ -8,6 +8,8 @@
   const stack = [];
   KS.modalOpen = () => stack.length > 0;
   KS.modal = ({ title, body, width, buttons = [], left = [], onClose, seeThrough = false, closeOnBackdrop = false, noFoot = false }) => {
+    let resolveDone;
+    const done = new Promise(resolve => { resolveDone = resolve; });
     const back = h('div.modal-back' + (seeThrough ? '.see-through' : ''));
     const head = h('div.modal-head', h('h3', { text: title }), ui.iconBtn('close', 'Fermer', () => close(null), '.sm'));
     const bodyEl = h('div.modal-body', body);
@@ -30,6 +32,7 @@
       closed = true;
       back.remove();
       stack.splice(stack.indexOf(api), 1);
+      resolveDone(v);
       onClose && onClose(v);
     }
     // déplacer la boîte par son titre
@@ -43,7 +46,7 @@
       head.addEventListener('pointermove', mv); head.addEventListener('pointerup', up);
     });
     if (closeOnBackdrop) back.addEventListener('pointerdown', e => { if (e.target === back) close(null); });
-    const api = { el, body: bodyEl, close, primary, back, foot };
+    const api = { el, body: bodyEl, close, primary, back, foot, done };
     stack.push(api);
     setTimeout(() => { const f = el.querySelector('input.field, select.field, textarea'); if (f && !f.dataset.nofocus) { f.focus(); if (f.select) f.select(); } }, 30);
     return api;

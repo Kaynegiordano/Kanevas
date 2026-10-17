@@ -1,0 +1,175 @@
+// Contrats réels de la suite dans Electron ; serveurs locaux et métadonnées ffprobe simulés.
+const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
+const fs = require('node:fs');
+const fsp = fs.promises;
+const path = require('node:path');
+const os = require('node:os');
+const http = require('node:http');
+const assert = require('node:assert/strict');
+const root = process.env.KANEVAS_TEST_ROOT || path.join(__dirname, '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-suite-'));
+app.setPath('userData', path.join(tmp, 'profile'));
+const kc = require(path.join(root, 'kaneclip-host.cjs')); kc.registerScheme();
+let win, store, servers = [], errors = [], updates = 0;
+const projects = path.join(tmp, 'animation-projects'); fs.mkdirSync(projects);
+fs.mkdirSync(path.join(tmp, 'wallpaper-engine-animator'), { recursive: true });
+fs.writeFileSync(path.join(tmp, 'wallpaper-engine-animator', 'config.json'), JSON.stringify({ projets: projects }));
+async function listen(port, handler) {
+  const server = http.createServer(handler); await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); }); servers.push(server);
+}
+const json = (r, data) => { r.setHeader('Content-Type', 'application/json'); r.end(JSON.stringify(data)); };
+async function backend() {
+  const p = await store.call('create', { name: 'Persistance' });
+  const src = path.join(tmp, 'external.png'); fs.writeFileSync(src, Buffer.from([1, 2, 3]));
+  const first = await store.call('import', { project: p.id, path: src });
+  const dupe = await store.call('import', { project: p.id, path: src }); assert(dupe.duplicate);
+  fs.unlinkSync(src); assert.equal(fs.readFileSync(first.item.path).length, 3);
+  const versions = await Promise.all(Array.from({ length: 6 }, (_, i) => store.call('capture', { project: p.id, data: new Uint8Array([i]), name: 'Version.png', parent: first.item.id })));
+  assert.equal(versions[5].project.items.length, 7); assert.equal(versions[5].item.revision, 2);
+  const reopened = require(path.join(root, 'suite-store.cjs'))(path.join(app.getPath('userData'), 'projects'));
+  assert.equal((await reopened.call('get', { project: p.id })).items.length, 7);
+  await assert.rejects(store.call('get', { project: '../outside' }));
+  await assert.rejects(store.call('capture', { project: p.id, name: 'Bad', data: new Uint8Array([0]), parent: 'missing' }));
+  await store.call('animation', { project: p.id, value: { dossier: 'Animation de test' } });
+  assert.equal((await reopened.call('get', { project: p.id })).animation.dossier, 'Animation de test');
+  console.log('OK Copies durables, dédoublonnage, versions, écritures concurrentes, reprise et validation des chemins');
+}
+async function scenario() {
+  const results = [], check = (ok, text) => { if (!ok) throw new Error(text); results.push(text); };
+  const wait = async fn => { const end = Date.now() + 15000; while (!fn() && Date.now() < end) await new Promise(r => setTimeout(r, 50)); if (!fn()) throw new Error('Timeout renderer'); };
+  const click = label => { const b = [...document.querySelectorAll('.modal button')].find(b => b.textContent === label); if (!b) throw new Error('Bouton modal absent : ' + label); b.click(); };
+  await KS.suite.ready; await KS.suite.home();
+  const S = KS.suite, WX = KS.ws;
+  const creating = S.newProject(); await wait(() => !!document.querySelector('.modal input'));
+  document.querySelector('.modal input').value = 'Illustration de test'; click('Enregistrer'); await creating;
+  check(document.body.classList.contains('suite-home') && !!document.querySelector('#suite-toolbar'), 'Accueil Projet et navigation commune');
+  check([...document.querySelectorAll('#suite-toolbar .ws-btn')].map(b => b.textContent).join('|') === 'Projet|Édition|Studio IA|Animation|Vidéo|Workflows', 'Espaces nommés par activité');
+  const d = new KS.Doc({ name: 'Illustration', width: 128, height: 64 });
+  const base = KS.util.canvas(128, 64); base.getContext('2d').fillStyle = '#3878b8'; base.getContext('2d').fillRect(0, 0, 128, 64);
+  d.addLayer(new KS.Layer({ name: 'Base', canvas: base }), 0);
+  const top = KS.util.canvas(128, 64); top.getContext('2d').fillStyle = '#dda238'; top.getContext('2d').fillRect(20, 15, 40, 25);
+  d.addLayer(new KS.Layer({ name: 'Détail', canvas: top }), 1); KS.addDoc(d); await KS.cmd.toggleStudio(false);
+  const first = await S.capture(); check(!!first.snapshotPath, 'Capture avec document natif et aperçu séparés');
+  const duplicate = await S.capture(); check(first.id === duplicate.id, 'Capturer sans modification réutilise la version existante');
+  d.layers[1].ctx.fillStyle = '#ee2345'; d.layers[1].ctx.fillRect(30, 10, 20, 20); d.layers[1].touch(); d.history.push({ name: 'Retouche', undo() {}, redo() {} });
+  const second = await S.capture(); check(second.parent === first.id && second.revision === 2, 'Une modification crée une version liée sans écraser la précédente');
+  await S.open(first); const restored = KS.state.doc;
+  check(restored.layers.length === 2 && restored.layers[1].name === 'Détail', 'Reprendre une version retrouve les deux calques éditables');
+  check(restored.path === null, 'Les instantanés archivés sont ouverts comme copies de travail');
+  restored.selection.combine(x => x.fillRect(10, 10, 24, 24)); const selection = await S.capture('selection');
+  check(!selection.snapshotPath && selection.id !== first.id, 'La sélection seule est un média distinct');
+  await S.home(); S.selected = second.id; await S.refresh();
+  check(document.querySelector('.suite-detail h3').textContent === second.name, 'La sélection de bibliothèque affiche ses actions');
+  await S.animate(second); check(S.project.animation?.item === second.id && WX.el.wallpaper.ready, 'Création et liaison d’une animation par le véritable pont preload');
+  const dossier = S.project.animation.dossier;
+  await S.resumeAnimation(); check(S.project.animation.dossier === dossier, 'Reprendre l’animation conserve son projet et ses zones');
+  const canceled = S.animate(first); await wait(() => KS.modalOpen()); click('Annuler'); await canceled;
+  check(S.project.animation.item === second.id, 'Annuler un transfert ne change pas la source liée');
+  const small = KS.util.canvas(32, 32), wrongSize = await KS.native.weaUpdate(dossier, new Uint8Array(await (await KS.util.blobFromCanvas(small)).arrayBuffer()));
+  check(!wrongSize.ok && wrongSize.error.includes('Dimensions'), 'Une source de dimensions différentes ne remplace pas la scène peinte');
+  const updating = S.animate(first); await wait(() => KS.modalOpen()); click('Mettre à jour la source'); await updating;
+  check(S.project.animation.dossier === dossier && S.project.animation.item === first.id, 'Mise à jour de la source sans créer une autre animation');
+  await S.toVideo(second); const video = await WX.request('video', 'state');
+  check(video.media.length === 1 && video.events >= 1, 'Ajout sur la vraie timeline KaneClip depuis la bibliothèque');
+  const timelineBefore = JSON.parse((await KS.native.suiteCall('videoRead', { project: S.project.id })).value.data).events;
+  const replace = S.replaceVideo(first); await wait(() => !!document.querySelector('.modal select')); click('Remplacer'); await replace;
+  const after = await WX.request('video', 'state'); check(after.media[0].path === first.path && after.events === video.events, 'Remplacement du média en conservant les événements du montage');
+  await WX.request('video', 'save');
+  const saved = await KS.native.suiteCall('videoRead', { project: S.project.id });
+  check(JSON.parse(saved.value.data).events.length === after.events, 'Montage sauvegardé dans le dossier du projet commun');
+  check(JSON.stringify(JSON.parse(saved.value.data).events) === JSON.stringify(timelineBefore), 'Les coupes, placements et effets des événements sont inchangés après remplacement');
+  const originalProject = S.project.id;
+  const other = S.newProject(); await wait(() => !!document.querySelector('.modal input'));
+  document.querySelector('.modal input').value = 'Autre projet'; click('Enregistrer'); await other;
+  check((await WX.request('video', 'state')).events === 0, 'Changer de projet ouvre un montage indépendant');
+  await S.openProject(originalProject);
+  check((await WX.request('video', 'state')).events === after.events, 'Revenir au projet restaure son montage et ses médias');
+  await S.toComfy(first); check(WX.el.comfyui.ready, 'Image injectée dans le nœud LoadImage par le véritable pont ComfyUI');
+  const wf = { nodes: [{ id: 7, type: 'LoadImage' }, { id: 9, type: 'LoadImage' }] };
+  await WX.request('comfyui', 'workflow', { workflow: wf });
+  const multiple = S.toComfy(second); await wait(() => !!document.querySelector('.modal select')); click('Utiliser cette entrée'); await multiple;
+  const state = await WX.request('comfyui', 'image', { name: 'test.png' }); check(state.nodes?.length === 2, 'Plusieurs entrées de workflow : choix explicite du nœud');
+  const rejected = await WX.request('comfyui', 'workflow', { workflow: {} }).then(() => false, () => true); check(rejected, 'Un workflow au mauvais format produit une erreur lisible');
+  const beforeCount = S.project.items.length;
+  await S.collect([{ canvas: top, info: 'prompt\nSeed: 123', kind: 'txt2img' }]);
+  check(S.project.items.length === beforeCount + 1 && S.project.items[0].info.includes('Seed: 123'), 'Les générations rejoignent la bibliothèque avec leurs paramètres');
+  const projectId = S.project.id;
+  await S.refresh(); check(S.project.id === projectId && S.project.animation.dossier === dossier, 'Relecture du projet : médias et animation conservés');
+  for (const theme of ['light', 'dark', 'graphite']) { KS.prefs.theme = theme; KS.prefs.accent = '#a65cf0'; KS.applyPrefs(); for (const id in WX.el) { WX.theme(id); } }
+  await new Promise(r => setTimeout(r, 300));
+  const frame = WX.el.comfyui.frame;
+  check(frame.contentDocument === null, 'Les cadres spécialisés restent isolés du document principal');
+  await S.home(); check(!document.body.classList.contains('ws-ext') && !KS.studio.on, 'Retour Projet cohérent après les trois ateliers');
+  const modal = KS.modal({ title: 'Annulation', body: KS.h('p', { text: 'test' }), buttons: [{ label: 'Annuler', value: false }] }); modal.close(null);
+  check(await modal.done === null, 'Fermer une boîte de dialogue résout également son résultat');
+  return { results, projectId, first: first.path, second: second.path, dossier };
+}
+app.whenReady().then(async () => {
+  try {
+    await listen(8780, async (req, res) => {
+      if (req.url === '/api/projets') return json(res, fs.readdirSync(projects).map(dossier => ({ dossier, titre: dossier, anime: false })));
+      if (req.url === '/api/forge') return json(res, { pret: false, lanceur: false });
+      if (req.url.endsWith('/etat')) return json(res, { etat: 'libre' });
+      if (req.url.includes('/image?') || req.url.endsWith('/vignette')) {
+        res.setHeader('Content-Type', 'image/png'); return res.end(fs.readFileSync(path.join(projects, decodeURIComponent(req.url.split('/')[2]), 'scene.png')));
+      }
+      if (req.url.includes('/enregistre')) { req.resume(); return json(res, { ok: true }); }
+      if (req.url.includes('/fichier/')) { res.statusCode = 404; return res.end('Absent'); }
+      if (req.url === '/api/nouveau') {
+        let text = ''; for await (const b of req) text += b; const body = JSON.parse(text), dossier = 'Animation-test';
+        fs.mkdirSync(path.join(projects, dossier), { recursive: true }); fs.writeFileSync(path.join(projects, dossier, 'scene.png'), Buffer.from(body.image.split(',')[1], 'base64'));
+        return json(res, { dossier });
+      }
+      if (process.env.KANEVAS_TEST_WALLPAPER_HTML) { res.setHeader('Content-Type', 'text/html; charset=utf-8'); return res.end(fs.readFileSync(process.env.KANEVAS_TEST_WALLPAPER_HTML)); }
+      res.setHeader('Content-Type', 'text/html'); res.end('<html><head></head><body><header id="haut"><span class="logo"></span><button id="animer">Animer</button><button id="videoBtn">Vidéo</button><button id="oPeindre"></button><button id="oApercu"></button><button id="superBtn"></button><span id="statut">Prêt</span></header><script>let P=null,IW=128,IH=64;async function enregistre(){} async function chargeProjets(){} async function ouvre(p){P=p;document.querySelector("#statut").textContent="Prêt";}</script></body></html>');
+    });
+    await listen(8188, (req, res) => {
+      if (req.url === '/system_stats') return json(res, {});
+      if (req.url === '/queue') return json(res, { queue_running: [], queue_pending: [] });
+      if (req.url === '/upload/image') { req.resume(); return json(res, { name: 'uploaded.png' }); }
+      if (req.url === '/scripts/app.js') { res.setHeader('Content-Type', 'application/javascript'); return res.end('export const app={graph:{_nodes:[{id:1,type:"LoadImage",widgets:[{name:"image",value:"",options:{values:[]}}]}]},loadGraphData(w){this.graph._nodes=w.nodes.map(n=>({...n,widgets:[{name:"image",value:"",options:{values:[]}}]}))}};'); }
+      res.setHeader('Content-Type', 'text/html'); res.end('<html><head></head><body>Workflow de test</body></html>');
+    });
+    kc.setup(() => win); store = require(path.join(root, 'suite-host.cjs'))(() => win);
+    require(path.join(root, 'services.cjs'))({ getWin: () => win, root: () => tmp, engine: { forgeUrl: async () => 'http://127.0.0.1:7862', state: () => 'off', start() {} } });
+    const reply = (ch, fn) => { ipcMain.removeHandler(ch); ipcMain.handle(ch, fn); };
+    reply('kc:ff-available', () => ({ path: 'test-ffmpeg' }));
+    reply('kc:probe', (_e, p) => { const size = nativeImage.createFromPath(p).getSize(); return { ok: true, path: p, name: path.basename(p), kind: 'image', size: fs.statSync(p).size, video: { ...size, codec: 'png', fps: 0 } }; });
+    reply('kc:proxy-path', () => null);
+    for (const ch of ['set-title', 'set-titlebar']) ipcMain.on(ch, () => {});
+    reply('get-pending', () => []); reply('list-fonts', () => []); reply('engine-status', () => ({ state: 'off', ours: false }));
+    reply('app-version', () => 'test'); reply('update-state', () => ({ state: 'none' })); reply('update-check', () => ({ state: 'none' }));
+    reply('recovery-list', () => ({ ok: true, entries: [] })); reply('recovery-write', () => ({ ok: true })); reply('recovery-remove', () => ({ ok: true }));
+    reply('read-file', (_e, p) => ({ path: p, name: path.basename(p), data: new Uint8Array(fs.readFileSync(p)) }));
+    await backend();
+    win = new BrowserWindow({ show: false, width: 1440, height: 1000, webPreferences: { preload: path.join(root, 'preload.js'), nodeIntegration: false, contextIsolation: true, nodeIntegrationInSubFrames: true, backgroundThrottling: false, offscreen: true } });
+    win.webContents.on('console-message', d => { if (d.level === 'error') errors.push(d.message); });
+    win.webContents.on('preload-error', (_e, p, err) => errors.push(p + ': ' + err.message));
+    await win.loadFile(path.join(root, 'app', 'index.html'));
+    const result = await win.webContents.executeJavaScript('(' + scenario.toString() + ')()');
+    for (const line of result.results) console.log('OK ' + line);
+    assert.equal(fs.readFileSync(result.first).length > 0, true);
+    assert.equal(fs.readFileSync(result.second).length > 0, true);
+    assert.equal(fs.readdirSync(path.join(projects, result.dossier, 'work', 'sources')).length, 1);
+    console.log('OK La source Animation précédente est sauvegardée avant remplacement');
+    if (process.env.KANEVAS_TEST_SCREENSHOT) {
+      for (const [id, command] of [['animation', 'KS.suite.resumeAnimation()'], ['video', 'KS.suite.openVideo()']]) {
+        await win.webContents.executeJavaScript(command); await new Promise(r => setTimeout(r, 300));
+        await win.webContents.executeJavaScript('document.querySelector("#toasts").replaceChildren()');
+        fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-' + id + '.png'), (await win.webContents.capturePage()).toPNG());
+      }
+    }
+    await win.loadFile(path.join(root, 'app', 'index.html'));
+    const restart = await win.webContents.executeJavaScript('(async()=>{await KS.suite.ready;await KS.suite.openVideo();const state=await KS.ws.request("video","state");await KS.suite.home();document.querySelector("#toasts").replaceChildren();return {id:KS.suite.project.id,count:KS.suite.project.items.length,events:state.events};})()');
+    assert.equal(restart.id, result.projectId); assert(restart.count >= 4 && restart.events >= 1);
+    console.log('OK Après rechargement complet : projet, bibliothèque et montage retrouvés');
+    for (const width of [1440, 1024]) {
+      win.setSize(width, 1000); await new Promise(r => setTimeout(r, 350));
+      assert(await win.webContents.executeJavaScript('document.querySelector("#suite-toolbar").scrollWidth <= document.querySelector("#suite-toolbar").clientWidth + 1 && document.querySelector("#suite-home").scrollWidth <= document.querySelector("#suite-home").clientWidth + 1'));
+      console.log('OK Mise en page Projet à ' + width + ' px');
+      if (process.env.KANEVAS_TEST_SCREENSHOT) fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-' + width + '.png'), (await win.webContents.capturePage()).toPNG());
+    }
+    if (errors.length) throw new Error(errors.join('\n'));
+    console.log('Profil de test : ' + tmp); app.exit(0);
+  } catch (e) { console.error(e); console.error(errors.join('\n')); console.log('Profil : ' + tmp); app.exit(1); }
+});

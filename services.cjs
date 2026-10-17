@@ -156,6 +156,33 @@ module.exports = function services({ getWin, root, engine }) {
     try { const c = JSON.parse(fs.readFileSync(path.join(d, 'config.json'), 'utf8')); if (c.projets && fs.existsSync(c.projets)) return c.projets; } catch { /* config absente */ }
     return d;
   };
+  ipcMain.handle('wea-update', async (_e, dossier, data) => {
+    try {
+      if (typeof dossier !== 'string' || !dossier || /[\\/]/.test(dossier) || dossier === '.' || dossier === '..') throw new Error('Projet Animation invalide');
+      const dir = path.resolve(weaProjects(), dossier), base = path.resolve(weaProjects());
+      if (!dir.startsWith(base + path.sep)) throw new Error('Projet Animation invalide');
+      const state = await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:8780/p/${encodeURIComponent(dossier)}/etat`, { timeout: 4000 }, r => {
+          let text = ''; r.on('data', b => text += b); r.on('end', () => { try { resolve(JSON.parse(text)); } catch { reject(new Error('État Animation illisible')); } });
+        }).on('error', reject).on('timeout', function () { this.destroy(new Error('Animation ne répond pas')); });
+      });
+      if (state.etat === 'en cours') throw new Error('Attendez la fin de l’animation ou de l’export');
+      const { nativeImage } = require('electron');
+      let image = nativeImage.createFromBuffer(Buffer.from(data));
+      if (image.isEmpty()) throw new Error('Image illisible');
+      if (image.getSize().width > 3840) image = image.resize({ width: 3840 });
+      const scene = path.join(dir, 'scene.png'), previous = await fs.promises.readFile(scene);
+      const old = nativeImage.createFromBuffer(previous).getSize(), size = image.getSize();
+      if (old.width !== size.width || old.height !== size.height) throw new Error('Dimensions différentes : créez une nouvelle animation pour conserver les zones existantes');
+      const history = path.join(dir, 'work', 'sources'); await fs.promises.mkdir(history, { recursive: true });
+      await fs.promises.writeFile(path.join(history, Date.now() + '.png'), previous);
+      const temp = path.join(dir, 'scene.kanevas.tmp');
+      await fs.promises.writeFile(temp, image.toPNG()); await fs.promises.rename(temp, scene);
+      // Ces aperçus sont calculés depuis l'ancienne source ; la peinture et les profondeurs manuelles restent en place.
+      for (const file of ['depth_auto.png', path.join('work', 'vignette.jpg')]) await fs.promises.rm(path.join(dir, file), { force: true });
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
   const MEDIA = /\.(png|jpe?g|webp|gif|mp4|webm|mov|mkv)$/i;
   async function walk(dir, depth, out, filter) {
     let ents = []; try { ents = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }

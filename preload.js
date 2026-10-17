@@ -13,6 +13,10 @@ if (!process.isMainFrame) {
     const q = new URLSearchParams(loc.search).get('kv_projet');
     if (q) try { localStorage.setItem('atelier_projet', q); } catch { /* stockage indisponible */ }
   }
+  if (window.parent === window.top && (loc.origin === 'http://127.0.0.1:8780' || loc.origin === 'http://127.0.0.1:8188' || (loc.protocol === 'file:' && /\/kaneclip\/app\//i.test(decodeURIComponent(loc.pathname).replace(/\\/g, '/'))))) {
+    const install = () => ipcRenderer.invoke('suite-bridge').then(code => webFrame.executeJavaScript(code)).catch(err => console.warn('Pont Kanevas : ' + err.message));
+    if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', install, { once: true }); else install();
+  }
 } else exposeKanevas();
 
 function exposeKaneClip() {
@@ -138,5 +142,8 @@ contextBridge.exposeInMainWorld('ksNative', {
   kcStage: (name, data) => ipcRenderer.invoke('kc-stage', name, data),
   kcOpen: files => ipcRenderer.invoke('kc-open', files),
   kcUrl: () => ipcRenderer.invoke('kc-url'),
+  suiteCall: (op, args) => ipcRenderer.invoke('suite-call', op, args),
+  suitePick: () => ipcRenderer.invoke('suite-pick'),
+  weaUpdate: (dossier, data) => ipcRenderer.invoke('wea-update', dossier, data),
 });
 }

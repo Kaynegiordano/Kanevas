@@ -116,7 +116,7 @@ async function scenario() {
   document.querySelector('.fx-source .fx-dropzone').click();
   await wait(() => document.querySelector('.fx-source img')?.alt === 'Import.png');
   assert(KS.prefs.fx.i2i.seed === -1 && KS.prefs.fx.i2i.prompt === 'Imported prompt', 'Importer un PNG reprend l’invite sans figer sa graine');
-  await click('txt2img', document.querySelector('.fx-rail'));
+  await click('Créer', document.querySelector('.fx-rail'));
   assert(KS.prefs.fx.tab === 'txt2img' && !!document.querySelector('.fx-out'), 'txt2img reste accessible');
   KS.prefs.fx.t2i.prompt = 'new image <lora:test:0.8>';
   await KS.cmd.studioGenerate();
@@ -133,7 +133,7 @@ async function scenario() {
   document.querySelector('button[title^="Agrandir cette image avec le hires fix"]').click();
   await wait(() => window.txtCalls.length === 2 && !!document.querySelector('.fx-generate'));
   assert(window.txtCalls.at(-1).seed === -1, 'Hires demande aussi une graine aléatoire');
-  await click('img2img', document.querySelector('.fx-rail'));
+  await click('Transformer', document.querySelector('.fx-rail'));
   assert(document.querySelector('.fx-source img').alt.startsWith('new image'), 'La source survit au changement d’onglet');
   await click('Inpaint sketch');
   KS.prefs.fx.painter.color = '#22cc44'; KS.prefs.fx.painter.erase = false;

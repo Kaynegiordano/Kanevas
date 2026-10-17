@@ -41,6 +41,7 @@ if (!app.requestSingleInstanceLock()) {
   pending.push(...filesFromArgv(process.argv));
   app.whenReady().then(() => {
     kcHost.setup(() => win);
+    require('./suite-host.cjs')(() => win);
     require('./services.cjs')({
       getWin: () => win,
       root: () => path.dirname(engineDirs().data),

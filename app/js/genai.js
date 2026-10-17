@@ -73,7 +73,7 @@
       } catch { /* rien */ } finally { busy = false; }
     }, 900);
     await new Promise(r => setTimeout(r, 30));     // laisse s'afficher le voile (rAF est suspendu fenêtre masquée)
-    try { return await fn(); } finally { clearInterval(timer); back.remove(); if (url) URL.revokeObjectURL(url); }
+    try { return await (KS.suite ? KS.suite.run(label, fn) : fn()); } finally { clearInterval(timer); back.remove(); if (url) URL.revokeObjectURL(url); }
   };
 
   /* ---------------------------------------------------------------- réglages et état de Forge */

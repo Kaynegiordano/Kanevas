@@ -13,6 +13,34 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Projet créatif commun (1.7.0)
+- Un nouvel accueil **Projet** relie **Édition**, **Studio IA**, **Animation**, **Vidéo** et **Workflows**.
+  Les ateliers conservent leur page lorsqu'on change d'espace ; leur thème suit celui de Kanevas.
+- Chaque projet possède une **bibliothèque persistante**. Importer copie les images, vidéos et sons dans son
+  dossier local. **Capturer > Document avec ses calques** archive un PNG et un document KSP éditable ;
+  **Sélection seule** crée un média recadré avec transparence. Une nouvelle capture modifiée garde la version précédente.
+- Les générations du Studio rejoignent automatiquement la bibliothèque avec leurs paramètres. Les résultats
+  de ComfyUI et les exports d'Animation s'ajoutent depuis **Récupérer les résultats**. Les boucles du projet sont
+  également récupérées à la fin des tâches d'Animation observées dans la session.
+- Sélectionner un média propose de reprendre ses calques, de l'ajouter au document actif, de le transformer dans
+  le Studio, de l'animer, de l'ajouter au montage ou de l'utiliser dans un workflow.
+- **Animation** conserve une liaison avec son projet Wallpaper Animator. Reprendre retrouve les zones ;
+  mettre à jour la source conserve leur peinture si les dimensions correspondent. L'ancienne scène est sauvegardée
+  dans `work/sources`, les aperçus calculés sont invalidés. Il faut vérifier les zones et régénérer l'animation.
+- **Vidéo** conserve un montage KaneClip par projet (`montage.kcp`), enregistré automatiquement après les changements.
+  **Mettre à jour un média du montage** conserve les événements, coupes et effets. Une vidéo plus courte demande
+  de vérifier les fins de clips. Les fichiers KCP autonomes restent utilisables depuis les menus de KaneClip.
+- **Workflows** garde l'éditeur ComfyUI complet. Charger un workflow JSON au format interface, puis choisir
+  **Utiliser dans un workflow** place l'image dans un nœud LoadImage ; plusieurs entrées donnent lieu à un choix.
+  Les modèles et nœuds nécessaires au workflow doivent être présents dans ComfyUI.
+- **Activité** suit les transferts, générations et tâches signalées par les ateliers. Les files d'exécution et
+  la mémoire GPU restent gérées par leurs moteurs ; cette version n'introduit pas de planificateur GPU global.
+- Les dossiers locaux sont dans `projects` du profil Kanevas (**Dossier du projet**). Les animations restent dans
+  le dossier de Wallpaper Animator ; le projet en conserve la liaison. Déplacer un projet entier peut nécessiter
+  de relier les médias du montage et l'animation. Les documents ouverts ne sont pas fermés en changeant de projet.
+- Vérification : `node_modules/.bin/electron tools/test-suite.cjs` (vrais ponts et timeline, serveurs et métadonnées
+  ffprobe simulés, profil temporaire), plus `tools/test-studio.cjs` pour les parcours Forge existants.
+
 - **Rectangle** : un seul outil, avec ses angles réglables (un rayon pour les quatre, ou un par angle avec le
   bouton de liaison). Ils restent modifiables après coup dans Propriétés > Angles, tant que ses points n'ont
   été que déplacés.

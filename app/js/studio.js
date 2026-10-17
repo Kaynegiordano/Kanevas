@@ -209,8 +209,8 @@
   const EDIT = { k: 't2i', action: () => C.editorDraw() };
   const els = {};
   let root = null;
-  const RAIL = [['txt2img', 'txt2img', 'file-plus'], ['img2img', 'img2img', 'image'], ['extras', 'Extras', 'upscale'], ['pnginfo', 'PNG Info', 'info'],
-    ['train', 'Train LoRA', 'layers'], ['imgcut', 'ImgCut', 'crop'], ['settings', 'Settings', 'settings']];
+  const RAIL = [['txt2img', 'Créer', 'file-plus'], ['img2img', 'Transformer', 'image'], ['extras', 'Agrandir', 'upscale'], ['pnginfo', 'Paramètres PNG', 'info'],
+    ['train', 'Entraîner un LoRA', 'layers'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
   function mountPage() {
     root = KS.$('#studio');
     root.className = 'fx';
@@ -234,7 +234,7 @@
   function renderRail() {
     els.rail.replaceChildren();
     for (const [id, label, icon] of RAIL) {
-      const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
+      const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label + ' · ' + id }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
       b.addEventListener('click', () => { if (id === 'imgcut') return C.socialCut(); FX.tab = id; save(); render(); });
       els.rail.appendChild(b);
     }
@@ -970,6 +970,7 @@
   }
   const releaseItems = o => { for (const it of o.items || []) if (it.url) URL.revokeObjectURL(it.url); };
   function pushGallery(items) {
+    if (KS.suite) KS.suite.collect(items).catch(() => {});
     for (const it of items) {
       const t = U.canvas(Math.max(1, Math.round(it.canvas.width * 220 / Math.max(it.canvas.width, it.canvas.height))), Math.max(1, Math.round(it.canvas.height * 220 / Math.max(it.canvas.width, it.canvas.height))));
       t.getContext('2d').drawImage(it.canvas, 0, 0, t.width, t.height);
@@ -1158,7 +1159,7 @@
     BUSY = { k, t0: performance.now() };
     refreshBusy(k);
     progTimer = setInterval(tick, 700);
-    try { return await call(); }
+    try { return await (KS.suite ? KS.suite.run('Génération · Studio IA', call) : call()); }
     finally {
       clearInterval(progTimer);
       if (els.progImg && els.progImg._u) URL.revokeObjectURL(els.progImg._u);
@@ -1596,6 +1597,7 @@
   C.pngInfo = async () => { const d = D(); if (d) OUT.png = { canvas: d.composite(), name: d.name, text: d.genInfo || '', chunks: d.genInfo ? { parameters: d.genInfo } : {} }; FX.tab = 'pnginfo'; save(); await C.toggleStudio(true); render(); };
   C.loraStudio = async () => { FX.tab = 'train'; save(); await C.toggleStudio(true); render(); };
   KS.studioApi = {
+    isBusy: () => !!(BUSY || PREPARING),
     addToPrompt: async (text) => { const st = FX.t2i; st.prompt = (st.prompt ? st.prompt.replace(/\s+$/, '') + ' ' : '') + text; save(); FX.tab = 'txt2img'; await C.toggleStudio(true); if (N.forgeRefreshLoras && KS.engine && KS.engine.ready()) { await N.forgeRefreshLoras(url()); await loadCat(); } render(); },
     reloadCat: loadCat, cat: () => cat, selected: () => selItem('t2i'),
     // une image venue d'un autre espace (sortie ComfyUI…) vers img2img, Inpaint, Extras ou txt2img
@@ -1674,7 +1676,7 @@
   const onDoc = U.debounce(() => { if (SD.on && FX.tab === 'img2img') { renderModeTools(); if (FX.i2i.autoSize) renderCtx(CTX.i2i); } }, 150);
   for (const ev of ['doc', 'selection']) KS.on(ev, onDoc);
   document.addEventListener('keydown', e => {
-    const inEditor = !SD.on && KS.panels.isVisible('aidraw') && (editorRoot && editorRoot.contains(e.target) || !e.target.matches('input, textarea, select, [contenteditable="true"]'));
+    const inEditor = !SD.on && !KS.ws?.cur && !document.body.classList.contains('suite-home') && KS.panels.isVisible('aidraw') && (editorRoot && editorRoot.contains(e.target) || !e.target.matches('input, textarea, select, [contenteditable="true"]'));
     if ((!SD.on && !inEditor) || KS.modalOpen() || e.isComposing) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.altKey && !e.shiftKey) {
       e.preventDefault(); e.stopImmediatePropagation();
