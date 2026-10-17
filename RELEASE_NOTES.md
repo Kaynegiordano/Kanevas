@@ -1,6 +1,11 @@
-Kane App / Kanevas 1.9.4 — Sélection Magique dans Animation
+Kane App / Kanevas 1.10.0 — Illustrations interactives dans Animation
 
-- Répare Magique, l'outil de sélection automatique SAM : sous Windows, l'adaptateur remplaçait subprocess.Popen par une fonction, ce qui empêchait le chargement de Torch/SAM avec une erreur TypeError.
-- L'adaptateur conserve maintenant une vraie classe Popen et continue de diriger les workers Animation vers la gestion commune de la VRAM.
+- Nouveau panneau Interactions souris : regard gauche/droite, tête qui réagit au curseur, clignement et petit mouvement au clic, intensité réglable.
+- Appliquer au Web et Tester dans l’aperçu réutilisent les zones déjà préparées, sans calcul IA supplémentaire. L’interface indique les animations disponibles et celles à préparer.
+- Balancement de tête plus lisible, amplitude plafonnée et calques du visage synchronisés avec le fond.
+- Moteur Web intégré au paquet Kane App. Les nouvelles générations l’utilisent automatiquement ; les animations existantes peuvent être mises à jour depuis le panneau.
+- Les réglages sont conservés dans le projet et dans l’export Web. Les anciennes pages et descriptions sont sauvegardées. Sans interaction, la boucle vidéo reste régulière.
 
-Validation : vrai modèle SAM dans une fenêtre Kane App et son cadre Animation, masque non vide appliqué à la zone, retrait, annulation et GPU libéré ; tests de l'adaptateur, des workers et de la réservation GPU. Vérification du paquet construit et de la version installée.
+Validation : rendu WebGL réel avec mesures de pixels séparées pour le regard, la tête et le clic ; suivi vertical, retour au repos, désactivation et boucle vidéo ; interface avec vrai backend, sauvegarde des réglages, test de l’aperçu et signalement des animations absentes ; sélection Magique SAM, imports et parcours de la suite préservés. Vérification du paquet construit et de la version installée.
+
+Les interactions utilisent les zones de visage et de tête calculées ; elles ne génèrent pas de nouvelles poses complètes.

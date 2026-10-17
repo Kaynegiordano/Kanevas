@@ -13,6 +13,18 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Illustrations interactives dans Animation (1.10.0)
+
+- Le panneau **Interactions souris** propose le regard qui suit le curseur (gauche/droite), une tête réactive
+  et un clignement avec petit mouvement au clic. L'intensité se règle de 0 à 100 %.
+- **Appliquer au Web** met à jour les calques déjà calculés sans génération IA. **Tester dans l’aperçu**
+  ouvre le résultat et déclenche une réaction si elle est activée. Les animations manquantes sont signalées.
+- Le balancement de tête est plus visible, avec une amplitude plafonnée et des calques du visage synchronisés.
+- Le moteur Web fait maintenant partie de Kane App. Les options suivent le dossier **a poster** et les réglages
+  Wallpaper Engine ; sans entrée souris, la boucle vidéo reste périodique.
+- Les pages et descriptions précédentes sont sauvegardées avant remplacement. Les interactions restent facultatives.
+  Elles utilisent les zones préparées ; elles ne créent pas de nouvelles poses de personnage.
+
 ### Sélection Magique dans Animation (1.9.4)
 
 - Le moteur SAM de **Magique** peut de nouveau se charger sous Windows. L'adaptateur conserve

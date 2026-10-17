@@ -4,6 +4,7 @@ import os
 import runpy
 import subprocess
 import sys
+import urllib.parse
 
 
 def release_local(module):
@@ -46,6 +47,9 @@ def worker(script, args):
         forge._checkpoint = lambda: None
     sys.argv = [script, *args]
     runpy.run_path(script, run_name='__main__')
+    if os.path.basename(script) == 'auto_anim.py' and os.path.isfile('anim.json') and os.path.isfile('assets.js'):
+        from animation_web import configure
+        configure(os.getcwd())
 
 
 def server(script, args):
@@ -77,6 +81,28 @@ def server(script, args):
                 release_local(None)
 
     context['sam'] = sam
+    if 'H' in context:
+        original_handler = context['H']
+
+        class InteractiveHandler(original_handler):
+            def do_POST(self):
+                route = urllib.parse.unquote(urllib.parse.urlparse(self.path).path)
+                if not route.endswith('/interactions'):
+                    return super().do_POST()
+                try:
+                    parts = route.split('/')
+                    if len(parts) != 4 or parts[1] != 'p': raise ValueError('Projet Animation invalide')
+                    if context['_anim'].get('etat') == 'en cours': raise RuntimeError('Attendez la fin de l’animation ou de l’export.')
+                    self.corps()
+                    from animation_web import configure
+                    result = configure(context['chemin'](parts[2]))
+                    self.envoie(200, result)
+                except (ValueError, RuntimeError, FileNotFoundError) as error:
+                    self.envoie(409, {'error': str(error)})
+                except Exception as error:
+                    self.envoie(500, {'error': str(error)})
+
+        context['H'] = InteractiveHandler
     port = int(args[args.index('--port') + 1]) if '--port' in args else 8780
     module['serveur'](port).serve_forever()
 

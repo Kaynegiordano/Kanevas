@@ -28,6 +28,55 @@ module.exports = function installSuiteBridge(kind) {
         if (response.opened === false && typeof statut === 'function') statut('Ouverture annulée.');
       } catch (error) { if (typeof statut === 'function') statut('Ouverture impossible : ' + error.message); }
     };
+    if (typeof REGL !== 'undefined' && document.getElementById('cote')) {
+      const panel = document.createElement('div'); panel.className = 'bloc'; panel.id = 'kane-interactions';
+      panel.innerHTML = '<h2>Interactions souris</h2><div class="aide">Préparez les zones Regard, Tête et Yeux. Testez ensuite leurs réactions dans l’aperçu Web.</div>';
+      for (const [key, label] of [['regard','Le regard suit la souris'],['tete','La tête suit la souris'],['clic','Réagir au clic : clignement et petit mouvement']]) {
+        const row=document.createElement('label'), input=document.createElement('input');
+        input.id='kane-'+key; input.type='checkbox'; row.append(input,document.createTextNode(' '+label)); panel.append(row);
+        if(key==='regard')row.title='Le regard préparé se déplace de gauche à droite.';
+        REGL.push([input.id,'interaction_'+key,false]);
+        input.checked=!!(typeof reglages === 'undefined' ? false : reglages['interaction_'+key]);
+        input.oninput=()=>{memoriseReglage(input.id);change();};
+      }
+      const label=document.createElement('label'), amount=document.createElement('b'), range=document.createElement('input');
+      label.textContent='Intensité '; amount.id='kane-forceV'; label.append(amount);
+      range.id='kane-force'; range.type='range'; range.min='0'; range.max='1'; range.step='.05'; range.value=String(typeof reglages==='undefined' ? .65 : reglages.interaction_force ?? .65);
+      REGL.push([range.id,'interaction_force',.65,v=>Math.round(+v*100)+' %']);
+      range.oninput=()=>{memoriseReglage(range.id);majValeurs();change();}; panel.append(label,range);
+      const note=document.createElement('div');note.className='aide';note.id='kane-interaction-status';note.textContent='Les réactions utilisent les zones calculées. Les nouvelles poses complètes demandent un personnage riggé.';
+      const apply=document.createElement('button'), test=document.createElement('button');
+      apply.textContent='Appliquer au Web';test.textContent='Tester dans l’aperçu';
+      const update=async()=>{
+        if(typeof P==='undefined'||!P)throw new Error('Ouvrez une image dans Animation.');
+        if(await enregistre()===false)throw new Error('Les réglages n’ont pas pu être enregistrés.');
+        const response=await fetch('/p/'+enc()+'/interactions',{method:'POST',body:'{}'}), result=await response.json();
+        if(!response.ok)throw new Error(result.error || 'Préparez d’abord les animations du projet.');
+        const names={tete:'Tête',regard:'Regard',clignement:'Clignement'};
+        const ready=Object.keys(result.available).filter(k=>result.available[k]).map(k=>names[k]);
+        const absent=[];
+        if(result.settings.regard&&!result.available.regard)absent.push('Regard : peignez une zone Regard et animez le projet.');
+        if((result.settings.tete||result.settings.clic)&&!result.available.tete)absent.push('Tête : peignez une zone Tête et animez le projet.');
+        if(result.settings.clic&&!result.available.clignement)absent.push('Clignement : peignez une zone Yeux et animez le projet.');
+        note.textContent=(ready.length?'Prêt : '+ready.join(', ')+'. ':'Aucune animation de visage préparée. ')+absent.join(' ');
+        return result;
+      };
+      const run=async preview=>{
+        apply.disabled=test.disabled=true;
+        try {
+          const result=await update();
+          if(preview){const frame=document.getElementById('cadre');
+            if(result.settings.clic)frame.addEventListener('load',()=>frame.contentWindow.postMessage({type:'kane-test-reaction'},location.origin),{once:true});
+            montre('apercu');}
+          else if(typeof onglet!=='undefined'&&onglet==='apercu')await chargeApercu();
+        }catch(error){note.textContent=error.message;}
+        finally{apply.disabled=test.disabled=false;}
+      };
+      apply.onclick=()=>run(false);test.onclick=()=>run(true);
+      const buttons=document.createElement('div');buttons.className='ligne';buttons.style.marginTop='8px';buttons.append(apply,test);panel.append(buttons,note);
+      document.getElementById('gMode')?.closest('.bloc')?.before(panel);
+      amount.textContent=Math.round(+range.value*100)+' %';
+    }
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
       const route = /^\/p\/([^/]+)\/(super|animer|video|sam)$/.exec(url.pathname);

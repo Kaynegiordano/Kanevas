@@ -40,6 +40,33 @@ app.on('browser-window-created',(_e,win)=>{
       assert.equal(await frame.executeJavaScript('kcNative.outputDir()'),path.join(tmp,'output','montage'));
       console.log('OK Import Animation natif réel : image visible 128×64, aucun document Edition, source dans output/animation');
       console.log('OK Pont réel : sauvegarde Studio dans output/studio et dossier de rendu Montage dans output/montage');
+      if(process.env.KANEVAS_TEST_INTERACTION){
+        const projectDir=path.join(output,result.state.dossier), png=fs.readFileSync(fixture).toString('base64');
+        const anim={taille:[128,64],boucle:20,fond:'base.png',profondeur:'depth.png',profondeur_web:'depth.png',masques:[],camera:false,effets:[{type:'tete',pivot:[64,60],haut:0,bas:60,force:.006}],calques:[],curseurs:{},parallaxe:{souris:0,auto:0}};
+        fs.writeFileSync(path.join(projectDir,'anim.json'),JSON.stringify(anim));fs.writeFileSync(path.join(projectDir,'index.html'),'const ANIM = '+JSON.stringify(anim)+';\n');
+        fs.writeFileSync(path.join(projectDir,'assets.js'),'window.ASSETS = '+JSON.stringify({'base.png':'data:image/png;base64,'+png,'depth.png':'data:image/png;base64,'+png})+';');
+        await win.webContents.executeJavaScript("KS.ws.go('wallpaper')");
+        const animationFrame=win.webContents.mainFrame.frames.find(f=>f.url.startsWith('http://127.0.0.1:8780/'));
+        const panel=await animationFrame.executeJavaScript(`(async()=>{
+          for(const id of ['kane-regard','kane-tete','kane-clic']){const el=document.getElementById(id);el.checked=true;el.dispatchEvent(new Event('input',{bubbles:true}));}
+          const buttons=document.querySelectorAll('#kane-interactions button');buttons[1].click();
+          for(let i=0;i<200&&buttons[1].disabled;i++)await new Promise(r=>setTimeout(r,20));
+          const frame=document.getElementById('cadre');for(let i=0;i<200&&!frame.contentWindow?.READY;i++)await new Promise(r=>setTimeout(r,20));
+          return {note:document.getElementById('kane-interaction-status').textContent,ready:!!frame.contentWindow?.READY,clicked:frame.contentWindow?.KaneInteraction?.state().clicked};
+        })()`);
+        assert(panel.ready && Number.isFinite(panel.clicked),JSON.stringify(panel));
+        assert(panel.note.includes('Tête') && panel.note.includes('Regard :'),panel.note);
+        const settings=JSON.parse(fs.readFileSync(path.join(projectDir,'peinture/peinture.json'))).reglages;
+        assert(settings.interaction_tete&&settings.interaction_regard&&settings.interaction_clic);
+        const manifest=JSON.parse(fs.readFileSync(path.join(projectDir,'a poster/project.json')));
+        assert(manifest.general.properties.kane_tete.value);
+        if(process.env.KANEVAS_TEST_SCREENSHOT){
+          await animationFrame.executeJavaScript("montre('peindre');document.getElementById('kane-interactions').scrollIntoView({block:'center'})");
+          await new Promise(r=>setTimeout(r,150));
+          fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT,(await win.webContents.capturePage()).toPNG());
+        }
+        console.log('OK Interface réelle : réglages sauvegardés, aperçu Web testé, animations absentes signalées et options exportées');
+      }
       if(process.env.KANEVAS_TEST_SAM){
         await win.webContents.executeJavaScript("KS.ws.go('wallpaper')");
         const animationFrame=win.webContents.mainFrame.frames.find(f=>f.url.startsWith('http://127.0.0.1:8780/'));
