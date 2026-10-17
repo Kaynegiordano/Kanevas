@@ -267,6 +267,7 @@ module.exports = function mediaTools({ app, send }) {
 
   return {
     findFfmpeg, probe, waveform, thumbs, jobStart, keyInterval, jobCancel, proxyPath, proxyStart, encoders,
+    cancelAll: () => { for (const id of jobs.keys()) jobCancel(id); },
     version: async () => { const r = await run(['-version']); return (r.stdout.toString().split('\n')[0] || '').trim(); },
     cacheRoot,
   };

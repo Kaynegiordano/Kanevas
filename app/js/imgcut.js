@@ -49,8 +49,15 @@
     return { full: c, panels: panels.map(p => p.c), pw, ph };
   };
 
-  C.socialCut = async () => {
-    const d = KS.state.doc; if (!d) return;
+  C.socialCut = async input => {
+    let d = input?.canvas ? { name: input.name || 'Image Studio', composite: () => input.canvas } : KS.state.doc;
+    if (!d && KS.native?.openDialog) {
+      const files = await KS.native.openDialog({ title: 'Image à découper', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+      if (!files?.[0]) return;
+      try { const canvas = await KS.io.canvasFromEntry(files[0]); d = { name: files[0].name, composite: () => canvas }; }
+      catch (e) { KS.toast('Image illisible : ' + e.message, 'err'); return; }
+    }
+    if (!d) return KS.toast('Ouvrez ou générez une image à découper.', 'info');
     const src = d.composite();
     const o = Object.assign({ mode: 'row', format: 'auto', custom: '4:5', tile: '1:1', count: 0, fit: 'cover', bg: 'white', width: 1080, file: 'jpeg', dx: 0, dy: 0 }, KS.prefs.socialCut || {}, { dx: 0, dy: 0 });
     const prev = h('canvas.sc-prev'), info = h('div.note');

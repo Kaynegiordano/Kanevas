@@ -62,7 +62,7 @@
     }
   }, true);
 
-  KS.confirm = (message, { title = 'Kanevas', ok = 'OK', cancel = 'Annuler', third = null, danger = false } = {}) => new Promise(res => {
+  KS.confirm = (message, { title = 'Kane App', ok = 'OK', cancel = 'Annuler', third = null, danger = false } = {}) => new Promise(res => {
     const buttons = [];
     if (third) buttons.push({ label: third, value: 'third' });
     buttons.push({ label: cancel, value: false });
@@ -519,7 +519,7 @@
   /* ---------------------------------------------------------------- préférences */
   D.prefs = () => {
     const P = KS.prefs;
-    const set = (k, v) => { P[k] = v; P.save(); KS.applyPrefs && KS.applyPrefs(); KS.recovery?.configure(); };
+    const set = (k, v) => { P[k] = v; if (k === 'accent' && P.spaceColors) delete P.spaceColors.project; P.save(); KS.applyPrefs && KS.applyPrefs(); KS.recovery?.configure(); document.querySelectorAll('[data-space-color]').forEach(i => i.value = KS.appearance.color(i.dataset.spaceColor)); };
     const accent = ['#2f6fdb', '#8a5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#64748b'];
     const accRow = h('div.form-row', accent.map(c => { const b = h('button.color-chip', { style: { background: c, borderRadius: '50%' }, title: c }); b.addEventListener('click', () => set('accent', c)); return b; }));
     const body = h('div.form-grid', { style: { minWidth: '460px' } },
@@ -529,7 +529,9 @@
       h('label.l', { text: 'Réglages d’image' }), ui.check('Créer des réglages modifiables', P.editableAdjustments !== false, v => set('editableAdjustments', v)),
       h('span'), h('div.note', { text: 'Les réglages sont conservés dans des calques. Double-cliquez sur leur vignette pour les reprendre. Le format .ksp conserve tous les réglages.' }),
       h('label.l', { text: 'Thème' }), ui.seg([['dark', 'Sombre'], ['graphite', 'Graphite'], ['light', 'Givre']], P.theme, v => set('theme', v)),
-      h('label.l', { text: 'Couleur d\'accent' }), accRow,
+      h('label.l', { text: 'Accent de Kane App' }), accRow,
+      h('label.l', { text: 'Couleurs des espaces' }), KS.appearance.controls(),
+      h('label.l', { text: 'Studio IA' }), ui.btn('Configurer le moteur local…', () => D.enginePrefs(), '.small'),
       h('label.l', { text: "Taille de l'interface" }), ui.seg([['0.9', '90 %'], ['1', '100 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.5', '150 %']], String(P.uiScale || 1), v => set('uiScale', +v)),
       h('label.l', { text: 'Molette' }), ui.seg([['zoom', 'Zoome'], ['scroll', 'Fait défiler']], P.wheelZoom ? 'zoom' : 'scroll', v => set('wheelZoom', v === 'zoom')),
       h('label.l', { text: 'États d\'historique' }), ui.scrub({ value: P.historySize, min: 5, max: 300, onChange: v => set('historySize', v) }),
@@ -539,6 +541,26 @@
       h('span'), ui.check('Grille de pixels aux forts zooms', P.pixelGrid, v => set('pixelGrid', v)),
       h('span'), ui.check('Magnétisme (repères, bords, centres)', P.snap, v => set('snap', v)));
     KS.modal({ title: 'Préférences', width: 680, body, buttons: [{ label: 'Fermer', primary: true }] });
+  };
+
+  D.enginePrefs = async () => {
+    const N = KS.native;
+    if (!N?.engineConfig) return KS.toast('Disponible dans l’application de bureau.', 'info');
+    if (KS.studioApi?.isBusy()) return KS.toast('Attendez la fin de la génération avant de changer le moteur.', 'info');
+    const config = await N.engineConfig();
+    let directory = config.runtime, models = config.models, shareExternal = config.shareExternal;
+    const runtimeText = h('div.note', { text: directory }), modelsText = h('div.note', { text: models });
+    const body = h('div.form-col', { style: { gap: '12px' } },
+      h('p', { text: 'Le Studio démarre son moteur local sans ouvrir l’interface de Forge. Vous pouvez lui attribuer un runtime et des modèles séparés de KaneOS.' }),
+      h('b', { text: 'Dossier du moteur' }), runtimeText, ui.btn('Choisir le moteur…', async () => { const selected = await N.pickFolder('Moteur local avec launch.py et venv'); if (selected) { directory = selected; runtimeText.textContent = selected; } }, '.small'),
+      h('b', { text: 'Dossier des modèles' }), modelsText, ui.btn('Choisir les modèles…', async () => { const selected = await N.pickFolder('Dossier des modèles du Studio'); if (selected) { models = selected; modelsText.textContent = selected; } }, '.small'),
+      ui.check('Réutiliser le moteur Forge de KaneOS s’il est déjà lancé', shareExternal, v => shareExternal = v),
+      h('p.note', { text: 'Cette configuration ne copie pas les fichiers et n’installe pas Python. Le backend actuel reste compatible Forge ; conservez son installation tant que vous n’avez pas préparé un runtime séparé.' }));
+    KS.modal({ title: 'Moteur du Studio IA', width: 640, body, buttons: [{ label: 'Annuler' }, { label: 'Enregistrer', primary: true, action: async () => {
+      const r = await N.engineConfigSave({ directory, models, shareExternal });
+      if (!r.ok) { KS.toast(r.error, 'err', 6000); return false; }
+      KS.toast('Configuration du moteur enregistrée.', 'ok');
+    } }] });
   };
 
   /* ---------------------------------------------------------------- raccourcis, à propos */
@@ -559,7 +581,7 @@
   D.about = () => {
     const body = h('div', { style: { display: 'flex', gap: '18px', alignItems: 'center', width: '460px' } },
       h('span.brand-mark.xl'),
-      h('div', h('div', { text: 'Kanevas', style: { fontSize: '22px', fontWeight: '600' } }), h('div.note', { text: 'Version ' + (KS.updates ? KS.updates.version : '1.0.0') + ' — éditeur d\'images de Kane, inspiré de Photoshop.' }),
+      h('div', h('div', { text: 'Kane App', style: { fontSize: '22px', fontWeight: '600' } }), h('div.note', { text: 'Version ' + (KS.updates ? KS.updates.version : '1.0.0') + ' — création d’images, animation et montage.' }),
         h('div.note', { style: { marginTop: '8px' }, text: 'Lecture et écriture PSD par ag-psd (MIT). Police Outfit (OFL). Tout reste sur votre machine.' })));
     KS.modal({ title: 'À propos', body, buttons: [{ label: 'Fermer', primary: true }] });
   };

@@ -18,7 +18,7 @@ module.exports = function installSuiteBridge(kind) {
       for (const [key, value] of Object.entries(map)) root.style.setProperty(key, p.colors?.[value] || '');
       let style = document.getElementById('kanevas-suite-style');
       if (!style) { style = document.createElement('style'); style.id = 'kanevas-suite-style'; document.head.appendChild(style); }
-      style.textContent = '#haut .logo,#nouvBtn,#dossierBtn{display:none}body{background:var(--bg);color:var(--text);font-family:"Segoe UI",sans-serif}#haut,#cote{background:var(--panel);border-color:var(--border)}button,input,select,textarea{border-radius:6px}button{background:var(--raised);color:var(--text)}input[type=text],select,textarea{background:var(--field)}button.magique,button.grand{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}';
+      style.textContent = '#haut .logo,#nouvBtn,#dossierBtn{display:none}body{background:var(--bg);color:var(--text);font-family:var(--ui)}#haut,#cote{background:var(--panel);border-color:var(--border)}button,input,select,textarea,.bloc,.onglets{border-radius:3px;box-shadow:none;background-image:none}button{background:var(--raised);color:var(--text)}input[type=text],select,textarea{background:var(--field)}button.magique,button.grand,button.actif{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}';
       for (const [id, text] of [['oPeindre', '1. Zones'], ['animer', '2. Animer'], ['oApercu', '3. Aperçu'], ['videoBtn', '4. Exporter'], ['superBtn', 'Proposer les mouvements']]) {
         const el = document.getElementById(id); if (el) el.textContent = text;
       }
@@ -28,6 +28,13 @@ module.exports = function installSuiteBridge(kind) {
       root.style.setProperty('--comfy-input-bg', p.colors?.['--field'] || '');
       root.style.setProperty('--fg-color', p.colors?.['--text'] || '');
       root.style.setProperty('--bg-color', p.colors?.['--bg'] || '');
+      root.style.setProperty('--p-primary-color', p.colors?.['--accent'] || '');
+      root.style.setProperty('--p-primary-contrast-color', p.colors?.['--accent-ink'] || '');
+      root.style.setProperty('--comfy-menu-secondary-bg', p.colors?.['--panel-2'] || '');
+      root.style.setProperty('--border-color', p.colors?.['--border'] || '');
+      let style = document.getElementById('kanevas-comfy-flat');
+      if (!style) { style = document.createElement('style'); style.id = 'kanevas-comfy-flat'; document.head.append(style); }
+      style.textContent = 'body{font-family:var(--ui);background:var(--bg);color:var(--text)}button,.p-button,.p-dialog,.p-panel,.comfy-menu,.comfyui-menu{border-radius:3px!important;box-shadow:none!important;background-image:none!important}.p-dialog,.p-panel,.comfy-menu,.comfyui-menu{background:var(--panel);color:var(--text);border-color:var(--border)}';
     }
   }
   window.addEventListener('message', async e => {

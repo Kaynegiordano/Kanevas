@@ -32,7 +32,8 @@ window.ksNative = {
     return { ok: true, image: init }; },
   forgeInterrupt: async () => { window.interrupts++; window.releaseGeneration?.(); window.releaseGeneration = null; return { ok: true }; },
   forgeProgress: async () => ({ ok: true, progress: 0.5 }),
-  openDialog: async () => window.pickFiles || []
+  openDialog: async () => window.pickFiles || [],
+  saveFiles: async (title, files) => { window.cutFiles = files; return { ok: true, written: files.map(f => f.name) }; }
 };
 `);
 
@@ -64,10 +65,30 @@ async function scenario() {
   assert(sent.getContext('2d').getImageData(0, 0, 1, 1).data[2] === 187, 'Les pixels envoyés viennent de la source choisie, pas du document actif');
   assert(a.layers.length === before && b.layers.length === 1, 'Générer ne modifie aucun document de l’Édition');
   assert(!!document.querySelector('.fx-img2img .fx-view img'), 'Le résultat Img2Img possède un grand aperçu');
+  const sourceZoom = document.querySelector('.fx-source .iv-viewport');
+  await new Promise(r => setTimeout(r, 60));
+  const sourceScale = +sourceZoom.dataset.scale, zr = sourceZoom.getBoundingClientRect();
+  sourceZoom.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: zr.left + zr.width / 2, clientY: zr.top + zr.height / 2, bubbles: true, cancelable: true }));
+  assert(+sourceZoom.dataset.scale > sourceScale, 'La molette zoome dans la source Img2Img');
+  await click('100 %', document.querySelector('.fx-source'));
+  assert(+sourceZoom.dataset.scale === 1, 'Le bouton 100 % affiche la taille réelle');
+  const outputZoom = document.querySelector('.fx-view .iv-viewport'), oldScale = +outputZoom.dataset.scale;
+  await click('+', document.querySelector('.fx-view'));
+  assert(+outputZoom.dataset.scale > oldScale, 'Le résultat possède des commandes de zoom indépendantes de la source');
+  const zoomedMedia = outputZoom.querySelector('img');
+  outputZoom.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 50, button: 0, clientX: 30, clientY: 30, bubbles: true }));
+  outputZoom.dispatchEvent(new PointerEvent('pointermove', { pointerId: 50, clientX: 65, clientY: 50, bubbles: true }));
+  outputZoom.dispatchEvent(new PointerEvent('pointerup', { pointerId: 50, button: 0, bubbles: true }));
+  assert(zoomedMedia.style.transform.includes('translate(35px, 20px)'), 'Glisser déplace l’image dans son aperçu');
   await click('Envoyer vers Img2Img');
   assert(KS.state.docs.length === 2 && KS.studio.on, 'Reprendre un résultat ne crée pas de document dans l’Édition');
   assert(KS.prefs.fx.i2i.prompt === 'original <lora:test:0.7>' && KS.prefs.fx.i2i.seed === -1, 'L’invite suit le résultat et la graine reste aléatoire');
   await click('Inpaint');
+  const paintPreview = document.querySelector('.fx-source .iv-viewport'), paintedBeforePan = document.querySelector('.fx-painter').toDataURL();
+  paintPreview.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 71, button: 1, clientX: 40, clientY: 40, bubbles: true }));
+  paintPreview.dispatchEvent(new PointerEvent('pointermove', { pointerId: 71, clientX: 70, clientY: 80, bubbles: true }));
+  paintPreview.dispatchEvent(new PointerEvent('pointerup', { pointerId: 71, button: 1, bubbles: true }));
+  assert(document.querySelector('.fx-painter').toDataURL() === paintedBeforePan, 'Déplacer l’aperçu au bouton central ne peint pas le masque');
   assert(KS.studio.on && !!document.querySelector('.fx-painter') && KS.state.docs.length === 2, 'Inpaint reste dans le Studio et affiche son propre canevas');
   const paint = (from, to = from) => {
     const canvas = document.querySelector('.fx-painter'), rect = canvas.getBoundingClientRect();
@@ -260,15 +281,24 @@ async function scenario() {
   await KS.cmd.openStudioTab('txt2img');
   document.querySelector('#toasts').replaceChildren();
   document.querySelector('.fx-body').scrollTop = 0;
+  assert([...document.querySelectorAll('.fx-rail button')].some(b => b.textContent === 'Lora'), 'Le volet LoRA porte le nom Lora');
+  const priorDoc = KS.state.doc; KS.state.doc = null;
+  await click('Découper', document.querySelector('.fx-rail'));
+  await wait(() => !!document.querySelector('.sc-prev'));
+  assert(!!document.querySelector('.sc-prev'), 'Découper ouvre le résultat du Studio sans document dans Édition');
+  await click('Exporter les panneaux…', document.querySelector('.modal'));
+  await wait(() => !!window.cutFiles?.length);
+  assert(window.cutFiles.every(f => f.data.length > 100 && /_\d+\.jpg$/.test(f.name)), 'La découpe exporte les panneaux de l’image du Studio');
+  KS.state.doc = priorDoc;
   return results;
 }
 
 app.whenReady().then(async () => {
   let win;
   try {
-    win = new BrowserWindow({ show: false, width: 1440, height: 1000, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false } });
+    win = new BrowserWindow({ show: false, width: 1440, height: 1000, webPreferences: { preload, contextIsolation: false, sandbox: false, backgroundThrottling: false, offscreen: true } });
     const errors = [];
-    win.webContents.on('console-message', details => { if (details.level === 'error') errors.push(details.message); });
+    win.webContents.on('console-message', details => { if (details.level === 'error') { errors.push(details.message); console.error(details.message); } });
     await win.loadFile(process.env.KANEVAS_TEST_APP_PATH || path.join(__dirname, '../app/index.html'));
     const results = await win.webContents.executeJavaScript('(' + scenario.toString() + ')()');
     if (errors.length) throw new Error(errors.join('\n'));

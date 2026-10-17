@@ -13,6 +13,30 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Kane App, Studio et apparence (1.8.0)
+- L’interface porte le nom **Kane App** ; le projet par défaut « Mon atelier » est renommé. L’installateur,
+  les mises à jour et les documents conservent leur compatibilité Kanevas.
+- Navigation : **Projet · Edition · Studio IA · Animation · Animation Vidéo · Montage**.
+  Animation Vidéo conserve ComfyUI et ses workflows ; Montage conserve KaneClip.
+- Style commun plus plat : surfaces unies, angles discrets, suppression des ombres décoratives.
+  **Préférences > Couleurs des espaces** règle un accent distinct pour chaque activité et le conserve au redémarrage.
+  Les interfaces Wallpaper, ComfyUI et KaneClip reçoivent le thème et leur propre accent.
+- Studio : molette pour zoomer dans les sources et résultats, boutons − / +, **Ajuster** et **100 %**.
+  Glisser déplace une image ; dans les masques et croquis, bouton central ou Espace + glisser pour déplacer
+  sans peindre. Le zoom ne change pas la résolution ni les pixels envoyés au moteur.
+- **Découper** utilise le résultat actif du Studio, sa source si nécessaire, ou propose un import.
+  Aucun document ouvert dans Edition n’est nécessaire. **Lora** remplace le libellé « Entraîner un LoRA ».
+- Clic droit sur un espace > **Arrêter** : interruption du Studio et arrêt du moteur ; sauvegarde puis arrêt
+  d’Animation ; sauvegarde et annulation des rendus/proxys/agrandissements de Montage avant de décharger sa page.
+  Pour un moteur lancé depuis KaneOS, le processus est identifié avant son arrêt explicite.
+  L’arrêt d’Edition passe par la fermeture habituelle des documents et leurs dialogues de sauvegarde.
+- **Préférences > Configurer le moteur local** permet de désigner un runtime Python et un dossier de modèles
+  séparés, et de désactiver la réutilisation du Forge de KaneOS. Le moteur reste actuellement compatible Forge
+  (`launch.py`, `venv/Scripts/python.exe`) : aucun téléchargement, déplacement ou désinstallation automatique.
+  Préparer un runtime distinct est nécessaire avant de retirer les fichiers de Forge.
+- Tests : `tools/test-studio.cjs` (zoom, peinture, découpe), `tools/test-suite.cjs` (navigation, apparence des cadres,
+  arrêt/reprise, persistance) et `node tools/test-runtime.cjs` (configuration et identification des processus).
+
 ### Projet créatif commun (1.7.0)
 - Un nouvel accueil **Projet** relie **Édition**, **Studio IA**, **Animation**, **Vidéo** et **Workflows**.
   Les ateliers conservent leur page lorsqu'on change d'espace ; leur thème suit celui de Kanevas.

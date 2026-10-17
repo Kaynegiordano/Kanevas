@@ -32,6 +32,7 @@ async function backend() {
   await assert.rejects(store.call('capture', { project: p.id, name: 'Bad', data: new Uint8Array([0]), parent: 'missing' }));
   await store.call('animation', { project: p.id, value: { dossier: 'Animation de test' } });
   assert.equal((await reopened.call('get', { project: p.id })).animation.dossier, 'Animation de test');
+  await store.call('rename', { project: p.id, name: 'Mon atelier' });
   console.log('OK Copies durables, dédoublonnage, versions, écritures concurrentes, reprise et validation des chemins');
 }
 async function scenario() {
@@ -40,10 +41,14 @@ async function scenario() {
   const click = label => { const b = [...document.querySelectorAll('.modal button')].find(b => b.textContent === label); if (!b) throw new Error('Bouton modal absent : ' + label); b.click(); };
   await KS.suite.ready; await KS.suite.home();
   const S = KS.suite, WX = KS.ws;
+  check(S.project.name === 'Kane App', 'Le projet par défaut Mon atelier devient Kane App');
   const creating = S.newProject(); await wait(() => !!document.querySelector('.modal input'));
   document.querySelector('.modal input').value = 'Illustration de test'; click('Enregistrer'); await creating;
   check(document.body.classList.contains('suite-home') && !!document.querySelector('#suite-toolbar'), 'Accueil Projet et navigation commune');
-  check([...document.querySelectorAll('#suite-toolbar .ws-btn')].map(b => b.textContent).join('|') === 'Projet|Édition|Studio IA|Animation|Vidéo|Workflows', 'Espaces nommés par activité');
+  check([...document.querySelectorAll('#suite-toolbar .ws-btn')].map(b => b.textContent).join('|') === 'Projet|Edition|Studio IA|Animation|Animation Vidéo|Montage', 'Navigation demandée, Montage en dernier');
+  document.querySelector('.ws-btn[data-v="video"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 600, clientY: 80 }));
+  check([...document.querySelectorAll('.menu .mi .lb')].some(b => b.textContent === 'Arrêter'), 'Le clic droit sur une app propose Arrêter');
+  KS.ui.closeMenus();
   const d = new KS.Doc({ name: 'Illustration', width: 128, height: 64 });
   const base = KS.util.canvas(128, 64); base.getContext('2d').fillStyle = '#3878b8'; base.getContext('2d').fillRect(0, 0, 128, 64);
   d.addLayer(new KS.Layer({ name: 'Base', canvas: base }), 0);
@@ -84,6 +89,8 @@ async function scenario() {
   check((await WX.request('video', 'state')).events === 0, 'Changer de projet ouvre un montage indépendant');
   await S.openProject(originalProject);
   check((await WX.request('video', 'state')).events === after.events, 'Revenir au projet restaure son montage et ses médias');
+  await WX.stop('video'); check(!WX.el.video.frame, 'Arrêter Montage sauvegarde puis décharge son interface');
+  await S.openVideo(); check((await WX.request('video', 'state')).events === after.events, 'Rouvrir Montage après arrêt retrouve sa timeline');
   await S.toComfy(first); check(WX.el.comfyui.ready, 'Image injectée dans le nœud LoadImage par le véritable pont ComfyUI');
   const wf = { nodes: [{ id: 7, type: 'LoadImage' }, { id: 9, type: 'LoadImage' }] };
   await WX.request('comfyui', 'workflow', { workflow: wf });
@@ -95,7 +102,16 @@ async function scenario() {
   check(S.project.items.length === beforeCount + 1 && S.project.items[0].info.includes('Seed: 123'), 'Les générations rejoignent la bibliothèque avec leurs paramètres');
   const projectId = S.project.id;
   await S.refresh(); check(S.project.id === projectId && S.project.animation.dossier === dossier, 'Relecture du projet : médias et animation conservés');
+  await KS.cmd.sendToStudio('img2img'); await wait(() => !!document.querySelector('.fx-source .iv-viewport'));
+  check(document.querySelector('.ws-btn[data-v="studio"]').classList.contains('on') && KS.appearance.active === 'studio', 'Le Studio intégré reprend sa couleur et le zoom avec la navigation commune');
+  await WX.stop('studio');
+  check(!KS.studio.on && !KS.engine.ready(), 'Arrêter Studio interrompt son espace et arrête le moteur par le pont natif');
   for (const theme of ['light', 'dark', 'graphite']) { KS.prefs.theme = theme; KS.prefs.accent = '#a65cf0'; KS.applyPrefs(); for (const id in WX.el) { WX.theme(id); } }
+  KS.dialogs.prefs();
+  const color = document.querySelector('[data-space-color="wallpaper"]'); color.value = '#6d9c88'; color.dispatchEvent(new Event('input', { bubbles: true }));
+  click('Fermer'); WX.go('wallpaper');
+  check(KS.prefs.spaceColors.wallpaper === '#6d9c88' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() === '#6d9c88', 'La couleur personnalisée d’Animation est appliquée et mémorisée');
+  check(getComputedStyle(document.querySelector('.suite-step')).boxShadow === 'none', 'Le style commun utilise des surfaces plates sans ombre');
   await new Promise(r => setTimeout(r, 300));
   const frame = WX.el.comfyui.frame;
   check(frame.contentDocument === null, 'Les cadres spécialisés restent isolés du document principal');
@@ -137,7 +153,14 @@ app.whenReady().then(async () => {
     reply('kc:probe', (_e, p) => { const size = nativeImage.createFromPath(p).getSize(); return { ok: true, path: p, name: path.basename(p), kind: 'image', size: fs.statSync(p).size, video: { ...size, codec: 'png', fps: 0 } }; });
     reply('kc:proxy-path', () => null);
     for (const ch of ['set-title', 'set-titlebar']) ipcMain.on(ch, () => {});
-    reply('get-pending', () => []); reply('list-fonts', () => []); reply('engine-status', () => ({ state: 'off', ours: false }));
+    let engineState = 'off';
+    const engineStatus = () => ({ state: engineState, ours: engineState === 'ready', url: engineState === 'ready' ? 'http://127.0.0.1:7862' : '' });
+    reply('get-pending', () => []); reply('list-fonts', () => []); reply('engine-status', engineStatus);
+    reply('engine-start', () => { engineState = 'ready'; return engineStatus(); });
+    reply('engine-stop', () => { engineState = 'off'; return engineStatus(); });
+    reply('forge-status', () => ({ ok: true }));
+    reply('forge-memory', () => ({ ok: true, used: 0, total: 0 }));
+    reply('forge-catalog', () => ({ ok: true, models: [{ title: 'Studio-test', name: 'Studio-test' }], current: { model: 'Studio-test', modules: [] }, loras: [], modules: [], samplers: ['Euler'], schedulers: ['Automatic'], scripts: [], styles: [], presets: {}, upscalers: ['Lanczos'] }));
     reply('app-version', () => 'test'); reply('update-state', () => ({ state: 'none' })); reply('update-check', () => ({ state: 'none' }));
     reply('recovery-list', () => ({ ok: true, entries: [] })); reply('recovery-write', () => ({ ok: true })); reply('recovery-remove', () => ({ ok: true }));
     reply('read-file', (_e, p) => ({ path: p, name: path.basename(p), data: new Uint8Array(fs.readFileSync(p)) }));
@@ -148,6 +171,12 @@ app.whenReady().then(async () => {
     await win.loadFile(path.join(root, 'app', 'index.html'));
     const result = await win.webContents.executeJavaScript('(' + scenario.toString() + ')()');
     for (const line of result.results) console.log('OK ' + line);
+    const palettes = await win.webContents.executeJavaScript('(async()=>{const out={};for(const id of ["wallpaper","video","comfyui"]){const theme=KS.suite.theme(id);await KS.ws.request(id,"theme",theme);out[id]=theme.colors["--accent"];}return out;})()');
+    for (const [id, url] of [['wallpaper', '127.0.0.1:8780'], ['video', '/kaneclip/app/'], ['comfyui', '127.0.0.1:8188']]) {
+      const frame = win.webContents.mainFrame.frames.find(f => decodeURIComponent(f.url).replace(/\\/g, '/').includes(url));
+      assert(frame); assert.equal(await frame.executeJavaScript('getComputedStyle(document.documentElement).getPropertyValue("--accent").trim()'), palettes[id]);
+    }
+    console.log('OK Les trois interfaces intégrées reçoivent leur propre couleur et le thème commun');
     assert.equal(fs.readFileSync(result.first).length > 0, true);
     assert.equal(fs.readFileSync(result.second).length > 0, true);
     assert.equal(fs.readdirSync(path.join(projects, result.dossier, 'work', 'sources')).length, 1);
@@ -160,8 +189,9 @@ app.whenReady().then(async () => {
       }
     }
     await win.loadFile(path.join(root, 'app', 'index.html'));
-    const restart = await win.webContents.executeJavaScript('(async()=>{await KS.suite.ready;await KS.suite.openVideo();const state=await KS.ws.request("video","state");await KS.suite.home();document.querySelector("#toasts").replaceChildren();return {id:KS.suite.project.id,count:KS.suite.project.items.length,events:state.events};})()');
+    const restart = await win.webContents.executeJavaScript('(async()=>{await KS.suite.ready;await KS.suite.openVideo();const state=await KS.ws.request("video","state");await KS.suite.home();document.querySelector("#toasts").replaceChildren();return {id:KS.suite.project.id,count:KS.suite.project.items.length,events:state.events,color:KS.prefs.spaceColors.wallpaper};})()');
     assert.equal(restart.id, result.projectId); assert(restart.count >= 4 && restart.events >= 1);
+    assert.equal(restart.color, '#6d9c88');
     console.log('OK Après rechargement complet : projet, bibliothèque et montage retrouvés');
     for (const width of [1440, 1024]) {
       win.setSize(width, 1000); await new Promise(r => setTimeout(r, 350));

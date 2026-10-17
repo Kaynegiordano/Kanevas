@@ -8,7 +8,7 @@
   let resolveReady; S.ready = new Promise(r => resolveReady = r);
   const captures = new WeakMap(), animations = new Map();
   const mediaURL = p => 'kcm://f/' + encodeURIComponent(p);
-  const titleOf = source => ({ edition: 'Édition', studio: 'Studio IA', wallpaper: 'Animation', comfyui: 'Workflows', video: 'Vidéo', import: 'Import' })[source] || source;
+  const titleOf = source => ({ edition: 'Edition', studio: 'Studio IA', wallpaper: 'Animation', comfyui: 'Animation Vidéo', video: 'Montage', import: 'Import' })[source] || source;
   const action = (label, fn, cls = '', disabled = false, icon) => {
     const b = ui.btn(label, () => S.run(label, fn).catch(() => {}), cls, icon); b.disabled = disabled; return b;
   };
@@ -65,10 +65,14 @@
     const modal = KS.modal({ title: 'Activité de la suite', width: 580, body, buttons: [{ label: 'Fermer', primary: true }] });
     fill(); const timer = setInterval(fill, 800); modal.done.then(() => clearInterval(timer));
   };
-  S.theme = () => {
+  S.theme = id => {
     const cs = getComputedStyle(document.body), colors = {};
-    for (const key of ['--bg', '--chrome', '--panel', '--panel-2', '--raised', '--hover', '--field', '--border', '--border-2', '--text', '--text-2', '--muted', '--accent', '--accent-2', '--accent-rgb', '--accent-soft', '--accent-ink']) colors[key] = cs.getPropertyValue(key).trim();
-    return { theme: KS.prefs.theme, colors };
+    for (const key of ['--bg', '--chrome', '--panel', '--panel-2', '--raised', '--hover', '--field', '--border', '--border-2', '--text', '--text-2', '--muted', '--accent', '--accent-2', '--accent-rgb', '--accent-soft', '--accent-ink', '--ui', '--mono', '--radius', '--radius-lg']) colors[key] = cs.getPropertyValue(key).trim();
+    const acc = U.parseHex(KS.appearance.color(id || KS.appearance.active));
+    colors['--accent'] = U.hex(acc); colors['--accent-rgb'] = `${acc.r}, ${acc.g}, ${acc.b}`;
+    colors['--accent-2'] = KS.prefs.theme === 'light' ? U.hex({ r: acc.r * .72, g: acc.g * .72, b: acc.b * .72 }) : U.hex({ r: acc.r + (255 - acc.r) * .18, g: acc.g + (255 - acc.g) * .18, b: acc.b + (255 - acc.b) * .18 });
+    colors['--accent-soft'] = `rgba(${acc.r}, ${acc.g}, ${acc.b}, .12)`;
+    return { theme: KS.prefs.theme, flat: true, colors };
   };
   S.hideHome = () => document.body.classList.remove('suite-home');
   S.home = async () => {
@@ -294,7 +298,7 @@
     projectButton.textContent = S.project.name; projectButton.title = 'Changer de projet';
     const p = S.project;
     home.replaceChildren(h('div.suite-home-scroll', h('section.suite-hero',
-      h('div', h('span.suite-eyebrow', { text: 'VOTRE ATELIER CRÉATIF' }), h('h1', { text: p.name }), h('p', { text: 'Une illustration. Du mouvement. Un film. Gardez le fil de votre création.' })),
+      h('div', h('span.suite-eyebrow', { text: 'KANE APP · VOTRE PROJET CRÉATIF' }), h('h1', { text: p.name }), h('p', { text: 'Une illustration. Du mouvement. Un film. Gardez le fil de votre création.' })),
       h('div.suite-project-actions', action('Renommer', () => S.rename(), '.small'), action('Dossier du projet', () => N.openFolder(p.folder), '.small'))),
       h('div.suite-pipeline',
         pipeline('01', 'Créer', 'Imaginez dans le Studio IA.', 'sparkles', () => C.openStudioTab('txt2img')),
@@ -302,7 +306,7 @@
         pipeline('03', 'Animer', p.animation ? 'Reprenez les mouvements du projet.' : 'Donnez du mouvement à une illustration.', 'play', () => S.resumeAnimation()),
         pipeline('04', 'Monter', 'Assemblez les séquences et le son.', 'layers', () => S.openVideo())),
       list = h('section.suite-library'),
-      h('footer.suite-home-footer', h('span', { text: 'Les médias importés et leurs versions sont copiés dans ce projet. Les générations du Studio y sont archivées.' }), action('Atelier de workflows · ComfyUI', () => KS.ws.go('comfyui'), '.small'))));
+      h('footer.suite-home-footer', h('span', { text: 'Les médias importés et leurs versions sont copiés dans ce projet. Les générations du Studio y sont archivées.' }), action('Animation Vidéo · ComfyUI', () => KS.ws.go('comfyui'), '.small'))));
     renderLibrary(list);
     if (!drawer.hidden) renderLibrary(drawer);
     KS.ws?.sync(); renderTasks();
@@ -317,7 +321,7 @@
     if (started) return; started = true;
     home = h('section#suite-home'); KS.$('#main').append(home);
     drawer = h('aside#suite-library-drawer', { hidden: true, 'aria-label': 'Bibliothèque du projet' }); document.body.append(drawer);
-    projectButton = ui.btn('Mon atelier', () => S.chooseProject(), '.suite-project-button', 'folder-open');
+    projectButton = ui.btn('Kane App', () => S.chooseProject(), '.suite-project-button', 'folder-open');
     taskButton = ui.btn('Activité', () => S.showTasks(), '.small');
     const sw = document.querySelector('.ws-switch');
     const projectTab = h('button.ws-btn', { 'data-v': 'project', text: 'Projet' }); projectTab.addEventListener('click', () => S.home()); sw.prepend(projectTab);
@@ -337,7 +341,8 @@
     drawer.addEventListener('keydown', e => { if (e.target.matches('input,select')) e.stopPropagation(); });
     try {
       const projects = await call('list'); const current = projects.find(p => p.id === KS.prefs.suiteProject) || projects[0];
-      S.project = current ? await call('get', { project: current.id }) : await call('create', { name: 'Mon atelier' });
+      S.project = current ? await call('get', { project: current.id }) : await call('create', { name: 'Kane App' });
+      if (S.project.name === 'Mon atelier') S.project = await call('rename', { name: 'Kane App' });
       KS.prefs.suiteProject = S.project.id; KS.prefs.save(); S.selected = S.project.items[0]?.id;
       render(); resolveReady();
       if (!KS.state.doc && !KS.prefs.studio) await S.home();

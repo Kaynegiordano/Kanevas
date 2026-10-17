@@ -177,6 +177,10 @@ function setup(getWin) {
     return { ok: true, count: list.length, loaded: !!frame };
   });
   ipcMain.handle('kc-url', () => appUrl + '/index.html');
+  ipcMain.handle('kc-stop', event => {
+    if (event.senderFrame !== getWin()?.webContents.mainFrame) throw new Error('Réservé à Kane App');
+    tools.cancelAll(); ai.cancelAll(); return { ok: true };
+  });
 }
 
 module.exports = { registerScheme, setup };

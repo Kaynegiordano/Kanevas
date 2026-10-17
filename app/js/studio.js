@@ -210,7 +210,7 @@
   const els = {};
   let root = null;
   const RAIL = [['txt2img', 'Créer', 'file-plus'], ['img2img', 'Transformer', 'image'], ['extras', 'Agrandir', 'upscale'], ['pnginfo', 'Paramètres PNG', 'info'],
-    ['train', 'Entraîner un LoRA', 'layers'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
+    ['train', 'Lora', 'layers'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
   function mountPage() {
     root = KS.$('#studio');
     root.className = 'fx';
@@ -235,7 +235,13 @@
     els.rail.replaceChildren();
     for (const [id, label, icon] of RAIL) {
       const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label + ' · ' + id }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
-      b.addEventListener('click', () => { if (id === 'imgcut') return C.socialCut(); FX.tab = id; save(); render(); });
+      b.addEventListener('click', () => {
+        if (id === 'imgcut') {
+          const it = FX.tab === 'img2img' ? selItem('i2i') || (i2iDoc && { canvas: sourceFor(i2iDoc, true), name: i2iDoc.name }) : FX.tab === 'extras' ? selItem('ex') || OUT.exSrc : FX.tab === 'pnginfo' ? OUT.png : selItem('t2i');
+          return C.socialCut(it ? { canvas: it.canvas, name: it.name || docName(it) } : undefined);
+        }
+        FX.tab = id; save(); render();
+      });
       els.rail.appendChild(b);
     }
     els.rail.appendChild(h('div.spacer'));
@@ -349,6 +355,7 @@
     const preview = d && !paintable && sourceFor(d, false);
     const zone = h('div.fx-dropzone', { role: 'button', tabIndex: 0, 'aria-label': 'Choisir l’image source Img2Img' },
       paintable ? painterCanvas(d) : d ? h('img', { src: preview.toDataURL('image/png'), alt: d.name }) : h('div', { text: 'Déposez une image ou cliquez pour l’importer' }));
+    if (d) KS.preview.mount(zone, zone.firstElementChild, { identity: d, width: d.width, height: d.height, paint: paintable });
     const pick = async () => {
       if (N && N.openDialog) {
         const files = await N.openDialog({ title: 'Image source Img2Img', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
@@ -359,10 +366,10 @@
         input.click();
       }
     };
-    if (!paintable) {
+    if (!paintable && !d) {
       zone.addEventListener('click', pick);
       zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
-    } else { zone.classList.add('fx-paintzone'); zone.removeAttribute('role'); zone.removeAttribute('tabindex'); }
+    } else { if (paintable) zone.classList.add('fx-paintzone'); zone.removeAttribute('role'); zone.removeAttribute('tabindex'); }
     dropTo(zone, loadI2I);
     source.append(h('div.fx-h', { text: 'Image source' }), zone,
       h('div.fx-docinfo', { text: d ? `${d.name} · ${d.width} × ${d.height}` : 'Choisissez une image ou reprenez le document de l’Édition.' }),
@@ -384,7 +391,7 @@
   }
   function painterCanvas(d) {
     const role = ['sketch', 'inpaint_sketch'].includes(FX.i2iMode) ? 'sketch' : 'zone';
-    const k = Math.min(1, 1024 / Math.max(d.width, d.height));
+    const k = Math.min(1, 4096 / Math.max(d.width, d.height));
     const canvas = h('canvas.fx-painter', { width: Math.max(1, Math.round(d.width * k)), height: Math.max(1, Math.round(d.height * k)), tabIndex: 0,
       'aria-label': role === 'zone' ? 'Peindre le masque dans le Studio IA' : 'Dessiner le croquis dans le Studio IA' });
     const background = sourceFor(d, false), x = canvas.getContext('2d');
@@ -1130,7 +1137,7 @@
     const o = OUT[key], it = o.items[o.sel];
     const view = h('div.fx-view');
     if (BUSY && BUSY.k === key) { const p = progressBox(); view.append(p.box, p.img); }
-    else if (it) { const im = h('img', { src: it.url, alt: '', title: 'Double-clic : ouvrir dans l\'Édition' }); im.addEventListener('dblclick', () => sendTo('edit', it)); view.append(im); }
+    else if (it) { const im = h('img', { src: it.url, alt: '', title: 'Double-clic : ouvrir dans l\'Édition' }); im.addEventListener('dblclick', () => sendTo('edit', it)); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height }); }
     else view.append(h('div.fx-ph', key === 'i2i' ? { text: 'Les résultats apparaîtront ici' } : { html: KS.icon('image') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(key); }); return t; })) : null;
     fillEl(box, key === 'i2i' ? h('div.fx-h', { text: 'Résultat' }) : null, view, thumbs, outButtons(key, it), it ? h('div.fx-outinfo', { text: (it.from ? 'Venue de l\'Édition : ' + it.from + '\n\n' : '') + (it.info || '(sans paramètres de génération)') + (o.time && !it.from ? `\n\nTime taken: ${o.time}` : '') }) : null);
@@ -1341,12 +1348,13 @@
   function extrasTab() {
     const ex = FX.ex, src = OUT.exSrc, d = D();
     const zone = h('div.fx-dropzone', src ? h('img', { src: src.canvas.toDataURL('image/png'), alt: '' }) : h('div', { text: 'Déposer l\'image ici, ou cliquer pour en choisir une' }));
-    zone.addEventListener('click', async () => {
+    const pick = async () => {
       const files = await N.openDialog({ title: 'Image à agrandir', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
       if (files && files[0]) { OUT.exSrc = { canvas: await KS.io.canvasFromEntry(files[0]), name: files[0].name }; render(); }
-    });
+    };
+    if (src) KS.preview.mount(zone, zone.firstElementChild, { identity: src, width: src.canvas.width, height: src.canvas.height }); else zone.addEventListener('click', pick);
     dropTo(zone, async f => { OUT.exSrc = { canvas: await KS.io.canvasFromEntry(f), name: f.name }; render(); });
-    const srcBtns = h('div.fx-outbtns', tbtn('Image du document (Édition)', () => { if (!d) return KS.toast('Aucun document ouvert', 'info'); OUT.exSrc = { canvas: d.composite(), name: d.name }; render(); }),
+    const srcBtns = h('div.fx-outbtns', tbtn('Importer une image…', pick), tbtn('Image du document (Édition)', () => { if (!d) return KS.toast('Aucun document ouvert', 'info'); OUT.exSrc = { canvas: d.composite(), name: d.name }; render(); }),
       src ? h('span.fx-info', { text: `${src.name} · ${src.canvas.width} × ${src.canvas.height}` }) : null);
     const ups = ['None', ...(cat ? cat.upscalers : [])];
     const sizeTabs = tabs([['by', 'Scale by'], ['to', 'Scale to']], ex.mode, v => { ex.mode = v; save(); render(); }, '.fx-subtabs');
@@ -1378,7 +1386,7 @@
     const o = OUT.ex, it = o.items[o.sel];
     const view = h('div.fx-view');
     if (BUSY && BUSY.k === 'ex') { const p = progressBox(); view.append(p.box); }
-    else if (it) view.append(h('img', { src: it.url, alt: '' }));
+    else if (it) KS.preview.mount(view, h('img', { src: it.url, alt: '' }), { identity: it, width: it.canvas.width, height: it.canvas.height });
     else view.append(h('div.fx-ph', { html: KS.icon('upscale') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '' }); t.addEventListener('click', () => { o.sel = i; renderExOut(); }); return t; })) : null;
     fillEl(box, view, thumbs, outButtons('ex', it), it ? h('div.fx-outinfo', { text: `${it.canvas.width} × ${it.canvas.height}` + (it.info ? '\n' + it.info : '') + (o.time ? `\nTime taken: ${o.time}` : '') }) : null);
@@ -1433,10 +1441,12 @@
   function pngTab() {
     const o = OUT.png, d = D();
     const zone = h('div.fx-dropzone', o ? h('img', { src: o.canvas.toDataURL('image/png'), alt: '' }) : h('div', { text: 'Déposer une image ici, ou cliquer pour en choisir une' }));
-    zone.addEventListener('click', async () => {
+    if (o) KS.preview.mount(zone, zone.firstElementChild, { identity: o, width: o.canvas.width, height: o.canvas.height });
+    const pick = async () => {
       const files = await N.openDialog({ title: 'Image à lire', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }] });
       if (files && files[0]) loadPng(files[0]);
-    });
+    };
+    if (!o) zone.addEventListener('click', pick);
     dropTo(zone, loadPng);
     const fromDoc = tbtn('Image du document (Édition)', () => { if (!d) return KS.toast('Aucun document ouvert', 'info'); OUT.png = { canvas: d.composite(), name: d.name, text: d.genInfo || '', chunks: d.genInfo ? { parameters: d.genInfo } : {} }; render(); });
     const it = o && { canvas: o.canvas, info: o.text, bytes: o.bytes };
@@ -1446,7 +1456,7 @@
       h('div.fx-outbtns', ...[['txt2img', 'Réutiliser les réglages dans txt2img'], ['img2img', 'Envoyer vers Img2Img'], ['inpaint', 'Envoyer vers Inpaint'], ['extras', 'Agrandir dans Extras']].map(([t, l]) => {
         const b = tbtn(l, () => { if (!o) return; if (t === 'txt2img' && !o.text) return KS.toast('Aucun paramètre à envoyer', 'info'); sendTo(t, it); }); b.disabled = !o; return b;
       }), o && o.text ? tbtn('Copier', () => { navigator.clipboard.writeText(o.text); KS.toast('Copié', 'ok', 900); }) : null));
-    return h('div.fx-gen', h('div.fx-cols', h('div.fx-left', h('div.fx-panel', zone, h('div.fx-outbtns', fromDoc))), right));
+    return h('div.fx-gen', h('div.fx-cols', h('div.fx-left', h('div.fx-panel', zone, h('div.fx-outbtns', tbtn('Importer une image…', pick), fromDoc))), right));
   }
 
   /* ---------------------------------------------------------------- Settings */
@@ -1454,9 +1464,9 @@
     const E = KS.engine;
     const pane = (title, ...kids) => h('div.fx-panel', h('div.fx-h', { text: title }), ...kids);
     return h('div.fx-settings',
-      pane('Moteur IA (Forge)',
+      pane('Moteur du Studio IA',
         h('div.fx-info', { text: !E ? 'Indisponible dans cette version.' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS (déjà lancé) : Kanevas l\'utilise.' : 'Moteur démarré par Kanevas, profil ' + (E.profile || 'Kane OS') + '. Il s\'arrête quand vous quittez Kanevas.') : E.state === 'starting' ? 'Démarrage…' : E.state === 'error' ? 'Erreur : ' + E.error : 'Arrêté.' }),
-        E ? h('div.fx-outbtns', tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary'), tbtn('Arrêter', () => E.stop()), tbtn('Journal…', () => E.showLog && E.showLog()), tbtn('Profil…', () => E.pickProfile && E.pickProfile())) : null,
+        E ? h('div.fx-outbtns', tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary'), tbtn('Arrêter', () => E.stop(true)), tbtn('Journal…', () => E.showLog && E.showLog()), tbtn('Profil…', () => E.pickProfile && E.pickProfile()), tbtn('Configurer le moteur…', () => KS.dialogs.enginePrefs())) : null,
         check('Démarrer le moteur automatiquement quand il le faut', { v: KS.prefs.engineAuto !== false }, 'v', '', v => { KS.prefs.engineAuto = v; KS.prefs.save(); })),
       pane('Génération',
         check('Traduire en anglais les invites écrites en français (modèle local Opus-MT)', FX, 'translate', 'Forge et anima ne comprennent que l\'anglais'),
@@ -1598,6 +1608,7 @@
   C.loraStudio = async () => { FX.tab = 'train'; save(); await C.toggleStudio(true); render(); };
   KS.studioApi = {
     isBusy: () => !!(BUSY || PREPARING),
+    interrupt,
     addToPrompt: async (text) => { const st = FX.t2i; st.prompt = (st.prompt ? st.prompt.replace(/\s+$/, '') + ' ' : '') + text; save(); FX.tab = 'txt2img'; await C.toggleStudio(true); if (N.forgeRefreshLoras && KS.engine && KS.engine.ready()) { await N.forgeRefreshLoras(url()); await loadCat(); } render(); },
     reloadCat: loadCat, cat: () => cat, selected: () => selItem('t2i'),
     // une image venue d'un autre espace (sortie ComfyUI…) vers img2img, Inpaint, Extras ou txt2img
@@ -1656,7 +1667,7 @@
   KS.on('ui-ready', () => {
     const box = KS.$('#workspace-actions'); if (!box) return;
     const sw = h('div.ws-switch');
-    for (const [v, label] of [['edit', 'Édition'], ['studio', 'Studio IA']]) {
+    for (const [v, label] of [['edit', 'Edition'], ['studio', 'Studio IA']]) {
       const b = h('button.ws-btn', { 'data-v': v, text: label }); b.addEventListener('click', () => C.toggleStudio(v === 'studio'));
       switchBtns.push(b); sw.appendChild(b);
     }

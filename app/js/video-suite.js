@@ -3,7 +3,7 @@
 (() => {
   if (window.parent === window || !KC.native) return;
   const style = document.createElement('style');
-  style.textContent = '.in-kanevas #titlebar .brand,.in-kanevas #titlebar .drag-region{display:none}.in-kanevas #titlebar{padding-right:8px;height:30px;min-height:30px}';
+  style.textContent = '.in-kanevas #titlebar .brand,.in-kanevas #titlebar .drag-region{display:none}.in-kanevas #titlebar{padding-right:8px;height:30px;min-height:30px}.in-kanevas .btn,.in-kanevas button,.in-kanevas .pane,.in-kanevas .modal,.in-kanevas .menu{box-shadow:none;border-radius:3px;background-image:none}.in-kanevas .primary{background:var(--accent)}';
   document.head.append(style);
   let project = null, saving = null;
   const send = data => window.parent.postMessage({ kv: 'suite-event', kind: 'video', ...data }, '*');
@@ -43,6 +43,7 @@
           project = m.project; KC.project.info.title ||= m.project.name;
         }
       } else if (m.op === 'save') await save();
+      else if (m.op === 'stop') { KC.engine.stop(); clearTimeout(timer); await save(); }
       else if (m.op === 'add') {
         if (!project) throw new Error('Choisissez un projet Kanevas');
         const items = await KC.media.import([m.path]);

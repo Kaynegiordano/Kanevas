@@ -44,11 +44,11 @@ if (!app.requestSingleInstanceLock()) {
     require('./suite-host.cjs')(() => win);
     require('./services.cjs')({
       getWin: () => win,
-      root: () => path.dirname(engineDirs().data),
+      root: () => engineDirs().root,
       engine: {
         url: () => engine.url,
         // Forge de Kane OS s'il tourne, sinon le moteur de Kanevas (démarré à la demande de Wallpaper)
-        forgeUrl: async () => engine.url || (await ping('http://127.0.0.1:7860', 800) ? 'http://127.0.0.1:7860' : 'http://127.0.0.1:' + ENGINE_PORT),
+        forgeUrl: async () => engine.url || (engineDirs().shareExternal && await ping('http://127.0.0.1:7860', 800) ? 'http://127.0.0.1:7860' : 'http://127.0.0.1:' + ENGINE_PORT),
         state: () => engine.state,
         start: () => engineStart(),
       },
@@ -61,7 +61,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1600, height: 980, minWidth: 1024, minHeight: 640,
     backgroundColor: '#f4f6f8',
-    title: 'Kanevas',
+    title: 'Kane App',
     icon: path.join(__dirname, 'app', process.platform === 'win32' ? 'kanevas.ico' : 'icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#f4f6f8', symbolColor: '#3b4552', height: 40 },
@@ -620,6 +620,8 @@ ipcMain.handle('forge-interrupt', forgeHandler(async base => { await forgeCall(b
 // avec le profil de Kane OS (arguments --sage --highvram… --model-ref). Si le Forge de Kane OS tourne déjà
 // (port 7860), il est réutilisé : jamais deux copies des modèles en mémoire vidéo.
 const ENGINE_PORT = 7862;
+const studioRuntime = require('./studio-runtime.cjs')(app.getPath('userData'));
+let integrationRoot = '';
 const engine = { state: 'off', url: '', pid: null, ours: false, log: [], error: '', profile: '', startedAt: 0 };
 const engineLog = line => { engine.log.push(line); if (engine.log.length > 400) engine.log.splice(0, engine.log.length - 400); };
 const engineEmit = () => { if (win) win.webContents.send('engine-status', engineStatus()); };
@@ -628,15 +630,24 @@ const ping = async (url, ms = 1500) => { try { const r = await fetch(url + '/sda
 function engineDirs() {
   loadDirs();
   const data = (forgeDirs && forgeDirs.data) || 'C:\\KaneOS\\sd-webui-forge-classic';
-  const root = path.dirname(data);
+  const root = integrationRoot ||= studioRuntime.read().kaneRoot || path.dirname(data);
   let profiles = [];
   try { profiles = JSON.parse(fs.readFileSync(path.join(root, 'launcher', 'data', 'webui_profiles.json'), 'utf8')); } catch { /* pas de Kane OS */ }
   const models = (forgeDirs && forgeDirs.models) || path.join(root, 'models');
-  return { data, profiles, models };
+  return studioRuntime.resolve({ data, root, profiles, models });
 }
+ipcMain.handle('engine-config', () => engineDirs());
+ipcMain.handle('engine-config-save', async (_e, options) => {
+  try {
+    if (engine.ours && ['ready', 'starting'].includes(engine.state) || await ping('http://127.0.0.1:' + ENGINE_PORT, 800)) throw new Error('Arrêtez le Studio avant de changer son moteur');
+    const value = studioRuntime.save(options, engineDirs());
+    if (engine.state === 'external') { engine.state = 'off'; engine.url = ''; engineEmit(); }
+    return { ok: true, value };
+  } catch (e) { return { ok: false, error: e.message }; }
+});
 ipcMain.handle('engine-status', async () => {
   // Forge de Kane OS démarré entre-temps ?
-  if (engine.state === 'off' && await ping('http://127.0.0.1:7860', 800)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; }
+  if (engine.state === 'off' && engineDirs().shareExternal && await ping('http://127.0.0.1:7860', 800)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; }
   else if (engine.state === 'external' && !(await ping(engine.url, 800))) { engine.state = 'off'; engine.url = ''; }
   return engineStatus();
 });
@@ -644,21 +655,26 @@ ipcMain.handle('engine-profiles', () => { const d = engineDirs(); return { data:
 ipcMain.handle('engine-start', (_e, profileId) => engineStart(profileId));
 async function engineStart(profileId) {
   if (engine.state === 'ready' || engine.state === 'starting') return engineStatus();
-  if (await ping('http://127.0.0.1:7860', 1200)) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; engine.ours = false; engineEmit(); return engineStatus(); }
+  const d = engineDirs();
   // moteur resté actif (Kanevas fermé brutalement) : on le reprend, il pourra être arrêté
   if (await ping('http://127.0.0.1:' + ENGINE_PORT, 1200)) { engine.state = 'ready'; engine.url = 'http://127.0.0.1:' + ENGINE_PORT; engine.ours = true; engine.pid = pidOnPort(ENGINE_PORT); engineEmit(); return engineStatus(); }
-  const d = engineDirs();
-  const py = path.join(d.data, 'venv', 'Scripts', 'python.exe');
-  if (!fs.existsSync(py) || !fs.existsSync(path.join(d.data, 'launch.py'))) { engine.state = 'error'; engine.error = 'Forge introuvable : ' + d.data; engineEmit(); return engineStatus(); }
+  if (await ping('http://127.0.0.1:7860', 1200)) {
+    if (d.shareExternal) { engine.state = 'external'; engine.url = 'http://127.0.0.1:7860'; engine.ours = false; }
+    else { engine.state = 'error'; engine.error = 'Arrêtez le moteur Forge externe avant de démarrer le moteur Studio séparé, pour libérer la mémoire GPU.'; }
+    engineEmit(); return engineStatus();
+  }
+  const py = d.python;
+  if (!fs.existsSync(py) || !fs.existsSync(path.join(d.runtime, 'launch.py'))) { engine.state = 'error'; engine.error = 'Moteur Studio introuvable : ' + d.runtime; engineEmit(); return engineStatus(); }
   const prof = d.profiles.find(p => p.id === profileId) || d.profiles[0];
   let args = prof ? prof.args : `--api --model-ref "${d.models.replace(/\\/g, '/')}"`;
+  if (studioRuntime.read().models) args = args.replace(/--model-ref\s+(?:"[^"]*"|'[^']*'|\S+)/g, '') + ` --model-ref "${d.models.replace(/\\/g, '/')}"`;
   args = args.replace(/--port\s+\d+/g, '').replace(/--nowebui/g, '').replace(/--listen/g, '').replace(/--server-name\s+\S+/g, '') + ` --nowebui --port ${ENGINE_PORT} --server-name 127.0.0.1 --skip-prepare-environment`;   // joignable seulement depuis ce PC
   engine.profile = prof ? prof.name : 'par défaut';
   engine.log = []; engine.error = ''; engine.state = 'starting'; engine.ours = true; engine.startedAt = Date.now();
   engine.url = 'http://127.0.0.1:' + ENGINE_PORT;
   engineLog('> ' + args);
   const child = require('child_process').spawn(py, ['launch.py'], {
-    cwd: d.data, windowsHide: true,
+    cwd: d.runtime, windowsHide: true,
     env: { ...process.env, COMMANDLINE_ARGS: args, SD_WEBUI_RESTARTING: '1', PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
   });
   engine.pid = child.pid;
@@ -696,7 +712,13 @@ function engineKill() {
   try { require('child_process').execFileSync('taskkill', ['/PID', String(engine.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* déjà arrêté */ }
   engine.pid = null;
 }
-ipcMain.handle('engine-stop', () => { engineKill(); engine.state = 'off'; engine.url = ''; engine.ours = false; engineEmit(); return engineStatus(); });
+ipcMain.handle('engine-stop', (_e, explicit) => {
+  if (explicit === true && engine.state === 'external') {
+    const d = engineDirs();
+    require('./local-process.cjs').stop({ port: 7860, script: path.join(d.data, 'launch.py'), python: path.join(d.data, 'venv/Scripts/python.exe') });
+  }
+  engineKill(); engine.state = 'off'; engine.url = ''; engine.ours = false; engineEmit(); return engineStatus();
+});
 ipcMain.handle('engine-log', () => engine.log.join('\n'));
 app.on('will-quit', () => { if (!globalThis.__kvKeepEngine) engineKill(); });
 

@@ -6,10 +6,10 @@
   const WS = {
     wallpaper: { label: 'Animation', engine: 'Wallpaper Animator', icon: 'sparkles', svc: true,
       help: 'Peignez les zones, réglez leurs mouvements et créez une boucle ou un fond d’écran interactif.' },
-    video: { label: 'Vidéo', engine: 'KaneClip', icon: 'play', svc: false,
-      help: 'Assemblez vos images et animations avec du son, des transitions et des titres.' },
-    comfyui: { label: 'Workflows', engine: 'ComfyUI', icon: 'grid', svc: true,
+    comfyui: { label: 'Animation Vidéo', engine: 'ComfyUI', icon: 'grid', svc: true,
       help: 'Préparez un workflow avec une image du projet, puis personnalisez son graphe dans ComfyUI.' },
+    video: { label: 'Montage', engine: 'KaneClip', icon: 'play', svc: false,
+      help: 'Assemblez vos images et animations avec du son, des transitions et des titres.' },
   };
   const WX = KS.ws = { cur: null, el: {}, st: {}, pending: new Map(), definitions: WS };
   let host;
@@ -98,21 +98,59 @@
   };
   WX.theme = id => {
     const E = WX.el[id]; if (!E?.ready || !KS.suite) return;
-    WX.request(id, 'theme', KS.suite.theme()).catch(() => {});
+    WX.request(id, 'theme', KS.suite.theme(id)).catch(() => {});
   };
   function go(id) {
     if (id && !WS[id]) return;
     if (id && KS.studio.on) C.toggleStudio(false);
     KS.suite?.hideHome(); WX.cur = id;
     document.body.classList.toggle('ws-ext', !!id);
-    if (id) { build(id); for (const [key, E] of Object.entries(WX.el)) E.sec.hidden = key !== id; refresh(id).catch(e => KS.toast(e.message, 'err')); }
+    if (id) { build(id); renderFrame(id); for (const [key, E] of Object.entries(WX.el)) E.sec.hidden = key !== id; refresh(id).catch(e => KS.toast(e.message, 'err')); }
     KS.prefs.workspace = id || ''; KS.prefs.save(); sync();
     window.dispatchEvent(new Event('resize'));
   }
   WX.go = C.workspace = go;
+  WX.stop = async id => {
+    if (id === 'project') return;
+    if (id === 'edit') {
+      for (const d of KS.state.docs.slice()) if (!(await KS.closeDoc(d))) return;
+      await KS.suite.home(); return;
+    }
+    if (id === 'studio') {
+      if (KS.studioApi.isBusy()) KS.studioApi.interrupt();
+      const until = Date.now() + 8000;
+      while (KS.studioApi.isBusy() && Date.now() < until) await new Promise(r => setTimeout(r, 100));
+      await KS.engine.refresh();
+      await KS.engine.stop(true); await C.toggleStudio(false);
+      await KS.suite.home(); return;
+    }
+    const E = WX.el[id];
+    if (id === 'wallpaper' && E?.ready) await WX.request(id, 'flush');
+    if (id === 'video') {
+      if (E?.ready) await WX.request(id, 'stop');
+      await N.kcStop();
+    } else {
+      const s = await N.svcStop(id, true); WX.st[id] = s;
+    }
+    for (const [key, pending] of WX.pending) if (pending.id === id) { clearTimeout(pending.timer); pending.reject(new Error('Application arrêtée')); WX.pending.delete(key); }
+    if (E) { E.frame?.remove(); E.frame = null; E.ready = false; E.loaded = false; }
+    KS.suite.event(id, { busy: false, status: 'Arrêté' });
+    if (WX.cur === id) await KS.suite.home();
+    sync();
+  };
+  WX.contextMenu = id => [
+    { head: KS.appearance.labels[id] || id },
+    { label: 'Ouvrir', action: () => id === 'project' ? KS.suite.home() : id === 'studio' ? C.toggleStudio(true) : id === 'edit' ? C.toggleStudio(false) : id === 'video' ? KS.suite.run('Ouverture du montage', () => KS.suite.openVideo()).catch(() => {}) : go(id) },
+    { label: 'Arrêter', icon: 'close', disabled: id === 'project', action: () => KS.suite.run('Arrêt · ' + KS.appearance.labels[id], () => WX.stop(id)).catch(() => {}) },
+  ];
   function sync() {
     const cur = document.body.classList.contains('suite-home') ? 'project' : WX.cur || (KS.studio.on ? 'studio' : 'edit');
-    document.querySelectorAll('.ws-btn[data-v]').forEach(b => { b.classList.toggle('on', b.dataset.v === cur); b.setAttribute('aria-current', b.dataset.v === cur ? 'page' : 'false'); });
+    KS.appearance.activate(cur);
+    document.querySelectorAll('.ws-btn[data-v]').forEach(b => {
+      const id = b.dataset.v;
+      b.classList.toggle('on', id === cur); b.setAttribute('aria-current', id === cur ? 'page' : 'false');
+      b.dataset.running = String(id === 'studio' ? KS.engine?.ready() : id === 'video' ? !!WX.el.video?.frame : !!WX.st[id] && up(WX.st[id]));
+    });
     for (const id in WX.el) renderBar(id);
   }
   WX.sync = sync;
@@ -124,10 +162,14 @@
   C.toComfy = async () => { const it = await KS.suite.capture(); if (it) await KS.suite.toComfy(it); };
   C.toWallpaper = async () => { const it = await KS.suite.capture(); if (it) await KS.suite.animate(it); };
   C.toVideo = async () => { const it = await KS.suite.capture(); if (it) await KS.suite.toVideo(it); };
-  KS.on('studio', sync); KS.on('doc', sync); KS.on('suite-project', sync);
+  KS.on('studio', sync); KS.on('doc', sync); KS.on('suite-project', sync); KS.on('engine', sync);
   KS.on('ui-ready', () => setTimeout(() => {
     host = h('section#ws-ext'); KS.$('#main').append(host);
     const sw = document.querySelector('.ws-switch');
+    sw.addEventListener('contextmenu', e => {
+      const button = e.target.closest('.ws-btn[data-v]'); if (!button) return;
+      e.preventDefault(); ui.menu(WX.contextMenu(button.dataset.v), e.clientX, e.clientY);
+    });
     for (const [id, W] of Object.entries(WS)) {
       const b = h('button.ws-btn', { 'data-v': id, text: W.label, title: W.help });
       b.addEventListener('click', () => { if (id === 'video') KS.suite.run('Ouverture du montage', () => KS.suite.openVideo()).catch(() => {}); else go(id); }); sw.append(b);

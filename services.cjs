@@ -82,8 +82,12 @@ module.exports = function services({ getWin, root, engine }) {
     setTimeout(wait, 1500);
     return status(id);
   }
-  function kill(id) {
+  function kill(id, explicit = false) {
     const S = st[id];
+    if (!S.ours && explicit) {
+      const dir = SV[id].dir();
+      require('./local-process.cjs').stop({ port: SV[id].port, script: path.join(dir, id === 'comfyui' ? 'main.py' : 'outils/peintre.py'), python: path.join(dir, 'venv/Scripts/python.exe') });
+    }
     const pid = S.pid || (S.ours ? pidOnPort(SV[id].port) : null);
     if (S.ours && pid) { try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* déjà arrêté */ } }
     S.pid = null; S.state = 'off'; S.ours = false; emit(id);
@@ -117,7 +121,7 @@ module.exports = function services({ getWin, root, engine }) {
     return status(id);
   });
   ipcMain.handle('svc-start', (_e, id) => { if (!SV[id]) throw new Error('Service inconnu'); return start(id); });
-  ipcMain.handle('svc-stop', (_e, id) => { if (!SV[id]) throw new Error('Service inconnu'); kill(id); return status(id); });
+  ipcMain.handle('svc-stop', (_e, id, explicit) => { if (!SV[id]) throw new Error('Service inconnu'); kill(id, explicit === true); return status(id); });
   ipcMain.handle('svc-log', (_e, id) => (st[id] ? st[id].log.join('\n') : ''));
   app.on('will-quit', () => { for (const id in SV) if (st[id].ours) kill(id); if (relay) try { relay.close(); } catch { /* rien */ } });
 

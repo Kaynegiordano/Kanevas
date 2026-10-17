@@ -9,7 +9,7 @@
     const p = KS.prefs;
     document.body.classList.remove('theme-dark', 'theme-graphite', 'theme-light');
     document.body.classList.add('theme-' + (CHROME[p.theme] ? p.theme : 'light'));
-    const acc = U.parseHex(p.accent) || { r: 47, g: 111, b: 219 };
+    const acc = U.parseHex(KS.appearance?.color(KS.appearance.active) || p.accent) || { r: 47, g: 111, b: 219 };
     const lighter = U.hex({ r: acc.r + (255 - acc.r) * 0.18, g: acc.g + (255 - acc.g) * 0.18, b: acc.b + (255 - acc.b) * 0.18 });
     const root = document.documentElement.style;
     root.setProperty('--accent', U.hex(acc)); root.setProperty('--accent-rgb', `${acc.r}, ${acc.g}, ${acc.b}`); root.setProperty('--accent-2', p.theme === 'light' ? U.hex({ r: acc.r * .72, g: acc.g * .72, b: acc.b * .72 }) : lighter); root.setProperty('--accent-soft', `rgba(${acc.r},${acc.g},${acc.b},${p.theme === 'light' ? '.09' : '.16'})`);
@@ -22,6 +22,7 @@
     V.readTheme();
     T.renderOptions && T.current && T.renderOptions();
     KS.requestRender();
+    KS.appearance?.refreshTabs();
   };
 
   /* ---------------------------------------------------------------- documents */
@@ -82,7 +83,7 @@
   KS.renderTabs = renderTabs;
   function updateTitle() {
     const d = KS.state.doc;
-    const t = d ? `${d.name}${d.dirty ? ' •' : ''} — Kanevas` : 'Kanevas';
+    const t = d ? `${d.name}${d.dirty ? ' •' : ''} — Kane App` : 'Kane App';
     document.title = t;
     if (KS.native) KS.native.setTitle(t);
     KS.$('#doc-title').textContent = d ? `${d.name} @ ${Math.round(V.zoom * 100)} % (${d.active ? d.active.name : '—'}, RVB/8)${d.dirty ? ' •' : ''}` : '';
@@ -96,7 +97,7 @@
     home.hidden = !!KS.state.doc;
     home.innerHTML = '';
     const inner = h('div.home-inner');
-    inner.appendChild(h('div.home-hero', h('span.brand-mark'), h('div', h('h1', { text: 'Kanevas' }), h('p', { text: 'Retouche, peinture, montage : tout est prêt. Glissez une image ici pour commencer.' }))));
+    inner.appendChild(h('div.home-hero', h('span.brand-mark'), h('div', h('h1', { text: 'Kane App' }), h('p', { text: 'Retouche, peinture, montage : tout est prêt. Glissez une image ici pour commencer.' }))));
     inner.appendChild(h('div.home-actions',
       ui.btn('Nouveau fichier', () => KS.cmd.newDoc(), '.primary.big', 'file-plus'),
       ui.btn('Ouvrir…', () => KS.cmd.open(), '.big', 'folder-open'),

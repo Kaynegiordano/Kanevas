@@ -160,5 +160,5 @@ module.exports = function aiUpscale({ app, send, tools }) {
     }
   }
 
-  return { installed, install, start, cancel, size: ZIP_SIZE, toolDir };
+  return { installed, install, start, cancel, cancelAll: () => { for (const id of jobs.keys()) cancel(id); }, size: ZIP_SIZE, toolDir };
 };

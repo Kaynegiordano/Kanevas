@@ -1,0 +1,40 @@
+/* Kane App : surfaces plates et accents propres à chaque activité. */
+:root { --radius:4px; --radius-lg:5px; --ui:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; }
+.brand-mark { background:var(--accent); box-shadow:none; border-radius:4px; }
+.btn,.fx-btn2,.ws-btn,.fx-ebtn,.fx-tab,.suite-step,.suite-library,.suite-media,.fx-panel,.fx-view,.fx-dropzone,.fx-output-actions,.fx-acc,.fx-card,.modal,.menu { border-radius:4px; box-shadow:none; }
+.btn,.fx-btn2,.ws-btn,.fx-ebtn { background-image:none; }
+.btn.primary,.fx-btn2.primary,.fx-generate { background:var(--accent); color:var(--accent-ink); box-shadow:none; }
+.fx-generate,.fx-interrupt,.fx-skip { border-radius:4px; }
+.fx-rail button { border-radius:3px; }
+.suite-home-scroll { background:var(--bg); }
+.suite-hero { padding-bottom:20px; border-bottom:1px solid var(--border); }
+.suite-hero h1 { font-size:28px; letter-spacing:-.02em; }
+.suite-step { border:1px solid var(--border); border-top:2px solid var(--accent); background:var(--panel); padding:16px 18px; }
+.suite-step:hover { background:var(--panel-2); }
+.suite-media-preview { border-radius:2px; }
+.suite-library { border-color:var(--border); }
+#suite-toolbar { min-height:46px; background:var(--panel); }
+#suite-toolbar .ws-switch { padding:0; border-radius:0; background:transparent; }
+#suite-toolbar .ws-btn { position:relative; height:32px; border-radius:2px; padding:0 11px; box-shadow:none; }
+#suite-toolbar .ws-btn.on { background:var(--accent-soft); color:var(--accent-2); box-shadow:inset 0 -2px var(--space-color,var(--accent)); }
+#suite-toolbar .ws-btn[data-running="true"]::after { content:""; display:inline-block; width:5px; height:5px; margin-left:5px; border-radius:50%; background:var(--space-color,var(--accent)); vertical-align:middle; }
+.ws-btn:not(.on):hover { background:var(--hover); }
+.eg-chip { border-radius:4px; }
+.appearance-colors { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 16px; }
+.appearance-colors label { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; }
+.appearance-colors input[type="color"] { width:34px; height:25px; padding:2px; border:1px solid var(--border); border-radius:3px; background:var(--field); cursor:pointer; }
+.appearance-colors > .btn { grid-column:1/-1; justify-self:start; }
+.fx-view.iv-host,.fx-dropzone.iv-host { display:flex; flex-direction:column; padding:0; cursor:default; min-height:0; overflow:hidden; }
+.iv-controls { display:flex; align-items:center; justify-content:flex-end; gap:4px; width:100%; padding:5px 7px; background:var(--panel-2); border-bottom:1px solid var(--border); flex-shrink:0; }
+.iv-controls button { background:transparent; border:1px solid transparent; border-radius:3px; min-width:26px; height:25px; padding:0 7px; font-size:11px; color:var(--text-2); }
+.iv-controls button:hover { background:var(--hover); color:var(--text); }
+.iv-scale { min-width:43px; color:var(--muted); text-align:center; font:10.5px var(--mono); }
+.iv-viewport { position:relative; width:100%; height:clamp(280px,52vh,720px); overflow:hidden; background:var(--field); touch-action:none; cursor:grab; flex-shrink:0; }
+.iv-viewport:active { cursor:grabbing; }
+.iv-viewport .iv-media { position:absolute; left:50%; top:50%; max-width:none !important; max-height:none !important; margin:0; transform-origin:center; user-select:none; -webkit-user-drag:none; object-fit:fill; }
+.fx-source .iv-viewport,.fx-left .iv-viewport { height:clamp(180px,30vh,380px); }
+.fx-img2img .fx-view .iv-viewport { height:clamp(260px,46vh,620px); }
+.iv-viewport .fx-painter { cursor:crosshair; }
+.wx-bar { background:var(--panel); }
+.suite-detail .btn { flex-shrink:0; }
+@media(max-width:1150px) { #suite-toolbar .ws-btn { padding:0 8px; font-size:11px; } }
