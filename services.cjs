@@ -101,6 +101,7 @@ module.exports = function services({ getWin, root, engine }) {
         if (u === '/api/status') { const s = engine.state(); return out(200, { webui: { status: s === 'ready' || s === 'external' ? 'running' : s === 'starting' ? 'starting' : 'stopped' } }); }
         if (u === '/api/webui/profiles') return out(200, [{ id: 'kanevas', name: 'Moteur IA de Kanevas', args: '--api' }]);
         if (u === '/api/webui/start' && req.method === 'POST') { engine.start(); return out(200, { ok: true }); }
+        if (u === '/api/comfyui/start' && req.method === 'POST') { start('comfyui'); return out(200, { ok: true }); }   // Geste IA de Wallpaper
         out(404, { error: 'introuvable' });
       } catch (e) { out(500, { error: String(e.message || e) }); }
     });

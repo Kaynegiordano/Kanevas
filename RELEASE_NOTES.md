@@ -1,5 +1,3 @@
-Kanevas 1.6.0 - ComfyUI, Wallpaper et Video dans Kanevas
-- Trois nouveaux espaces dans la barre du haut : ComfyUI, Wallpaper et Video.
-- ComfyUI : son editeur de graphes dans Kanevas, demarre par Kanevas ; envoi de l'image du document, sorties a reprendre.
-- Wallpaper Engine Animator : "Animer l'image du document" ; le fond est redessine par le moteur Forge de Kanevas.
-- Video : KaneClip integre (montage, ffmpeg) ; images et videos des autres espaces envoyees sur la timeline.
+Kanevas 1.6.1 - Wallpaper et ComfyUI relies
+- Le "Geste IA" de Wallpaper (video MiniMax H3 rejouee sur l'image) peut demander a Kanevas de demarrer ComfyUI.
+- Wallpaper 1.13 a 1.15 (Kane OS) : reconnaissance des elements, gestes articules sur un squelette, Geste IA.

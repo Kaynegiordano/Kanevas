@@ -91,6 +91,7 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   ffmpeg est celui de KaneClip installé, sinon winget / PATH. « Ajouter l'image du document » la pose sur la timeline ;
   un montage non enregistré est proposé à l'enregistrement en quittant Kanevas.
 - Menu IA de l'Édition : Envoyer à ComfyUI, Animer dans Wallpaper, Ajouter à la Vidéo.
+- 1.6.1 : le relais local (port 8601) démarre aussi ComfyUI à la demande du « Geste IA » de Wallpaper.
 
 ## Img2Img dans le Studio IA
 - Le Studio reprend les thèmes et la couleur d'accent de l'Édition. Les actions sous les résultats sont
