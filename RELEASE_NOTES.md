@@ -1,12 +1,12 @@
-Kanevas 1.4.3 - Envois, menus et raccourci de generation
-- Img2Img est reintegre au Studio IA, avec source et resultats cote a cote. Inpaint, Sketch et
-  Inpaint sketch se peignent directement dans le Studio, avec pinceau, gomme et annuler/retablir.
-- Le panneau Img2Img disparait de l'Edition. Les images circulent entre les espaces par des envois
-  explicites, en nouveau document ou en calque, sans modifier automatiquement le document original.
-- Boutons explicites "Envoyer vers Img2Img" et "Envoyer vers Inpaint" sur les resultats, dans PNG Info
-  et dans les menus de l'Edition. Menu IA organise par creation, envoi du document et retouche.
-- Graine aleatoire a chaque generation du Studio, y compris apres un import PNG, un envoi entre
-  onglets, un retour depuis l'Edition, un traitement par lots ou un agrandissement Hires.
-- Ctrl+Entree demarre ou interrompt une generation depuis l'invite, les reglages ou le canevas.
-  Le raccourci peut aussi annuler une generation encore en preparation ; maintenir les touches
-  n'enchaine pas les actions. Boutons Generer / Interrompre et indications en francais.
+Kanevas 1.5.0 - Studio harmonise et dessin IA dans l'Edition
+- Le Studio IA reprend les couleurs de l'Edition, y compris les themes sombre, graphite et clair,
+  la couleur d'accent personnalisee, les boutons et les etats actifs.
+- Les actions des resultats sont alignees et regroupees : utilisation dans l'Edition,
+  transformation (Img2Img / Inpaint), agrandissement (Extras / Hires) et fichiers.
+- Nouvel onglet optionnel "Dessin IA", entre Histogramme et Infos dans l'Edition, egalement
+  accessible par IA > Ajouter un dessin IA. Ouvrir le panneau ne lance aucune generation.
+- Prompt, invite negative, LoRA et poids, styles, modele et echantillonnage partages avec txt2img.
+  Les modifications du Studio et du panneau se retrouvent dans les deux espaces.
+- Ajouter un dessin dans une selection cree un nouveau calque avec un masque modifiable ;
+  un mode nouveau calque permet aussi de dessiner sans selection. Les pixels originaux sont conserves.
+- Variantes, force de transformation, annulation par l'historique et Ctrl+Entree pour generer/interrompre.

@@ -72,7 +72,7 @@
   V.ZOOMS = [0.01, 0.02, 0.03, 0.04, 0.05, 0.0625, 0.0833, 0.125, 0.1667, 0.25, 0.3333, 0.5, 0.6667, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 12, 16, 24, 32, 64];
   // Ajuste à l'écran ; allowUp : autorise un zoom > 100 % pour les petites images
   V.fit = (d = KS.state.doc, allowUp = false) => {
-    if (!d || V.w < 10) return;
+    if (!d || V.w < 10 || !V.vp || V.vp.clientWidth < 10 || V.vp.clientHeight < 10) return;
     const m = 40;
     let z = Math.min((V.w - m * 2) / d.width, (V.h - m * 2) / d.height);
     if (!allowUp) z = Math.min(z, 1);

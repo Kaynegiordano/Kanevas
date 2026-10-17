@@ -14,10 +14,12 @@ window.ksNative = {
   setTitle() {}, setTitleBar() {}, setZoom() {}, onCloseRequest() {}, onOpenPath() {},
   getPending: async () => [],
   forgeStatus: async () => { if (window.holdStatus) await new Promise(resolve => { window.releaseStatus = resolve; }); return { ok: true }; },
-  forgeCatalog: async () => ({ ok: true, models: [], loras: [], modules: [], current: { model: '', modules: [] },
+  forgeCatalog: async () => ({ ok: true, models: [{ title: 'Studio-model', name: 'Studio-model' }],
+    loras: [{ name: 'test', alias: 'Illustration', weight: 0.7, trigger: 'painted', negative: 'bad lines', rel: 'Art', mtime: 1 }],
+    modules: [], current: { model: 'Studio-model', modules: [] },
     dtype: 'Automatic', samplers: ['Euler'], schedulers: ['Automatic'], scripts: [], styles: [], presets: {}, upscalers: ['Lanczos'] }),
   forgeImg2img: async (url, payload, init, mask) => {
-    window.calls.push({ payload, init, mask });
+    window.calls.push({ url, payload, init, mask });
     if (window.holdGeneration) await new Promise(resolve => { window.releaseGeneration = resolve; });
     return { ok: true, images: [init], info: { seed: 42, infotexts: [payload.prompt + '\\nSteps: 32, Sampler: Euler, Seed: 42, Size: 128x64'] } };
   },
@@ -43,6 +45,8 @@ async function scenario() {
   const doc = name => { const d = new KS.Doc({ name, width: 128, height: 64 }); const c = KS.util.canvas(128, 64); const x = c.getContext('2d'); x.fillStyle = '#3970bb'; x.fillRect(0, 0, 128, 64); d.addLayer(new KS.Layer({ name: 'Base', canvas: c }), 0); return d; };
   const a = doc('Source A'); KS.addDoc(a);
   assert(!KS.panels.defs.generate && !KS.panels.LAYOUT.some(g => g.tabs.includes('generate')), 'Aucun panneau Img2Img ni Studio IA dans le dock Édition');
+  const navTabs = KS.panels.LAYOUT.find(g => g.id === 'g-nav').tabs;
+  assert(navTabs.indexOf('aidraw') === navTabs.indexOf('histogram') + 1 && navTabs.indexOf('info') === navTabs.indexOf('aidraw') + 1 && !KS.panels.isVisible('aidraw'), 'Dessin IA est optionnel entre Histogramme et Infos');
   await KS.cmd.sendToStudio('img2img');
   await wait(() => document.querySelector('.fx-left .fx-panel .fx-slider'));
   assert(KS.studio.on && KS.prefs.fx.tab === 'img2img', 'Img2Img ouvre le Studio');
@@ -203,6 +207,57 @@ async function scenario() {
   await click('Inpaint');
   await click('Peindre le masque');
   paint({ x: 8, y: 8 }, { x: 40, y: 24 });
+  assert(document.querySelectorAll('.fx-output-actions > .fx-actiongroup').length === 4, 'Les actions du résultat sont organisées en quatre groupes');
+  assert(![...document.querySelectorAll('.fx-output-actions button')].some(b => /^[📂💾🗃️✨]+$/u.test(b.textContent)), 'Les actions du résultat utilisent des libellés explicites');
+  for (const theme of ['dark', 'graphite', 'light']) {
+    KS.prefs.theme = theme; KS.prefs.accent = '#8c60d0'; KS.applyPrefs();
+    const style = getComputedStyle(document.querySelector('#studio'));
+    assert(style.getPropertyValue('--fx-accent').trim() === getComputedStyle(document.body).getPropertyValue('--accent').trim(), 'Le Studio suit la couleur d’accent du thème ' + theme);
+  }
+  const drawDoc = doc('Dessin à la demande'); KS.addDoc(drawDoc);
+  drawDoc.selection.rect({ x: 20, y: 10, w: 30, h: 25 }, 'new', 0); KS.emit('selection', drawDoc);
+  KS.prefs.fx.t2i.prompt = 'golden star <lora:test:0.6>'; KS.prefs.fx.t2i.negative_prompt = 'noise';
+  KS.prefs.fx.t2i.styles = ['Shared style']; KS.prefs.fx.t2i.sampler_name = 'Euler'; KS.prefs.fx.t2i.scheduler = 'Automatic'; KS.prefs.fx.t2i.steps = 19; KS.prefs.fx.t2i.cfg_scale = 5;
+  const beforePanel = window.calls.length + window.txtCalls.length;
+  await KS.cmd.openEditorDraw();
+  await wait(() => drawDoc.view.init && KS.view.w > 0);
+  assert(!!KS.util.rectIntersect({ x: drawDoc.view.x, y: drawDoc.view.y, w: drawDoc.width * drawDoc.view.zoom, h: drawDoc.height * drawDoc.view.zoom }, { x: 0, y: 0, w: KS.view.w, h: KS.view.h }), 'Le document créé depuis le Studio reste visible au retour dans l’Édition');
+  assert(!KS.studio.on && KS.panels.isVisible('aidraw') && window.calls.length + window.txtCalls.length === beforePanel, 'Ouvrir Dessin IA ne lance aucune génération et conserve l’Édition');
+  const drawRoot = document.querySelector('.edraw');
+  const panelBox = drawRoot.closest('.pbody').getBoundingClientRect(), addBox = drawRoot.querySelector('.fx-generate').getBoundingClientRect();
+  assert(addBox.top >= panelBox.top && addBox.bottom <= panelBox.bottom, 'Le bouton Ajouter le dessin est visible sans faire défiler le panneau');
+  assert(drawRoot.querySelector('textarea').value === KS.prefs.fx.t2i.prompt && drawRoot.textContent.includes('Studio-model'), 'Le panneau reprend l’invite, les LoRA et le modèle du Studio');
+  const loraCard = drawRoot.querySelector('[data-lora="test"]'); loraCard.click(); loraCard.click();
+  const weight = drawRoot.querySelector('.fx-lchip .fx-num'); weight.value = '0.9'; weight.dispatchEvent(new Event('change'));
+  assert(KS.prefs.fx.t2i.prompt.includes('<lora:test:0.9>') && KS.prefs.fx.t2i.negative_prompt.includes('bad lines'), 'Choisir un LoRA et son poids dans Dessin IA met à jour les réglages partagés');
+  const expectedPrompt = KS.prefs.fx.t2i.prompt;
+  await KS.cmd.editorDraw();
+  const request = window.calls.at(-1);
+  assert(request.payload.prompt === expectedPrompt && request.payload.styles[0] === 'Shared style' && request.payload.sampler_name === 'Euler' && request.payload.steps === 19 && request.payload.cfg_scale === 5 && request.url === KS.gen.url(), 'Le dessin utilise le même prompt, LoRA, styles, échantillonnage et moteur que le Studio');
+  const generated = drawDoc.layers.at(-1), maskData = generated.mask.canvas.getContext('2d');
+  assert(drawDoc.layers.length === 2 && generated.mask && maskData.getImageData(30, 20, 1, 1).data[0] > 200 && maskData.getImageData(100, 50, 1, 1).data[0] === 0 && !KS.studio.on, 'Le dessin dans la sélection crée un calque masqué et reste dans l’Édition');
+  assert(drawDoc.layers[0].ctx.getImageData(0, 0, 1, 1).data[2] === 187, 'Le dessin IA préserve les pixels du calque original');
+  KS.cmd.undo(); assert(drawDoc.layers.length === 1, 'L’ajout du dessin peut être annulé en une seule étape');
+  drawDoc.selection.clear(); KS.emit('selection', drawDoc);
+  assert(drawRoot.querySelector('.fx-generate').disabled, 'Le mode sélection attend une zone avant de générer');
+  const destination = drawRoot.querySelector('select'); destination.value = 'layer'; destination.dispatchEvent(new Event('change'));
+  await KS.cmd.openStudioTab('txt2img');
+  assert(document.querySelector('#studio textarea').value === expectedPrompt, 'Les modifications du panneau se retrouvent dans le Studio');
+  const studioPrompt = document.querySelector('#studio textarea'); studioPrompt.value = 'a silver moon <lora:test:0.4>'; studioPrompt.dispatchEvent(new Event('input'));
+  await KS.cmd.openEditorDraw();
+  assert(document.querySelector('.edraw textarea').value === studioPrompt.value, 'Les modifications du Studio se retrouvent dans le panneau de l’Édition');
+  const beforeDrawT2I = window.txtCalls.length; await KS.cmd.editorDraw();
+  assert(window.txtCalls.length === beforeDrawT2I + 1 && drawDoc.layers.length === 2 && !drawDoc.layers.at(-1).mask && !KS.studio.on, 'Le mode nouveau calque dessine sans sélection avec txt2img');
+  const interruptsBeforeDraw = window.interrupts, layersBeforeCancel = drawDoc.layers.length;
+  window.holdGeneration = true; key(document.querySelector('.edraw textarea'));
+  await wait(() => !!window.releaseGeneration);
+  key(document.querySelector('.edraw textarea'));
+  await wait(() => window.interrupts === interruptsBeforeDraw + 1 && !!document.querySelector('.edraw .fx-generate'));
+  assert(drawDoc.layers.length === layersBeforeCancel, 'Ctrl+Entrée interrompt le dessin IA sans ajouter un calque incomplet');
+  window.holdGeneration = false;
+  assert(KS.menus.defs().find(m => m.label === 'IA').items().some(i => i.label === 'Ajouter un dessin IA…'), 'Le panneau Dessin IA est également accessible dans le menu IA');
+  KS.prefs.theme = 'dark'; KS.prefs.accent = '#2f6fdb'; KS.applyPrefs();
+  await KS.cmd.openStudioTab('txt2img');
   document.querySelector('#toasts').replaceChildren();
   document.querySelector('.fx-body').scrollTop = 0;
   return results;
@@ -218,6 +273,14 @@ app.whenReady().then(async () => {
     const results = await win.webContents.executeJavaScript('(' + scenario.toString() + ')()');
     if (errors.length) throw new Error(errors.join('\n'));
     for (const result of results) console.log('OK ' + result);
+    if (process.env.KANEVAS_TEST_SCREENSHOT) {
+      win.setSize(1430, 1000);
+      await win.webContents.executeJavaScript('KS.cmd.openEditorDraw()');
+      await new Promise(r => setTimeout(r, 500));
+      await win.webContents.executeJavaScript('KS.view.resize(); KS.view.render(); document.querySelector("#toasts").replaceChildren()');
+      fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-edition.png'), (await win.webContents.capturePage()).toPNG());
+      await win.webContents.executeJavaScript('KS.cmd.openStudioTab("txt2img")');
+    }
     for (const width of [1440, 1000]) {
       win.setSize(width, 1000);
       await new Promise(r => setTimeout(r, 500));

@@ -713,11 +713,11 @@ details.gp-sec > summary::-webkit-details-marker { display: none; }
 
 /* Studio IA */
 #studio { display: none; }
-/* Studio IA : la page de Forge (thème Modern UI de Kane OS : rail à gauche, accent orange) */
+/* Studio IA : mêmes couleurs et composants que l'espace Édition. */
 body.studio #main > #toolbar, body.studio #main > #center, body.studio #main > #dock { display: none; }
 body.studio:not(.fx-i2i) #optionsbar { display: none; }
 body.studio #studio.fx { display: flex; flex: 1; min-width: 0; overflow: hidden; background: var(--bg); }
-.fx { --fx-accent: #ff7a30; --fx-accent-soft: rgba(255, 122, 48, .15); font: 13px var(--ui); color: var(--text); }
+.fx { --fx-accent: var(--accent); --fx-accent-soft: var(--accent-soft); font: 12.5px var(--ui); color: var(--text); }
 .fx .spacer { flex: 1; }
 .fx-rail { width: 70px; flex-shrink: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; background: var(--chrome); border-right: 1px solid var(--border); overflow: auto; }
 .fx-rail button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); font: 500 10.5px var(--ui); cursor: pointer; line-height: 1.15; text-align: center; }
@@ -748,10 +748,11 @@ body.fx-i2i .fx-ta.fx-prompt { min-height: 58px; }
 .fx-side { display: flex; flex-direction: column; gap: 8px; }
 .fx-genbox { display: flex; gap: 8px; }
 .fx-genbox > * { flex: 1; }
-.fx-generate, .fx-interrupt, .fx-skip { height: 74px; border-radius: 10px; font: 600 16px var(--ui); cursor: pointer; }
-.fx-generate { border: 0; background: var(--fx-accent); color: #fff; box-shadow: 0 2px 10px rgba(255, 122, 48, .35); }
-.fx-generate:hover { filter: brightness(1.07); }
-.fx-interrupt { border: 0; background: #c2412d; color: #fff; }
+.fx-generate, .fx-interrupt, .fx-skip { height: 46px; border-radius: var(--radius); font: 600 13px var(--ui); cursor: pointer; }
+.fx-generate { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
+.fx-generate:hover { background: var(--accent-2); }
+.fx-interrupt { border: 1px solid var(--danger); background: var(--danger); color: var(--accent-ink); }
+.fx-generate:disabled, .fx-interrupt:disabled { opacity: .5; cursor: default; }
 .fx-skip { border: 1px solid var(--border-2); background: var(--raised); color: var(--text); }
 body.fx-i2i .fx-generate, body.fx-i2i .fx-interrupt, body.fx-i2i .fx-skip { height: 58px; }
 .fx-ptools-row { display: flex; gap: 6px; align-items: stretch; }
@@ -795,7 +796,7 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-accs > .fx-acc { flex: 1 1 200px; }
 .fx-accs > .fx-acc.open { flex-basis: 100%; }
 .fx-acc { border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); min-width: 0; }
-.fx-acc.active { border-color: rgba(255, 122, 48, .55); }
+.fx-acc.active { border-color: var(--accent); }
 .fx-acc-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; user-select: none; font-weight: 600; }
 .fx-acc-h input, .fx-check input, .fx-ropt input { accent-color: var(--fx-accent); }
 .fx-acc-t { flex: 1; }
@@ -864,7 +865,7 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-strip:empty { display: none; }
 .fx-strip-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .fx-strip .fx-thumbs img { width: 54px; height: 54px; }
-.fx-strip-prog { position: relative; display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: #15171b; }
+.fx-strip-prog { position: relative; display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); }
 .fx-strip-prog img { height: 110px; border-radius: 6px; }
 .fx-strip-prog .fx-prog { position: static; flex: 1; background: none; }
 .fx-gpu { display: flex; align-items: center; gap: 8px; font: 11.5px var(--mono); color: var(--text-2); padding-bottom: 8px; }
@@ -903,7 +904,7 @@ body.studio .ws-to-studio { display: none; }
 /* LoRA actifs sous l'invite, bouton 🛠 des cartes, fiche d'un LoRA */
 .fx-lchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .fx-lchips:empty { display: none; }
-.fx-lchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 4px; border: 1px solid rgba(255, 122, 48, .45); border-radius: 9px; background: var(--fx-accent-soft); font-size: 12px; }
+.fx-lchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-soft); font-size: 12px; }
 .fx-lchip img { width: 22px; height: 22px; border-radius: 5px; object-fit: cover; }
 .fx-lchip .fx-num { width: 58px; height: 22px; }
 .fx-lchip.missing { border-color: var(--danger); background: transparent; }
@@ -919,6 +920,36 @@ body.studio .ws-to-studio { display: none; }
 .fx-md:empty { display: none; }
 .fx-md code { font: 11.5px var(--mono); background: var(--raised); padding: 0 4px; border-radius: 4px; }
 .fx-toprow.fx-compact { display: flex; flex-direction: column; gap: 6px; }
+.fx-output-actions { display: grid; gap: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.fx-actiongroup { display: grid; gap: 6px; min-width: 0; }
+.fx-actionlabel { color: var(--muted); font-size: 11px; font-weight: 600; }
+.fx-actionbuttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.fx-actionbuttons .fx-btn2 { height: auto; min-height: 34px; padding: 8px 10px; white-space: normal; text-align: left; line-height: 1.3; }
+.fx-actiongroup[data-group="files"] .fx-actionbuttons { grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); }
+/* Panneau optionnel de dessin dans l'Édition. */
+.edraw { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 9px; height: 100%; overflow-y: auto; padding: 2px; }
+.edraw .fx-ta { font-size: 12px; border-radius: var(--radius); }
+.edraw .fx-ta.fx-prompt { min-height: 62px; }
+.edraw .fx-generate, .edraw .fx-interrupt, .edraw .fx-skip { height: 34px; font-size: 12px; }
+.edraw .fx-ptools-row { flex-wrap: wrap; }
+.edraw .fx-styles { min-width: 90px; min-height: 30px; }
+.edraw .fx-lchip { max-width: 100%; flex-wrap: wrap; }
+.edraw .fx-lchip > span { overflow-wrap: anywhere; }
+.edraw .fx-lorabar { flex-wrap: wrap; }
+.edraw .fx-sort { max-width: none; flex: 1; }
+.edraw .fx-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.edraw .fx-panel { padding: 7px; gap: 7px; }
+.edraw .fx-btn2 { height: auto; min-height: 30px; white-space: normal; }
+.edraw-details > summary { cursor: pointer; color: var(--text-2); padding: 5px 0; font-weight: 600; }
+.edraw-details > .fx-left { margin-top: 7px; }
+.edraw-status { color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+.edraw-model { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.edraw > * { flex-shrink: 0; }
+.pgroup[data-id="g-nav"]:has(.ppane.active .edraw) { flex-shrink: 0; }
+.pgroup[data-id="g-nav"]:has(.ppane.active .edraw) .pbody { height: 390px; max-height: 48vh; flex: 0 1 auto; }
+.pgroup[data-id="g-nav"] .ptabs { overflow-x: auto; scrollbar-width: thin; }
+.pgroup[data-id="g-nav"] .ptab { padding: 0 6px; font-size: 11px; flex-shrink: 0; }
+.pgroup[data-id="g-nav"] .pcollapse { flex-shrink: 0; }
 /* Train LoRA */
 .fx-train { display: flex; flex-direction: column; gap: 12px; max-width: 1280px; }
 .lt-intro { font-size: 12.5px; line-height: 1.55; color: var(--text-2); }

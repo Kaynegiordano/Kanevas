@@ -249,6 +249,7 @@
         { label: () => KS.engine && KS.engine.ready() ? 'Arrêter le moteur IA' : 'Démarrer le moteur IA', icon: 'settings', action: () => KS.engine && (KS.engine.ready() ? KS.engine.stop() : KS.engine.ensure()), hidden: !KS.engine },
         { sep: true },
         { head: 'Retoucher dans l’Édition' },
+        { label: 'Ajouter un dessin IA…', icon: 'sparkles', action: () => C.openEditorDraw(), disabled: noDoc },
         { label: 'Remplissage génératif…', icon: 'sparkles', action: () => C.generativeFill(), disabled: noSel },
         { label: 'Supprimer avec l\'IA', icon: 'remove', action: () => C.removeSelection(), disabled: noSel },
         { label: 'Développement génératif…', icon: 'gen-expand', action: () => C.generativeExpand(), disabled: noDoc },

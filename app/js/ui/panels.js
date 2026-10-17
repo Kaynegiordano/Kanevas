@@ -7,7 +7,7 @@
 
   // Groupes (haut → bas) ; grow = prend la place restante
   P.LAYOUT = [
-    { id: 'g-nav', tabs: ['navigator', 'histogram', 'info'], collapsed: true },
+    { id: 'g-nav', tabs: ['navigator', 'histogram', 'aidraw', 'info'], collapsed: true },
     { id: 'g-color', tabs: ['color', 'swatches'] },
     { id: 'g-props', tabs: ['properties', 'adjustments', 'gallery'], height: 250 },
     { id: 'g-layers', tabs: ['layers', 'channels', 'paths', 'history'], grow: true },

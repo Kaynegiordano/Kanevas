@@ -76,6 +76,8 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   Paramètres avancés). Rien ne part en ligne.
 
 ## Img2Img dans le Studio IA
+- Le Studio reprend les thèmes et la couleur d'accent de l'Édition. Les actions sous les résultats sont
+  regroupées : Édition, Transformer, Agrandir et Fichiers.
 - **Img2Img** retrouve son onglet dans le Studio, avec une image source et un aperçu des résultats côte à côte.
   Importer une image par clic ou glisser-déposer, ou utiliser **Envoyer vers Img2Img / Inpaint** depuis l'Édition.
 - Depuis txt2img, Extras, PNG Info ou la Galerie, **Envoyer vers Img2Img / Inpaint** transfère l'image et ses paramètres.
@@ -94,6 +96,16 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
   Pendant la préparation, le même raccourci annule le lancement.
 - Vérification des parcours sans moteur réel : `node_modules/.bin/electron tools/test-studio.cjs`
   (profil temporaire et réponses Forge simulées).
+
+## Dessin IA dans l'Édition (1.5.0)
+- Onglet **Dessin IA** entre Histogramme et Infos, ou **IA > Ajouter un dessin IA…**. Ce panneau est optionnel :
+  il ne s'ouvre pas automatiquement et aucune génération ne démarre à son ouverture.
+- L'invite, l'invite négative, les balises et poids des LoRA, les styles et les réglages de txt2img sont partagés
+  avec le Studio, ainsi que le moteur Forge et son modèle actif. Les LoRA se choisissent aussi dans le panneau.
+- **Dans la sélection** : dessiner avec le lasso ou le rectangle une zone à compléter, décrire le dessin,
+  puis **Ajouter le dessin**. Le résultat est un nouveau calque avec un masque modifiable.
+- **Sur un nouveau calque** : génère à la taille du document sans sélection. Force et variantes sont réglables ;
+  l'historique permet d'annuler l'ajout. **Ctrl+Entrée** génère ou interrompt depuis ce panneau.
 
 ## Édition ⇄ Studio IA, LoRA, Train LoRA (1.4.0 — ancien parcours)
 - **img2img passe dans l'Édition** : le panneau IA de l'Édition est remplacé par le panneau **img2img** de Forge (mêmes

@@ -32,6 +32,7 @@
     v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, seeded: false, presetName: '',
     lora: { q: '', sort: 'new' },
     painter: { size: 40, color: '#ff7a30', erase: false },
+    editor: { target: 'selection', strength: 0.85, variants: 1, loraOpen: false },
     t2i: { ...COMMON(), width: 1920, height: 1024, enable_hr: false, hr_upscaler: 'Latent', hr_second_pass_steps: 32, denoising_strength: 0.6, hr_scale: 2, hr_resize_x: 0, hr_resize_y: 0,
       hr_distilled_cfg: 3, hr_cfg: 4, hr_checkpoint_name: 'Use same checkpoint', hr_additional_modules: ['Use same choices'], hr_sampler_name: 'Use same sampler', hr_scheduler: 'Use same scheduler',
       hr_prompt: '', hr_negative_prompt: '' },
@@ -87,6 +88,7 @@
     } catch (e) { catErr = e.message; }
     loading = false;
     if (SD.on) render();
+    renderEditorDraw();
     return cat;
   }
   async function ensureCat() {
@@ -204,6 +206,7 @@
   /* ---------------------------------------------------------------- surfaces du Studio (txt2img et img2img) */
   // Chaque surface a son invite, son bouton Generate et sa colonne de réglages
   const CTX = { t2i: { k: 't2i' }, i2i: { k: 'i2i' } };
+  const EDIT = { k: 't2i', action: () => C.editorDraw() };
   const els = {};
   let root = null;
   const RAIL = [['txt2img', 'txt2img', 'file-plus'], ['img2img', 'img2img', 'image'], ['extras', 'Extras', 'upscale'], ['pnginfo', 'PNG Info', 'info'],
@@ -438,7 +441,12 @@
       ta.value = st[key] || '';
       const cnt = h('span.fx-tok');
       const upd = () => { const n = tokens(ta.value); cnt.textContent = n + '/' + Math.max(75, Math.ceil(n / 75) * 75); };
-      ta.addEventListener('input', () => { st[key] = ta.value; upd(); save(); if (key === 'prompt') { trNote(c); markLoras(c); renderChips(c); } });
+      ta.addEventListener('input', () => {
+        st[key] = ta.value; upd(); save();
+        if (key === 'prompt') { trNote(c); markLoras(c); renderChips(c); }
+        for (const peer of [CTX.t2i, EDIT]) if (peer !== c && peer.k === c.k && peer.syncPrompt) peer.syncPrompt();
+        renderGenButtons();
+      });
       ta.addEventListener('keydown', e => {
         if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
         else if (e.key === 'Escape') interrupt();
@@ -449,13 +457,20 @@
     };
     const P = area('prompt', 'Décrivez l’image souhaitée', 3), Q = area('negative_prompt', 'Éléments à éviter (invite négative)', compact ? 2 : 3);
     c.promptTa = P.ta; c.negTa = Q.ta;
+    c.syncPrompt = () => {
+      P.ta.value = st.prompt; Q.ta.value = st.negative_prompt;
+      for (const ta of [P.ta, Q.ta]) { const n = tokens(ta.value); ta.parentElement.querySelector('.fx-tok').textContent = n + '/' + Math.max(75, Math.ceil(n / 75) * 75); }
+      trNote(c); renderChips(c); markLoras(c);
+    };
     c.trNote = h('div.fx-trnote'); c.chips = h('div.fx-lchips'); c.genbox = h('div.fx-genbox');
     renderGenButtons(); trNote(c); renderChips(c);
     const tools = h('div.fx-ptools',
-      ebtn('↙️', 'Lire les paramètres collés dans l\'invite (texte d\'une image de Forge), ou ceux de la dernière génération si l\'invite est vide', () => readParams(c.k)),
+      ebtn('↙️', 'Lire les paramètres collés dans l\'invite (texte d\'une image de Forge), ou ceux de la dernière génération si l\'invite est vide', () => { readParams(c.k); if (c === EDIT) renderEditorDraw(); }),
       ebtn('🗑️', 'Effacer l\'invite et l\'invite négative', () => { for (const t of [P.ta, Q.ta]) { t.value = ''; t.dispatchEvent(new Event('input')); } }),
       ebtn('📋', 'Appliquer les styles choisis à l\'invite', () => applyStyles(c)));
-    if (compact) return h('div.fx-toprow.fx-compact', P.box, c.chips, Q.box, c.trNote, c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k)));
+    if (compact) return h('div.fx-toprow.fx-compact', P.box, c.chips,
+      c === EDIT ? h('details.edraw-details', h('summary', { text: 'Éléments à éviter' }), Q.box) : Q.box,
+      c.trNote, c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k)));
     return h('div.fx-toprow', h('div.fx-prompts', P.box, c.chips, Q.box, c.trNote), h('div.fx-side', c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k))));
   }
   function trNote(c) {
@@ -530,10 +545,10 @@
     const merge1 = (txt, add) => !add ? txt : add.includes('{prompt}') ? add.replace('{prompt}', txt) : [txt, add].filter(Boolean).join(', ');
     for (const s of list) { st.prompt = merge1(st.prompt, s.prompt); st.negative_prompt = merge1(st.negative_prompt, s.negative); }
     st.styles = []; save();
-    render();
+    if (c === EDIT) renderEditorDraw(); else render();
   }
   function renderGenButtons() {
-    for (const c of [CTX.t2i, CTX.i2i]) {
+    for (const c of [CTX.t2i, CTX.i2i, EDIT]) {
       const g = c.genbox; if (!g) continue;
       if (BUSY || PREPARING) {
         const stopping = BUSY ? BUSY.stopping : PREPARING.canceled;
@@ -541,7 +556,8 @@
         const s = h('button.fx-skip', { text: 'Passer l’image', title: 'Passer à l\'image suivante du lot (Alt+Entrée)' }); s.addEventListener('click', skip);
         g.replaceChildren(...(BUSY ? [i, s] : [i]));
       } else {
-        const b = h('button.fx-generate', { text: 'Générer', title: 'Générer (Ctrl+Entrée)' }); b.addEventListener('click', () => generate(c.k));
+        const d = D(), unavailable = c === EDIT && (!d || !FX.t2i.prompt.trim() || (FX.editor.target === 'selection' && !d.selection.bounds));
+        const b = h('button.fx-generate', { text: c === EDIT ? 'Ajouter le dessin' : 'Générer', title: 'Générer (Ctrl+Entrée)', disabled: unavailable }); b.addEventListener('click', () => c.action ? c.action() : generate(c.k));
         g.replaceChildren(b);
       }
     }
@@ -1083,18 +1099,20 @@
   function outButtons(key, it) {
     const sub = key === 'i2i' ? 'img2img-images' : key === 'ex' ? 'extras-images' : 'txt2img-images';
     const items = OUT[key].items;
-    return h('div.fx-outbtns',
-      ebtn('📂', key === 'ex' ? 'Ouvrir le dossier des images (output\\kanevas)' : 'Ouvrir le dossier des images (output\\' + sub + ' de Forge)', () => key === 'ex' ? N.openOutputs() : N.openForgeOutput(sub)),
-      ebtn('💾', 'Enregistrer cette image sous…', () => saveItem(it)),
-      ebtn('🗃️', 'Enregistrer toutes ces images dans un dossier…', () => saveAll(items)),
-      tbtn('Envoyer vers Img2Img', () => sendTo('img2img', it), '', 'Utiliser cette image comme source pour une nouvelle transformation'),
-      tbtn('Envoyer vers Inpaint', () => sendTo('inpaint', it), '', 'Retoucher une zone de cette image dans le Studio IA'),
-      key !== 'ex' ? tbtn('Agrandir dans Extras', () => sendTo('extras', it)) : null,
-      key === 't2i' ? ebtn('✨', 'Agrandir cette image avec le hires fix (réglages de « Hires. fix »)', () => upscaleHires(it)) : null,
-      key === 'i2i' ? tbtn('Agrandir avec Hires', () => it && C.sendToStudioItem(it)) : null,
-      h('span.fx-sep'),
-      tbtn('Ouvrir le résultat dans l’Édition', () => it && sendTo('edit', it), '', 'Créer un nouveau document avec ce résultat'),
-      tbtn('Ajouter en calque', () => it && addAsLayer(it), '', 'Au document ouvert dans l\'Édition'));
+    const action = (label, fn, { enabled = !!it, primary = false, tip = '' } = {}) => { const b = tbtn(label, fn, primary ? '.primary' : '', tip); b.disabled = !enabled; return b; };
+    const group = (id, label, ...buttons) => h('div.fx-actiongroup', { 'data-group': id }, h('span.fx-actionlabel', { text: label }), h('div.fx-actionbuttons', ...buttons.filter(Boolean)));
+    return h('div.fx-output-actions',
+      group('edit', 'Utiliser dans l’Édition',
+        action('Ouvrir le résultat dans l’Édition', () => sendTo('edit', it), { primary: true, tip: 'Créer un nouveau document avec ce résultat' }),
+        action('Ajouter en calque', () => addAsLayer(it), { enabled: !!it && !!D(), tip: D() ? 'Ajouter au document « ' + D().name + ' »' : 'Ouvrez d’abord un document' })),
+      group('transform', 'Transformer',
+        action('Envoyer vers Img2Img', () => sendTo('img2img', it)), action('Envoyer vers Inpaint', () => sendTo('inpaint', it))),
+      key !== 'ex' ? group('upscale', 'Agrandir',
+        action('Agrandir dans Extras', () => sendTo('extras', it)),
+        key === 't2i' ? action('Agrandir avec Hires', () => upscaleHires(it), { tip: 'Agrandir cette image avec le hires fix (réglages de « Hires. fix »)' }) : action('Agrandir avec Hires', () => C.sendToStudioItem(it))) : null,
+      group('files', 'Fichiers',
+        action('Enregistrer…', () => saveItem(it)), action('Tout enregistrer…', () => saveAll(items), { enabled: items.length > 0 }),
+        action('Dossier des images', () => key === 'ex' ? N.openOutputs() : N.openForgeOutput(sub), { enabled: !!N, tip: key === 'ex' ? 'Ouvrir output\\kanevas' : 'Ouvrir output\\' + sub })));
   }
   C.sendToStudioItem = async it => {
     const bytes = it.bytes || await pngBytes(it.canvas);
@@ -1126,6 +1144,7 @@
     if (tickBusy || !BUSY) return; tickBusy = true;
     try {
       const r = await N.forgeProgress(url(), FX.livePreview !== false);
+      if (r && r.ok && BUSY && BUSY.k === 'edit' && editorStatus) editorStatus.textContent = 'Génération du dessin : ' + Math.round((r.progress || 0) * 100) + ' %';
       if (r && r.ok && BUSY && els.progTxt) {
         const p = Math.max(0, Math.min(1, r.progress || 0));
         els.progBar.style.width = Math.round(p * 100) + '%';
@@ -1134,7 +1153,7 @@
       }
     } catch { /* rien */ } finally { tickBusy = false; }
   }
-  const refreshBusy = k => { renderGenButtons(); renderExGen(); if (k === 't2i') renderOut(); else if (k === 'i2i') renderStrip(); else if (k === 'ex') renderExOut(); };
+  const refreshBusy = k => { renderGenButtons(); renderExGen(); refreshEditorDraw(); if (k === 't2i') renderOut(); else if (k === 'i2i') renderStrip(); else if (k === 'ex') renderExOut(); };
   async function runForge(k, call) {
     BUSY = { k, t0: performance.now() };
     refreshBusy(k);
@@ -1149,12 +1168,13 @@
     }
   }
   const interrupt = () => {
+    if (PREPARING) PREPARING.canceled = true;
     if (BUSY) {
       if (BUSY.stopping) return;
       BUSY.stopping = true;
       Promise.resolve(N.forgeInterrupt(url())).catch(e => KS.toast('Interruption impossible : ' + e.message, 'err'));
     } else if (PREPARING) PREPARING.canceled = true;
-    renderGenButtons(); renderExGen();
+    renderGenButtons(); renderExGen(); refreshEditorDraw();
   };
   const skip = () => { if (BUSY) N.forgeSkip(url()); };
   let warnedFr = false;
@@ -1473,6 +1493,92 @@
     galleryRoot.append(head, grid);
   }
   KS.panels.register('gallery', { title: 'Galerie', build(el) { galleryRoot = h('div.ga'); el.appendChild(galleryRoot); renderGallery(); } });
+  /* ---------------------------------------------------------------- dessin IA optionnel dans l'Édition */
+  let editorRoot = null, editorStatus = null, editorModel = null;
+  function refreshEditorDraw() {
+    if (!editorRoot) return;
+    const d = D(), active = BUSY || PREPARING;
+    if (editorModel) { editorModel.textContent = cat ? 'Modèle : ' + (norm(cat.current.model) || 'modèle actif de Forge') : 'Modèle et réglages du Studio IA.'; editorModel.title = editorModel.textContent; }
+    if (editorStatus) editorStatus.textContent = active
+      ? (active.stopping || active.canceled ? 'Interruption…' : active.k === 'edit' ? 'Génération du dessin…' : 'Une génération est en cours dans le Studio.')
+      : !d ? 'Ouvrez un document pour ajouter un dessin.'
+      : FX.editor.target === 'selection' ? (d.selection.bounds ? 'Le dessin sera ajouté dans la sélection, avec un masque modifiable.' : 'Sélectionnez la zone à dessiner avec le lasso ou le rectangle de sélection.')
+      : 'Le dessin sera ajouté sur un nouveau calque aux dimensions du document.';
+    renderGenButtons();
+  }
+  function renderEditorDraw() {
+    if (!editorRoot) return;
+    const scroll = editorRoot.scrollTop;
+    EDIT.left = h('div.fx-left');
+    const loras = h('details.edraw-details', { open: FX.editor.loraOpen }, h('summary', { text: 'Choisir les LoRA' }), EDIT.left);
+    loras.addEventListener('toggle', () => { FX.editor.loraOpen = loras.open; save(); });
+    EDIT.left.replaceChildren(cat ? loraTab(EDIT) : h('div.fx-info', { text: 'Démarrez le moteur pour afficher les mêmes LoRA que dans le Studio.' }),
+      ...(!cat ? [tbtn('Charger les LoRA', () => ensureCat())] : []));
+    editorStatus = h('div.edraw-status', { role: 'status', 'aria-live': 'polite' });
+    editorModel = h('div.fx-info.edraw-model');
+    editorRoot.replaceChildren(
+      h('div.fx-info', { text: 'Réglages partagés avec txt2img.' }), editorModel,
+      select('Ajouter le dessin…', [['selection', 'Dans la sélection'], ['layer', 'Sur un nouveau calque']], FX.editor, 'target', '', refreshEditorDraw),
+      editorStatus, promptRow(EDIT, { compact: true }),
+      h('details.edraw-details', h('summary', { text: 'Force et variantes' }),
+        slider('Force de transformation de la zone', FX.editor, 'strength', 0, 1, 0.01, 'Dans la sélection : une force élevée permet d’ajouter un nouvel élément.'),
+        slider('Variantes', FX.editor, 'variants', 1, 4, 1)), loras,
+      tbtn('Réglages complets dans le Studio', () => C.openStudioTab('txt2img'), '.sm'));
+    refreshEditorDraw(); editorRoot.scrollTop = scroll;
+  }
+  KS.panels.register('aidraw', {
+    title: 'Dessin IA',
+    fill: true,
+    build(el) {
+      editorRoot = h('div.fx.edraw'); el.append(editorRoot);
+      editorRoot.addEventListener('keydown', e => { if (e.target.matches('input, textarea, select')) e.stopPropagation(); });
+      renderEditorDraw();
+    },
+    show() { renderEditorDraw(); },
+  });
+  C.openEditorDraw = async () => { await C.toggleStudio(false); KS.panels.focus('aidraw'); };
+  C.editorDraw = async () => {
+    if (BUSY || PREPARING) return interrupt();
+    const d = D(), mode = FX.editor.target, st = clone(FX.t2i), options = clone(FX.editor);
+    if (!d) return KS.toast('Ouvrez un document pour ajouter un dessin.', 'info');
+    if (!st.prompt.trim()) return KS.toast('Décrivez le dessin à ajouter.', 'info');
+    if (mode === 'selection' && !d.selection.bounds) return KS.toast('Sélectionnez d’abord la zone à dessiner.', 'info');
+    const width = d.width, height = d.height, alpha = mode === 'selection' ? d.selection.snapshot() : null;
+    const initial = alpha ? U.copyCanvas(d.composite()) : null;
+    const prep = PREPARING = { k: 'edit', canceled: false }; refreshEditorDraw();
+    try {
+      if (await trainingRuns() || prep.canceled) return;
+      if (!(await ensureCat()) || prep.canceled) return;
+      const p = await payloadFor('t2i', { ...st, enable_hr: false, script: 'None', n_iter: 1, batch_size: U.clamp(+options.variants || 1, 1, 4) });
+      let initBytes = null, maskBytes = null;
+      if (alpha) {
+        Object.assign(p, { denoising_strength: +options.strength, resize_mode: 0, mask_blur: 4,
+          inpainting_mask_invert: 0, inpainting_fill: 1, inpaint_full_res: 1, inpaint_full_res_padding: 32 });
+        initBytes = await pngBytes(initial); maskBytes = await pngBytes(maskCanvas(alpha));
+      } else { const size = fitDoc(d); p.width = size.w; p.height = size.h; }
+      if (prep.canceled) return;
+      const response = await runForge('edit', () => alpha ? N.forgeImg2img(url(), p, initBytes, maskBytes) : N.forgeTxt2img(url(), p));
+      if (prep.canceled) return;
+      if (!response.ok) throw new Error(response.error);
+      const items = await toItems(response, alpha ? 'img2img' : 'txt2img', p);
+      try {
+        const images = items.filter(it => !it.grid);
+        if (!images.length) throw new Error('Forge n’a renvoyé aucun dessin.');
+        const params = snapParams(st);
+        for (const it of images) { it.params = params; const seed = /\bSeed: (\d+)/.exec(it.info || ''); if (seed) it.seed = +seed[1]; }
+        pushGallery(images);
+        if (!KS.state.docs.includes(d) || d.width !== width || d.height !== height) return KS.toast('Le document a été fermé ou redimensionné. Le dessin reste dans la Galerie.', 'info', 5000);
+        const variants = images.map(it => it.canvas.width === width && it.canvas.height === height ? it.canvas : scaled(it.canvas, width, height));
+        G.addGenLayer(d, { variants, rect: { x: 0, y: 0, w: width, h: height }, infos: images.map(it => it.info) }, alpha,
+          { name: 'Dessin IA : ' + st.prompt.replace(/<[^>]+>/g, '').trim().slice(0, 32), hist: 'Ajouter un dessin IA', prompt: st.prompt, noMask: !alpha, icon: 'sparkles' });
+        d.genParams = params;
+        KS.toast('Dessin ajouté sur un nouveau calque.', 'ok', 2000);
+      } finally { releaseItems({ items }); }
+    } catch (e) { if (!prep.canceled) KS.toast('Dessin impossible : ' + e.message, 'err', 6000); }
+    finally { if (PREPARING === prep) PREPARING = null; refreshEditorDraw(); renderGenButtons(); }
+  };
+  for (const ev of ['doc', 'selection']) KS.on(ev, refreshEditorDraw);
+  KS.on('studio', on => { if (!on) renderEditorDraw(); });
   KS.genPanel = { render, reload: loadCat, mount() {}, unmount() {} };
   C.openStudioTab = async tab => { FX.tab = tab; save(); await C.toggleStudio(true); render(); };
   C.openGenPanel = () => D() && !SD.on ? C.sendToStudio('img2img') : (async () => { FX.tab = 'img2img'; save(); await C.toggleStudio(true); render(); })();
@@ -1560,15 +1666,17 @@
   // l'état du moteur est relu toutes les 15 s : seuls le voyant et la colonne bougent (jamais l'invite en cours de frappe)
   KS.on('engine', E => {
     if (SD.on) renderTop();
+    refreshEditorDraw();
     if (E.ready() && !cat && !loading && SD.on) loadCat(); else if (!cat) renderCtx(CTX.i2i);
   });
   const onDoc = U.debounce(() => { if (SD.on && FX.tab === 'img2img') { renderModeTools(); if (FX.i2i.autoSize) renderCtx(CTX.i2i); } }, 150);
   for (const ev of ['doc', 'selection']) KS.on(ev, onDoc);
   document.addEventListener('keydown', e => {
-    if (!SD.on || KS.modalOpen() || e.isComposing) return;
+    const inEditor = !SD.on && KS.panels.isVisible('aidraw') && (editorRoot && editorRoot.contains(e.target) || !e.target.matches('input, textarea, select, [contenteditable="true"]'));
+    if ((!SD.on && !inEditor) || KS.modalOpen() || e.isComposing) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.altKey && !e.shiftKey) {
       e.preventDefault(); e.stopImmediatePropagation();
-      if (!e.repeat) C.studioGenerate();
+      if (!e.repeat) inEditor ? C.editorDraw() : C.studioGenerate();
     } else if ((BUSY || PREPARING) && e.key === 'Escape' && !e.defaultPrevented) interrupt();
   }, true);
 })();
