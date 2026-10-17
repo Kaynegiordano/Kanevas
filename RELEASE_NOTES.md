@@ -1,13 +1,11 @@
-Kane App / Kanevas 1.9.0 — Copies des moteurs et import Lora isolé
+Kane App / Kanevas 1.9.1 — Migration définitive et plein écran Studio
 
-- Correction de l’import Lora : déposer ou choisir plusieurs images les ajoute seulement au projet d’entraînement. Les dépôts du Studio ne remontent plus dans Edition.
-- Préférences > Applications intégrées > Migration vers Kanevas : copie des moteurs Studio, ComfyUI, Animation et sd-scripts, environnements Python, extensions, nœuds et données. Réparation des chemins et lanceurs dans les copies, comparaisons SHA256, tests Python et bascule contrôlée.
-- Montage utilise également un FFmpeg copié, vérifié et accompagné de sa licence. Les services intégrés peuvent réutiliser ce binaire.
-- Après activation, les moteurs et l’atelier Lora sont pilotés depuis les copies Kanevas. Une ancienne instance sur le même port est signalée au lieu d’être reprise implicitement. Les moteurs doivent être arrêtés pour la bascule.
-- Retour à la configuration précédente disponible. Les modèles communs, caches Hugging Face et Python Windows de base restent partagés. Les copies sont rangées dans KanevasData, séparément de l’installateur et du dépôt Git.
+- Double-clic sur une image du Studio : aperçu plein écran, fermeture par Échap ou clic autour. Le transfert vers Édition reste disponible par son bouton.
+- Montage utilise le FFmpeg géré par Kanevas sans dépendre de l’application KaneClip installée.
+- Après retrait officiel des anciennes installations, le retour aux chemins supprimés est bloqué et désactivé dans les réglages.
+- Kane OS : Studio IA, Animation, Animation Vidéo, LoRA et Montage regroupés sous Kane App ; anciens démarrages et canaux de mise à jour séparés désactivés après consolidation.
+- Retrait des quatre anciens moteurs uniquement après validation des usages et audit final. Modèles, sorties, caches et Python partagés conservés. Les jonctions sont retirées sans supprimer leur cible.
 
-Aucune installation source n’est supprimée. Le rapport garde deletionAllowed à false, même après activation : les entraînements complets, workflows vidéo et rendus sur les projets personnels doivent encore être validés avant tout retrait de Forge, ComfyUI, Animation ou KaneClip.
+Validation : parcours Electron Studio et suite intégrée, double-clic sans nouveau document, activation et retour protégé, vrai processus principal utilisant les projets LoRA et FFmpeg migrés ; catalogue et commandes du lanceur après consolidation.
 
-Validation : tests Electron de l’import Lora et de l’interface de migration ; tests de copie, réparation des chemins, intégrité, corruption détectée, verrou et restauration des réglages. Contrôles réels : génération txt2img et img2img, workflow image ComfyUI avec nœuds personnalisés chargés, lecture des projets Animation et LoRA, encodage H.264 avec le FFmpeg copié. Les résultats sont consignés dans KanevasData/validation et dans le rapport local. Ils ne constituent pas une validation de tous les modèles, extensions et projets personnels.
-
-Les installateurs et le canal de mise à jour restent nommés Kanevas.
+Les installateurs et le canal de mise à jour restent nommés Kanevas. Les moteurs sous-jacents et leurs licences restent conservés dans les données de Kane App.

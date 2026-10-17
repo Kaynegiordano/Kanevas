@@ -41,7 +41,7 @@ async function scenario() {
   const click = label => { const b = [...document.querySelectorAll('.modal button')].find(b => b.textContent === label); if (!b) throw new Error('Bouton modal absent : ' + label); b.click(); };
   await KS.suite.ready; await KS.suite.home();
   await KS.dialogs.runtimeMigration();
-  check(document.querySelector('.modal').textContent.includes('Aucune installation source') && ![...document.querySelectorAll('.modal button')].some(b=>/Supprimer/.test(b.textContent)), 'La migration expose ses étapes et ne propose aucune suppression des sources');
+  check(document.querySelector('.modal').textContent.includes('opération distincte') && ![...document.querySelectorAll('.modal button')].some(b=>/Supprimer/.test(b.textContent)), 'La migration expose ses étapes et réserve le retrait des sources à une opération distincte');
   check([...document.querySelectorAll('.modal button')].find(b=>b.textContent==='Activer les copies vérifiées').disabled, 'La bascule reste indisponible sans copie vérifiée et testée');
   click('Fermer');
 

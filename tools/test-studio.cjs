@@ -95,7 +95,12 @@ async function scenario() {
   assert(zoomedMedia.style.transform.includes('translate(35px, 20px)'), 'Glisser déplace l’image dans son aperçu');
   await click('Image entière', document.querySelector('.fx-view'));
   assert(+outputZoom.dataset.scale === oldScale && zoomedMedia.style.transform.includes('translate(0px, 0px)'), 'Image entière réinitialise le zoom et le déplacement du cadre');
-  document.querySelector('.fx-view .iv-scale').click();
+    const docsBeforePreview = KS.state.docs.length;
+    zoomedMedia.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+    assert(KS.state.docs.length === docsBeforePreview, 'Le double-clic affiche le résultat en plein écran sans ouvrir un document dans l’Édition');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.querySelector('.fx-view .iv-scale').click();
   await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
   assert(KS.modalOpen() && document.querySelector('.iv-lightbox img').src === zoomedMedia.src, 'Cliquer sur la barre au-dessus ouvre la même image en plein écran');
   document.querySelector('.iv-fullscreen .iv-viewport').click();

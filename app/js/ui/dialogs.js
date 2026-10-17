@@ -595,14 +595,15 @@
       buttons.verify.disabled = value.running || !copied;
       buttons.probe.disabled = value.running || !copied || !value.report?.integrityCheckedAt;
       buttons.activate.disabled = value.running || value.active || !tested;
-      buttons.rollback.disabled = value.running || !value.active;
+      buttons.rollback.disabled = value.running || !value.active || !!value.report?.cleanup?.startedAt;
+      if (value.report?.cleanup?.startedAt) status.textContent = value.error || 'Migration définitive : les moteurs et projets sont gérés par Kane App. Les anciennes installations sont retirées.';
     };
     const body = h('div.form-col', { style: { gap: '12px' } },
       h('p', { text: 'Les moteurs, extensions, environnements Python et projets sont copiés dans les données de Kanevas. Les modèles communs restent partagés dans leur dossier actuel.' }),
       status, rows,
       h('div.form-row', action('copy', '1. Copier les moteurs'), action('verify', '2. Vérifier les fichiers'), action('probe', '3. Tester les environnements')),
       h('div.form-row', action('activate', 'Activer les copies vérifiées'), action('rollback', 'Revenir aux installations précédentes')),
-      h('p.note', { text: 'Aucune installation source n’est supprimée. Les générations, entraînements, workflows et animations sur vos projets restent à valider avant tout retrait des anciens moteurs. Arrêtez les moteurs avant de basculer.' }));
+      h('p.note', { text: 'Le retrait des anciennes installations est une opération distincte, après validation de vos usages et vérification des données. Après ce retrait, les moteurs restent gérés par Kane App et le retour aux anciennes installations est désactivé.' }));
     KS.modal({ title: 'Migration des applications vers Kanevas', body, width: 760, buttons: [{ label: 'Fermer', primary: true }], onClose: () => { migrationView = null; } });
     migrationView = update; update(await N.runtimeMigrationState());
   };

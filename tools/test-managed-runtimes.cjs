@@ -14,6 +14,7 @@ for (const [id, entry] of Object.entries({ studio: 'launch.py', comfyui: 'main.p
   const manifest = path.join(destination, id + '-files.jsonl');
   fs.writeFileSync(manifest, [entry,'venv/Scripts/python.exe','venv/pyvenv.cfg'].map(name=>JSON.stringify({path:name,sha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(directory,name))).digest('hex')})).join('\n'));
   report.components[id] = { directory, python, manifest, source:path.join(report.source,id), phase: 'probed' };
+  fs.mkdirSync(report.components[id].source, { recursive: true });
 }
 const media = path.join(destination,'bin'); fs.mkdirSync(media); const ffmpeg = path.join(media,'ffmpeg.exe'); fs.writeFileSync(ffmpeg,'fixture');
 report.media = { phase:'probed',directory:media,ffmpeg,files:[{name:'ffmpeg.exe',sha256:crypto.createHash('sha256').update('fixture').digest('hex')}] };
@@ -37,4 +38,9 @@ assert.throws(() => config.activate(reportFile), /Python extérieur/);
 report.components.training.python = path.join(report.components.training.directory,'venv/Scripts/python.exe'); save();
 fs.writeFileSync(path.join(report.components.studio.directory,'launch.py'),'changed');
 assert.throws(() => config.activate(reportFile), /modifié/);
+fs.writeFileSync(path.join(report.components.studio.directory,'launch.py'),'# fixture');
+report.cleanup = { startedAt: Date.now(), completedAt: Date.now() }; report.sourcesPreserved = false; save();
+assert(config.activate(reportFile).active);
+assert.throws(() => config.rollback(), /retirées/);
+assert(config.read().active, 'Le retrait des sources interdit de restaurer une configuration obsolète');
 console.log('OK Activation après vérification et tests, confinement, retour exact à la configuration précédente, aucune suppression des copies');

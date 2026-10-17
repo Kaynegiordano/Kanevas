@@ -1,6 +1,6 @@
 # Moteurs gérés par Kanevas
 
-La migration copie les installations locales. Elle ne contient aucune commande de suppression des moteurs sources.
+La migration copie les installations locales. Le retrait officiel des anciennes installations est séparé de cette copie et n’est effectué qu’après validation de l’utilisateur et audit final des sources.
 
 ## Données et installations
 
@@ -29,9 +29,11 @@ Préférences > Applications intégrées > Migration vers Kanevas :
 
 Les contrôles Python et les API ne prouvent pas à eux seuls qu’un workflow personnel ou un entraînement complet fonctionne. Le rapport garde des validations en attente : projets Studio, entraînement LoRA, workflows vidéo et rendus Animation.
 
-`deletionAllowed` reste à `false`, y compris après activation. Aucun bouton de suppression n’est proposé. Les installations de Forge, ComfyUI, Animation et KaneClip restent conservées tant que leurs données, extensions, dépendances et usages réels ne sont pas validés. Le retrait des sources constitue une opération ultérieure distincte.
+Le bouton de copie ne supprime rien. Après validation des usages, `tools/audit-legacy-runtimes.py` compare les sources actuelles aux empreintes initiales et aux copies. Toute donnée nouvelle ou différente bloque le retrait. Dans Kane OS, `setup/finalize-kanevas.ps1` exige cet audit réussi, les copies actives et les moteurs arrêtés. Il vérifie les quatre chemins sources exacts, retire les jonctions sans suivre leur cible, puis supprime les anciens dossiers Studio/Forge, ComfyUI, Animation et sd-scripts.
 
-Le retour aux installations précédentes restaure les fichiers de configuration sauvegardés. Il conserve aussi les copies et leurs nouvelles données ; il ne synchronise pas les modifications faites depuis la bascule vers les anciens projets.
+Le rapport conserve les chemins retirés, l’autorisation et les dates. Dès le début du retrait, le lanceur présente Kane App à la place des applications séparées et désactive leurs anciens canaux de mise à jour. Les modèles, sorties, caches et Python partagés restent en place. Les dépôts de développement et données des autres applications restent indépendants de ce retrait.
+
+Avant retrait, le retour aux installations précédentes restaure les fichiers de configuration sauvegardés et conserve les copies. Après retrait, cette commande est désactivée dans l’interface et refusée dans le processus principal, pour ne pas rétablir des chemins supprimés.
 
 ## Contrôles développeur
 

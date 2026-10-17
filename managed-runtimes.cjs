@@ -9,7 +9,7 @@ module.exports = function managedRuntimes(profile) {
   function inspect(reportFile) {
     if (fs.existsSync(path.join(path.dirname(reportFile), 'migration.lock'))) throw new Error('Attendez la fin de la migration avant activation');
     const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
-    if (report.schema !== 1 || !report.sourcesPreserved || !report.integrityCheckedAt) throw new Error('La copie doit être vérifiée avant activation');
+    if (report.schema !== 1 || (!report.sourcesPreserved && !report.cleanup?.completedAt) || !report.integrityCheckedAt) throw new Error('La copie doit être vérifiée avant activation');
     const base = fs.realpathSync(path.dirname(reportFile));
     if (fs.realpathSync(report.destination) !== base) throw new Error('Destination du rapport incohérente');
     for (const [id, entry] of Object.entries(entries)) {
@@ -65,12 +65,14 @@ module.exports = function managedRuntimes(profile) {
       const previous = {};
       for (const name of ['forge-dirs.json', 'studio-runtime.json']) { const p = path.join(profile, name); previous[name] = fs.existsSync(p) ? fs.readFileSync(p).toString('base64') : null; }
       const value = { active: true, activatedAt: Date.now(), root: report.destination, report: reportFile, components: report.components,
-        models: report.models, profiles: report.profiles, source: report.source, previous, media: report.media, deletionAllowed: false };
+        models: report.models, profiles: report.profiles, source: report.source, previous, media: report.media, cleanup: report.cleanup, deletionAllowed: false };
       write(value); return value;
     },
     rollback() {
       const value = read();
       if (!value.active) return value;
+      let report = {}; try { report = JSON.parse(fs.readFileSync(value.report, 'utf8')); } catch { /* contrôle des sources ci-dessous */ }
+      if (value.cleanup?.startedAt || report.cleanup?.startedAt || Object.values(value.components || {}).some(c => !fs.existsSync(c.source))) throw new Error('Les anciennes installations ont été retirées. Kanevas conserve la gestion des moteurs intégrés.');
       for (const [name, bytes] of Object.entries(value.previous || {})) {
         if (!['forge-dirs.json', 'studio-runtime.json'].includes(name)) continue;
         const p = path.join(profile, name);

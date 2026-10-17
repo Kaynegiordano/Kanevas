@@ -1143,7 +1143,7 @@
     const o = OUT[key], it = o.items[o.sel];
     const view = h('div.fx-view');
     if (BUSY && BUSY.k === key) { const p = progressBox(); view.append(p.box, p.img); }
-    else if (it) { const im = h('img', { src: it.url, alt: '', title: 'Double-clic : ouvrir dans l\'Édition' }); im.addEventListener('dblclick', () => sendTo('edit', it)); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height }); }
+    else if (it) { const im = h('img', { src: it.url, alt: '' }); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height }); }
     else view.append(h('div.fx-ph', key === 'i2i' ? { text: 'Les résultats apparaîtront ici' } : { html: KS.icon('image') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(key); }); return t; })) : null;
     fillEl(box, key === 'i2i' ? h('div.fx-h', { text: 'Résultat' }) : null, view, thumbs, outButtons(key, it), it ? h('div.fx-outinfo', { text: (it.from ? 'Venue de l\'Édition : ' + it.from + '\n\n' : '') + (it.info || '(sans paramètres de génération)') + (o.time && !it.from ? `\n\nTime taken: ${o.time}` : '') }) : null);

@@ -13,6 +13,11 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Migration définitive et aperçu Studio (1.9.1)
+- Double-clic sur une image du Studio pour l’afficher en plein écran ; Échap ou clic autour pour fermer.
+- Retrait contrôlé des anciennes installations après validation et audit final ; Kane OS regroupe ces activités dans Kane App.
+- Après retrait, les moteurs restent gérés par Kane App et le retour aux anciens chemins est désactivé.
+
 ### Moteurs gérés par Kanevas (1.9.0)
 - L’import d’images dans **Lora** reste dans l’atelier d’entraînement. Un dépôt dans le Studio
   ne crée plus implicitement de documents dans **Edition**.

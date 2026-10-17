@@ -26,9 +26,6 @@ const MIME = {
 function setup(getWin) {
   const dataDir = path.join(app.getPath('userData'), 'kaneclip');
   fs.mkdirSync(dataDir, { recursive: true });
-  // ffmpeg : celui de KaneClip installé s'il existe (sinon winget / PATH, comme KaneClip)
-  const kcBin = process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'KaneClip', 'resources', 'bin');
-  if (kcBin && fs.existsSync(path.join(kcBin, 'ffmpeg.exe'))) process.env.PATH = kcBin + path.delimiter + (process.env.PATH || '');
   // les outils de KaneClip rangent leurs caches et modèles dans « userData » : celui de l'espace Vidéo
   const appProxy = new Proxy(app, { get: (t, k) => k === 'getPath' ? (n => n === 'userData' ? dataDir : t.getPath(n)) : (typeof t[k] === 'function' ? t[k].bind(t) : t[k]) });
   let frame = null;            // cadre de KaneClip (WebFrameMain), connu à son premier appel

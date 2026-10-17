@@ -46,7 +46,10 @@
       button('+', 'Augmenter le zoom', () => zoom(state.scale * 1.25)), button('Image entière', 'Réinitialiser le zoom et afficher toute l’image dans son cadre', () => { state.fit = true; render(); }),
       button('100 %', 'Taille réelle : un pixel de l’image par pixel d’écran', () => { state.x = state.y = 0; zoom(1); }),
       fullscreen ? button('⛶', 'Voir l’image en plein écran · cliquer autour ou Échap pour fermer', () => KS.preview.open(media, size().w, size().h)) : null);
-    if (fullscreen) { label.title = 'Voir l’image en plein écran'; label.tabIndex = 0; label.setAttribute('role', 'button');
+    if (fullscreen) {
+      media.title = 'Double-clic : voir l’image en plein écran';
+      media.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
+      label.title = 'Voir l’image en plein écran'; label.tabIndex = 0; label.setAttribute('role', 'button');
       label.addEventListener('click', e => { e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
       label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); } }); }
     controls.addEventListener('pointerdown', e => e.stopPropagation());
