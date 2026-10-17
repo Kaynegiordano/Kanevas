@@ -202,12 +202,20 @@
   /* ---------------------------------------------------------------- glisser-déposer */
   function attachDrop() {
     let depth = 0;
+    let expiry;
     const vp = KS.$('#viewport');
-    window.addEventListener('dragenter', e => { if (![...e.dataTransfer.types].includes('Files')) return; e.preventDefault(); depth++; vp.classList.add('drop-active'); });
+    const resetDrop = () => { depth = 0; clearTimeout(expiry); vp.classList.remove('drop-active'); };
+    KS.resetDrop = resetDrop;
+    const touchDrop = () => { clearTimeout(expiry); expiry = setTimeout(resetDrop, 1200); };
+    window.addEventListener('dragenter', e => { if (![...(e.dataTransfer?.types || [])].includes('Files')) return; e.preventDefault(); depth++; if (!KS.studio?.on && !KS.ws?.cur) vp.classList.add('drop-active'); touchDrop(); });
     window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) vp.classList.remove('drop-active'); });
-    window.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    window.addEventListener('dragover', e => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; touchDrop(); });
+    // Un dépôt traité par un atelier ne remonte pas jusqu’au gestionnaire global.
+    window.addEventListener('drop', resetDrop, true);
+    for (const event of ['dragend', 'blur', 'pointerdown', 'keydown']) window.addEventListener(event, resetDrop, true);
+    document.addEventListener('visibilitychange', resetDrop);
     window.addEventListener('drop', async e => {
-      e.preventDefault(); depth = 0; vp.classList.remove('drop-active');
+      e.preventDefault(); resetDrop();
       const files = [...e.dataTransfer.files];
       const d = KS.state.doc;
       const onCanvas = d && e.target.closest && e.target.closest('#viewport');

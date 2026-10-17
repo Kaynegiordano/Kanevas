@@ -10,7 +10,7 @@ const root = process.env.KANEVAS_TEST_ROOT || path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kanevas-suite-'));
 app.setPath('userData', path.join(tmp, 'profile'));
 const kc = require(path.join(root, 'kaneclip-host.cjs')); kc.registerScheme();
-let win, store, servers = [], errors = [], updates = 0;
+let win, store, servers = [], errors = [], updates = 0, gpuReleases = 0, animationState = 'libre', animationPosts = 0;
 const projects = path.join(tmp, 'animation-projects'); fs.mkdirSync(projects);
 fs.mkdirSync(path.join(tmp, 'wallpaper-engine-animator'), { recursive: true });
 fs.writeFileSync(path.join(tmp, 'wallpaper-engine-animator', 'config.json'), JSON.stringify({ projets: projects }));
@@ -125,7 +125,13 @@ app.whenReady().then(async () => {
     await listen(8780, async (req, res) => {
       if (req.url === '/api/projets') return json(res, fs.readdirSync(projects).map(dossier => ({ dossier, titre: dossier, anime: false })));
       if (req.url === '/api/forge') return json(res, { pret: false, lanceur: false });
-      if (req.url.endsWith('/etat')) return json(res, { etat: 'libre' });
+      if (req.url.endsWith('/etat')) return json(res, { etat: animationState, lignes: [], etapes: [] });
+      if (/\/(animer|super|video|sam)$/.test(req.url) && req.method === 'POST') {
+        req.resume(); animationPosts++;
+        if (req.url.endsWith('/sam')) return json(res, { masque: 'test' });
+        animationState = 'en cours'; setTimeout(() => { animationState = 'fini'; }, 250);
+        return json(res, { lance: true });
+      }
       if (req.url.includes('/image?') || req.url.endsWith('/vignette')) {
         res.setHeader('Content-Type', 'image/png'); return res.end(fs.readFileSync(path.join(projects, decodeURIComponent(req.url.split('/')[2]), 'scene.png')));
       }
@@ -147,7 +153,7 @@ app.whenReady().then(async () => {
       res.setHeader('Content-Type', 'text/html'); res.end('<html><head></head><body>Workflow de test</body></html>');
     });
     kc.setup(() => win); store = require(path.join(root, 'suite-host.cjs'))(() => win);
-    require(path.join(root, 'services.cjs'))({ getWin: () => win, root: () => tmp, engine: { forgeUrl: async () => 'http://127.0.0.1:7862', state: () => 'off', start() {} } });
+    require(path.join(root, 'services.cjs'))({ getWin: () => win, root: () => tmp, engine: { forgeUrl: async () => 'http://127.0.0.1:7862', state: () => 'off', start() {}, release: async () => { gpuReleases++; } } });
     const reply = (ch, fn) => { ipcMain.removeHandler(ch); ipcMain.handle(ch, fn); };
     reply('kc:ff-available', () => ({ path: 'test-ffmpeg' }));
     reply('kc:probe', (_e, p) => { const size = nativeImage.createFromPath(p).getSize(); return { ok: true, path: p, name: path.basename(p), kind: 'image', size: fs.statSync(p).size, video: { ...size, codec: 'png', fps: 0 } }; });
@@ -171,6 +177,23 @@ app.whenReady().then(async () => {
     await win.loadFile(path.join(root, 'app', 'index.html'));
     const result = await win.webContents.executeJavaScript('(' + scenario.toString() + ')()');
     for (const line of result.results) console.log('OK ' + line);
+    const animationFrame = win.webContents.mainFrame.frames.find(f => f.url.startsWith('http://127.0.0.1:8780/'));
+    assert.equal(await animationFrame.executeJavaScript('document.getElementById("superBtn").textContent'), 'Animation automatique');
+    const command = 'fetch("/p/Animation-test/animer", {method:"POST",body:"{}"}).then(r=>r.json())';
+    assert((await animationFrame.executeJavaScript(command)).lance);
+    assert.equal(gpuReleases, 1); assert(await win.webContents.executeJavaScript('KS.animationBusy'));
+    assert.equal(await win.webContents.executeJavaScript('KS.gen.forge(true)'), null);
+    const concurrent = await animationFrame.executeJavaScript(command);
+    assert(!concurrent.lance && animationPosts === 1 && gpuReleases === 1);
+
+    const end = Date.now() + 5000;
+    while (await win.webContents.executeJavaScript('KS.animationBusy') && Date.now() < end) await new Promise(r => setTimeout(r, 50));
+    assert.equal(gpuReleases, 2); assert.equal(animationPosts, 1);
+    await animationFrame.executeJavaScript('fetch("/p/Animation-test/sam", {method:"POST",body:"{}"}).then(r=>r.json())');
+    assert.equal(gpuReleases, 4); assert.equal(animationPosts, 2);
+    const invalid = await win.webContents.executeJavaScript('KS.native.animationRun("../outside", "animer", {})');
+    assert(!invalid.ok && animationPosts === 2);
+    console.log('OK Animation automatique, vrai pont du cadre, décharge Studio avant/après, réservation GPU et segmentation synchrone');
     const palettes = await win.webContents.executeJavaScript('(async()=>{const out={};for(const id of ["wallpaper","video","comfyui"]){const theme=KS.suite.theme(id);await KS.ws.request(id,"theme",theme);out[id]=theme.colors["--accent"];}return out;})()');
     for (const [id, url] of [['wallpaper', '127.0.0.1:8780'], ['video', '/kaneclip/app/'], ['comfyui', '127.0.0.1:8188']]) {
       const frame = win.webContents.mainFrame.frames.find(f => decodeURIComponent(f.url).replace(/\\/g, '/').includes(url));

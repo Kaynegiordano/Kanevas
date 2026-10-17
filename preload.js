@@ -148,5 +148,8 @@ contextBridge.exposeInMainWorld('ksNative', {
   suiteCall: (op, args) => ipcRenderer.invoke('suite-call', op, args),
   suitePick: () => ipcRenderer.invoke('suite-pick'),
   weaUpdate: (dossier, data) => ipcRenderer.invoke('wea-update', dossier, data),
+  animationRun: (dossier, operation, body) => ipcRenderer.invoke('animation-run', dossier, operation, body),
+  animationGPUState: () => ipcRenderer.invoke('animation-gpu-state'),
+  onAnimationGPU: fn => ipcRenderer.on('animation-gpu', (_e, state) => fn(state)),
 });
 }

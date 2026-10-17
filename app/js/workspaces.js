@@ -12,6 +12,9 @@
       help: 'Assemblez vos images et animations avec du son, des transitions et des titres.' },
   };
   const WX = KS.ws = { cur: null, el: {}, st: {}, pending: new Map(), definitions: WS };
+  const gpuState = value => { KS.animationBusy = !!value.busy; KS.emit('animation-gpu', value); if (value.error) KS.toast(value.error, 'err', 6000); };
+  N.onAnimationGPU?.(gpuState);
+  N.animationGPUState?.().then(gpuState).catch(() => {});
   let host;
   const up = s => s && ['ready', 'external'].includes(s.state);
   function build(id) {
@@ -174,13 +177,23 @@
       const b = h('button.ws-btn', { 'data-v': id, text: W.label, title: W.help });
       b.addEventListener('click', () => { if (id === 'video') KS.suite.run('Ouverture du montage', () => KS.suite.openVideo()).catch(() => {}); else go(id); }); sw.append(b);
     }
-    window.addEventListener('message', e => {
+    window.addEventListener('message', async e => {
       const [id, E] = Object.entries(WX.el).find(([, x]) => e.source === x.frame?.contentWindow) || [];
       if (!id || !e.data) return;
       const expected = id === 'comfyui' ? 'http://127.0.0.1:8188' : id === 'wallpaper' ? 'http://127.0.0.1:8780' : 'null';
       if (e.origin !== expected && !(id === 'video' && e.origin === 'file://')) return;
       const m = e.data;
-      if (m.kv === 'suite-response') {
+      if (m.kv === 'suite-native-request' && id === 'wallpaper' && m.op === 'animation-run') {
+        let result;
+        if (KS.studioApi.isBusy()) result = { ok: false, error: 'Le Studio génère encore une image. Attendez sa fin avant Animation.' };
+        else {
+          gpuState({ busy: true });
+          try { result = await N.animationRun(m.dossier, m.operation, m.body); } catch (err) { result = { ok: false, error: err.message }; }
+          if (!result.ok) { try { gpuState(await N.animationGPUState()); } catch { /* la réservation reste visible en cas de liaison perdue */ } }
+        }
+        if (!result.ok) KS.toast(result.error, 'err', 6000);
+        E.frame?.contentWindow.postMessage({ kv: 'suite-native-response', id: m.id, ...result }, expected);
+      } else if (m.kv === 'suite-response') {
         const p = WX.pending.get(m.id); if (!p || p.id !== id) return;
         clearTimeout(p.timer); WX.pending.delete(m.id); m.error ? p.reject(new Error(m.error)) : p.resolve(m.value);
       } else if (m.kv === 'suite-event') {

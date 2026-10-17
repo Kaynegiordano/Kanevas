@@ -13,6 +13,27 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Aperçus et mémoire d’Animation (1.8.2)
+- Au-dessus de chaque aperçu du Studio : **Image entière** recentre et ajuste l’image au cadre,
+  **100 %** affiche sa taille réelle. Le pourcentage et **⛶** ouvrent un aperçu plein écran,
+  fermé par un clic autour de l’image, le bouton Fermer ou Échap. Le zoom du cadre reste conservé.
+- Le remplissage conserve le prompt initial et les paramètres du document, même après un changement de variante
+  ou un renvoi de ses paramètres au Studio. Les réglages de retouche restent attachés au résultat et à son calque.
+- Correction du voile « Déposer pour importer » : remise à zéro après les dépôts capturés par un panneau,
+  fin de glissement, sortie de fenêtre et interruption du geste. Aucun texte n’est ajouté aux pixels de l’image.
+- **Animation automatique** remplace « Proposer les mouvements ». Les gestes utilisent déjà DWPose
+  (épaule, coude, poignet), avec estimation du squelette de la zone si les articulations ne sont pas disponibles.
+- Animation réserve le moteur et décharge le checkpoint du Studio avant son analyse et après sa tâche.
+  Elle ne lance la diffusion que si des fonds doivent être reconstruits. Les requêtes de génération concurrentes
+  sont refusées ; une panne réseau ne déclenche pas la décharge d’une tâche dont l’état est inconnu.
+- Lorsqu’Animation est démarrée par Kane App, un adaptateur libère SAM après segmentation et LaMa/ViTMatte
+  avant de solliciter la diffusion. Le checkpoint actif du Studio reste utilisé, puis est déchargé après le rebouchage.
+  Les scripts installés dans KaneOS sont conservés. Si le moteur Animation tournait déjà séparément,
+  **clic droit Animation > Arrêter**, puis le rouvrir dans Kane App pour appliquer aussi cet adaptateur.
+- Tests Electron des aperçus, prompts, dépôts et échanges avec Animation ; tests isolés des réservations GPU et
+  du nettoyage des modèles. Démarrage HTTP et lecture des presets vérifiés avec le vrai backend Python installé.
+  Modèles simulés pour les tests GPU : pas de mesure de VRAM récupérée ni d’évaluation des gestes sur image réelle.
+
 ### Remplissage génératif simplifié (1.8.1)
 - Dans Edition, sélectionner une zone puis **Remplissage génératif** : le même panneau **Dessin IA**
   s’ouvre depuis la barre contextuelle, les menus et le raccourci. Décrire uniquement le changement souhaité.

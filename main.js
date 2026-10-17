@@ -19,6 +19,7 @@ kcHost.registerScheme();
 
 let win = null;
 let allowClose = false;
+let animationBusy = false;
 const pending = [];          // fichiers reçus avant que la page soit prête
 
 function filesFromArgv(argv) {
@@ -51,6 +52,14 @@ if (!app.requestSingleInstanceLock()) {
         forgeUrl: async () => engine.url || (engineDirs().shareExternal && await ping('http://127.0.0.1:7860', 800) ? 'http://127.0.0.1:7860' : 'http://127.0.0.1:' + ENGINE_PORT),
         state: () => engine.state,
         start: () => engineStart(),
+        animationBusy: value => { animationBusy = value; },
+        release: async () => {
+          const base = engine.url || (engineDirs().shareExternal && await ping('http://127.0.0.1:7860', 800) ? 'http://127.0.0.1:7860' : 'http://127.0.0.1:' + ENGINE_PORT);
+          if (!(await ping(base, 1000))) return;
+          const progress = await forgeCall(base, '/sdapi/v1/progress?skip_current_image=true', null, 5000);
+          if (progress?.state?.job_count > 0 || progress?.progress > 0) throw new Error('Le Studio génère encore une image. Attendez sa fin avant Animation.');
+          await forgeCall(base, '/sdapi/v1/unload-checkpoint', {}, 60000);
+        },
       },
     });
     createWindow();
@@ -322,6 +331,7 @@ const forgeBase = url => {
   return u.origin;
 };
 async function forgeCall(base, route, body, timeout = 600000) {
+  if (animationBusy && body && /^\/sdapi\/v1\/(txt2img|img2img|extra-single-image|options|reload-checkpoint)$/.test(route)) throw new Error('Le moteur IA est réservé à Animation. Attendez la fin de sa tâche.');
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout);
   try {
     const res = await fetch(forgeBase(base) + route, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal } : { signal: ctl.signal });

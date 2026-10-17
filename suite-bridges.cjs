@@ -4,6 +4,33 @@ module.exports = function installSuiteBridge(kind) {
   window.__kanevasSuite = true;
   const send = data => window.parent.postMessage({ kv: 'suite-event', kind, ...data }, '*');
   let comfy = null, last = '', running = false;
+  if (kind === 'animation') {
+    const fetchOriginal = window.fetch.bind(window), pending = new Map();
+    window.addEventListener('message', e => {
+      if (e.source !== window.parent || e.data?.kv !== 'suite-native-response') return;
+      const entry = pending.get(e.data.id); if (!entry) return;
+      clearTimeout(entry.timer); pending.delete(e.data.id); entry.resolve(e.data);
+    });
+    window.fetch = async (input, init) => {
+      const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
+      const route = /^\/p\/([^/]+)\/(super|animer|video|sam)$/.exec(url.pathname);
+      if (url.origin !== location.origin || !route || (init?.method || input.method || 'GET').toUpperCase() !== 'POST') return fetchOriginal(input, init);
+      let body;
+      try { body = JSON.parse(init?.body || (input instanceof Request ? await input.clone().text() : '{}')); }
+      catch { return fetchOriginal(input, init); }
+      const id = crypto.randomUUID();
+      const response = await new Promise(resolve => {
+        const timer = setTimeout(() => { pending.delete(id); resolve({ ok: false, error: 'Animation ne répond pas. Vérifiez son état avant de réessayer.' }); }, 660000);
+        pending.set(id, { resolve, timer });
+        window.parent.postMessage({ kv: 'suite-native-request', op: 'animation-run', id, dossier: decodeURIComponent(route[1]), operation: route[2], body }, '*');
+      });
+      if (!response.ok) {
+        if (typeof statut === 'function') statut(response.error);
+        for (const name of ['animer', 'superBtn', 'videoBtn']) { const button = document.getElementById(name); if (button) button.disabled = false; }
+      }
+      return new Response(JSON.stringify(response.ok ? response.value : { lance: false, error: response.error }), { status: response.ok ? 200 : 409, headers: { 'Content-Type': 'application/json' } });
+    };
+  }
   async function flushAnimation() {
     if (typeof P !== 'undefined' && P && typeof enregistre === 'function') {
       if (typeof peint !== 'undefined' && peint) throw new Error('Terminez le trait de pinceau avant de changer d’image');
@@ -19,10 +46,11 @@ module.exports = function installSuiteBridge(kind) {
       let style = document.getElementById('kanevas-suite-style');
       if (!style) { style = document.createElement('style'); style.id = 'kanevas-suite-style'; document.head.appendChild(style); }
       style.textContent = '#haut .logo,#nouvBtn,#dossierBtn{display:none}body{background:var(--bg);color:var(--text);font-family:var(--ui)}#haut,#cote{background:var(--panel);border-color:var(--border)}button,input,select,textarea,.bloc,.onglets{border-radius:3px;box-shadow:none;background-image:none}button{background:var(--raised);color:var(--text)}input[type=text],select,textarea{background:var(--field)}button.magique,button.grand,button.actif{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}';
-      for (const [id, text] of [['oPeindre', '1. Zones'], ['animer', '2. Animer'], ['oApercu', '3. Aperçu'], ['videoBtn', '4. Exporter'], ['superBtn', 'Proposer les mouvements']]) {
+      for (const [id, text] of [['oPeindre', '1. Zones'], ['animer', '2. Animer'], ['oApercu', '3. Aperçu'], ['videoBtn', '4. Exporter'], ['superBtn', 'Animation automatique']]) {
         const el = document.getElementById(id); if (el) el.textContent = text;
       }
       const note = document.getElementById('zNote'); if (note?.previousElementSibling?.tagName === 'LABEL') note.previousElementSibling.textContent = 'Note de mouvement';
+      const autoTitle = document.querySelector('#fenetre h1'); if (autoTitle) autoTitle.textContent = 'Animation automatique';
     } else {
       root.style.setProperty('--comfy-menu-bg', p.colors?.['--panel'] || '');
       root.style.setProperty('--comfy-input-bg', p.colors?.['--field'] || '');

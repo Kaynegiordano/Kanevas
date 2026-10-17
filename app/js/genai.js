@@ -152,6 +152,7 @@
   // Adresse du moteur : celui que Kanevas démarre (engine.js), sinon l'adresse réglée à la main
   G.url = () => (KS.engine && KS.engine.url) || G.settings().url;
   G.forge = async (fresh = false, opts = {}) => {
+    if (KS.animationBusy) { forgeCache = { t: Date.now(), s: null, err: 'Le moteur IA est réservé à Animation.' }; return null; }
     if (!N || !N.forgeStatus) return null;
     if (!fresh && forgeCache && Date.now() - forgeCache.t < 15000) return forgeCache.s;
     if (KS.engine && !opts.noStart && !(await KS.engine.ensure())) { forgeCache = { t: Date.now(), s: null, err: KS.engine.error || 'Moteur IA arrêté' }; return null; }
@@ -267,8 +268,8 @@
     const R = res.rect;
     const L = new KS.Layer({ name: info.name, canvas: U.copyCanvas(res.variants[0]), x: R.x, y: R.y });
     if (!info.noMask) { L.mask = layerMaskFrom(alpha, R, info.feather ?? U.clamp(Math.max(R.w, R.h) * 0.006, 1.5, 10)); L.maskChanged(); }
-    L._gen = { variants: res.variants, i: 0, job: res.job || null, prompt: info.prompt || '', infos: res.infos || [] };
-    if (res.infos && res.infos[0]) doc.genInfo = res.infos[0];
+    L._gen = { variants: res.variants, i: 0, job: res.job || null, prompt: info.prompt || '', infos: res.infos || [], preserveDocumentParams: !!info.preserveDocumentParams };
+    if (!info.preserveDocumentParams && res.infos && res.infos[0]) doc.genInfo = res.infos[0];
     const at = info.index ?? C.insertIndex(doc, L);
     KS.Hist.structure(doc, info.hist || 'Remplissage génératif', () => doc.addLayer(L, at), info.icon || 'sparkles');
     KS.emit('active-layer', doc); KS.emit('gen', doc);
@@ -283,7 +284,7 @@
     L.ctx.clearRect(0, 0, v.width, v.height); L.ctx.drawImage(v, 0, 0); L.touch();
     KS.Hist.commitPixels(doc, 'Variante ' + (i + 1), tok, { x: 0, y: 0, w: v.width, h: v.height }, 'sparkles');
     g.i = i;
-    if (g.infos && g.infos[i]) doc.genInfo = g.infos[i];
+    if (!g.preserveDocumentParams && g.infos && g.infos[i]) doc.genInfo = g.infos[i];
     KS.emit('layer-pixels', doc); KS.emit('gen', doc);
   };
   G.generateMore = async (doc, L) => {

@@ -8,7 +8,18 @@
   window.addEventListener('blur', () => { space = false; });
   const detached = new MutationObserver(() => { for (const i of instances) if (!i.host.isConnected) { i.observer.disconnect(); instances.delete(i); } });
   detached.observe(document.documentElement, { subtree: true, childList: true });
-  KS.preview = { mount(host, media, { identity = media, width, height, paint = false } = {}) {
+  KS.preview = { open(media, width, height) {
+    const image = KS.h('img', { src: media.tagName === 'CANVAS' ? media.toDataURL('image/png') : media.currentSrc || media.src, alt: 'Image en plein écran' });
+    const host = KS.h('div.iv-fullscreen');
+    const previous = document.activeElement;
+    const modal = KS.modal({ title: 'Aperçu plein écran', body: host, closeOnBackdrop: true, noFoot: true,
+      onClose: () => previous?.isConnected && previous.focus() });
+    modal.back.classList.add('iv-lightbox');
+    const preview = KS.preview.mount(host, image, { width, height, fullscreen: false });
+    preview.area.addEventListener('click', e => { if (e.target === preview.area && !e.defaultPrevented) modal.close(); });
+    preview.area.focus();
+    return modal;
+  }, mount(host, media, { identity = media, width, height, paint = false, fullscreen = true } = {}) {
     const h = KS.h;
     let state = states.get(identity); if (!state) { state = { scale: 1, x: 0, y: 0, fit: true }; states.set(identity, state); }
     host.classList.add('iv-host');
@@ -32,8 +43,12 @@
       state.x = x - (x - state.x) * k; state.y = y - (y - state.y) * k; state.scale = next; state.fit = false; render();
     };
     const controls = h('div.iv-controls', button('−', 'Réduire le zoom', () => zoom(state.scale / 1.25)), label,
-      button('+', 'Augmenter le zoom', () => zoom(state.scale * 1.25)), button('Ajuster', 'Afficher l’image entière', () => { state.fit = true; render(); }),
-      button('100 %', 'Un pixel de l’image par pixel d’écran', () => { state.x = state.y = 0; zoom(1); }));
+      button('+', 'Augmenter le zoom', () => zoom(state.scale * 1.25)), button('Image entière', 'Réinitialiser le zoom et afficher toute l’image dans son cadre', () => { state.fit = true; render(); }),
+      button('100 %', 'Taille réelle : un pixel de l’image par pixel d’écran', () => { state.x = state.y = 0; zoom(1); }),
+      fullscreen ? button('⛶', 'Voir l’image en plein écran · cliquer autour ou Échap pour fermer', () => KS.preview.open(media, size().w, size().h)) : null);
+    if (fullscreen) { label.title = 'Voir l’image en plein écran'; label.tabIndex = 0; label.setAttribute('role', 'button');
+      label.addEventListener('click', e => { e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
+      label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); } }); }
     controls.addEventListener('pointerdown', e => e.stopPropagation());
     controls.addEventListener('keydown', e => e.stopPropagation());
     host.append(controls, area);

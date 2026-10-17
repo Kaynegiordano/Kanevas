@@ -560,6 +560,9 @@
   function renderGenButtons() {
     for (const c of [CTX.t2i, CTX.i2i, EDIT]) {
       const g = c.genbox; if (!g) continue;
+      if (KS.animationBusy && !BUSY && !PREPARING) {
+        g.replaceChildren(h('button.fx-generate', { text: 'Moteur utilisé par Animation', disabled: true })); continue;
+      }
       if (BUSY || PREPARING) {
         const stopping = BUSY ? BUSY.stopping : PREPARING.canceled;
         const i = h('button.fx-interrupt', { text: stopping ? 'Interruption…' : 'Interrompre', title: 'Interrompre (Ctrl+Entrée ou Échap)', disabled: stopping }); i.addEventListener('click', interrupt);
@@ -1201,6 +1204,7 @@
     return [en, tags.join(' ')].filter(Boolean).join(' ');
   }
   async function payloadFor(k, st, strictPrompt = false) {
+    if (KS.animationBusy) throw new Error('Le moteur IA est réservé à Animation. Attendez la fin de sa tâche.');
     const p = {
       prompt: await english(st.prompt, strictPrompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
       sampler_name: st.sampler_name, scheduler: st.scheduler, steps: +st.steps, width: +st.width, height: +st.height, n_iter: +st.n_iter, batch_size: +st.batch_size,
@@ -1383,6 +1387,7 @@
   }
   function renderExGen() {
     const g = els.exGen; if (!g) return;
+    if (KS.animationBusy && !BUSY && !PREPARING) { g.replaceChildren(h('button.fx-generate', { text: 'Moteur utilisé par Animation', disabled: true })); return; }
     if (BUSY || PREPARING) { const i = h('button.fx-interrupt', { text: 'Interrompre', title: 'Interrompre (Ctrl+Entrée)' }); i.addEventListener('click', interrupt); g.replaceChildren(i); return; }
     const b = h('button.fx-generate', { text: 'Agrandir', title: 'Agrandir (Ctrl+Entrée)' }); b.addEventListener('click', runExtras); g.replaceChildren(b);
   }
@@ -1516,7 +1521,7 @@
     if (!editorRoot) return;
     const d = D(), active = BUSY || PREPARING;
     if (editorModel) { editorModel.textContent = cat ? 'Modèle : ' + (norm(cat.current.model) || 'modèle actif de Forge') : 'Modèle et réglages du Studio IA.'; editorModel.title = editorModel.textContent; }
-    if (editorStatus) editorStatus.textContent = active
+    if (editorStatus) editorStatus.textContent = KS.animationBusy ? 'Le moteur IA sera disponible à la fin de la tâche Animation.' : active
       ? (active.stopping || active.canceled ? 'Interruption…' : active.k === 'edit' ? 'Génération du dessin…' : 'Une génération est en cours dans le Studio.')
       : !d ? 'Ouvrez un document pour ajouter un dessin.'
       : FX.editor.target === 'selection' ? (d.selection.bounds ? 'Le dessin sera ajouté dans la sélection, avec un masque modifiable.' : 'Sélectionnez la zone à dessiner avec le lasso ou le rectangle de sélection.')
@@ -1606,15 +1611,18 @@
         pushGallery(images);
         if (!KS.state.docs.includes(d) || d.width !== width || d.height !== height) return KS.toast('Le document a été fermé ou redimensionné. Le dessin reste dans la Galerie.', 'info', 5000);
         const variants = images.map(it => it.canvas.width === width && it.canvas.height === height ? it.canvas : scaled(it.canvas, width, height));
-        G.addGenLayer(d, { variants, rect: { x: 0, y: 0, w: width, h: height }, infos: images.map(it => it.info) }, alpha,
-          { name: 'Dessin IA : ' + st.prompt.replace(/<[^>]+>/g, '').trim().slice(0, 32), hist: 'Ajouter un dessin IA', prompt: st.prompt, noMask: !alpha, icon: 'sparkles' });
-        d.genParams = params;
+        const layer = G.addGenLayer(d, { variants, rect: { x: 0, y: 0, w: width, h: height }, infos: images.map(it => it.info) }, alpha,
+          { name: 'Dessin IA : ' + st.prompt.replace(/<[^>]+>/g, '').trim().slice(0, 32), hist: 'Ajouter un dessin IA', prompt: st.prompt, noMask: !alpha, icon: 'sparkles', preserveDocumentParams: true });
+        // La retouche appartient au calque et à la galerie. Le document garde les
+        // paramètres de sa génération initiale pour ses prochains envois au Studio.
+        if (layer?._gen) layer._gen.params = params;
         KS.toast('Dessin ajouté sur un nouveau calque.', 'ok', 2000);
       } finally { releaseItems({ items }); }
     } catch (e) { if (!prep.canceled) KS.toast('Dessin impossible : ' + e.message, 'err', 6000); }
     finally { if (PREPARING === prep) PREPARING = null; refreshEditorDraw(); renderGenButtons(); }
   };
   for (const ev of ['doc', 'selection']) KS.on(ev, refreshEditorDraw);
+  KS.on('animation-gpu', () => { renderGenButtons(); renderExGen(); refreshEditorDraw(); });
   KS.on('studio', on => { if (!on) renderEditorDraw(); });
   KS.genPanel = { render, reload: loadCat, mount() {}, unmount() {} };
   C.openStudioTab = async tab => { FX.tab = tab; save(); await C.toggleStudio(true); render(); };
@@ -1675,7 +1683,7 @@
     document.body.classList.toggle('studio', on);
     if (on) {
       mountPage(); render();
-      if (KS.engine) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && !cat) loadCat(); else if (ok) renderTop(); });
+      if (KS.engine && !KS.animationBusy) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && !cat) loadCat(); else if (ok) renderTop(); });
       else loadCat();
     } else {
       CTX.i2i.finishStroke && CTX.i2i.finishStroke();

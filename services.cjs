@@ -11,6 +11,7 @@ const { spawn, execFileSync } = require('child_process');
 const RELAY_PORT = 8601;
 
 module.exports = function services({ getWin, root, engine }) {
+  const runtime = path.join(__dirname.replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked'), 'animation-runtime.py');
   const SV = {
     comfyui: {
       name: 'ComfyUI', port: 8188, ping: '/system_stats',
@@ -22,7 +23,7 @@ module.exports = function services({ getWin, root, engine }) {
       name: 'Wallpaper Engine Animator', port: 8780, ping: '/api/projets',
       dir: () => path.join(root(), 'wallpaper-engine-animator'),
       check: d => fs.existsSync(path.join(d, 'outils', 'peintre.py')) && fs.existsSync(path.join(d, 'venv', 'Scripts', 'python.exe')),
-      cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', path.join(d, 'outils', 'peintre.py'), '--port', '8780', '--sans-navigateur']],
+      cmd: d => [path.join(d, 'venv', 'Scripts', 'python.exe'), ['-u', runtime, '--server', path.join(d, 'outils', 'peintre.py'), '--port', '8780', '--sans-navigateur']],
       env: async () => ({ WEA_FORGE_URL: await engine.forgeUrl(), WEA_LANCEUR_URL: 'http://127.0.0.1:' + RELAY_PORT }),
     },
   };
@@ -121,7 +122,7 @@ module.exports = function services({ getWin, root, engine }) {
     return status(id);
   });
   ipcMain.handle('svc-start', (_e, id) => { if (!SV[id]) throw new Error('Service inconnu'); return start(id); });
-  ipcMain.handle('svc-stop', (_e, id, explicit) => { if (!SV[id]) throw new Error('Service inconnu'); kill(id, explicit === true); return status(id); });
+  ipcMain.handle('svc-stop', async (_e, id, explicit) => { if (!SV[id]) throw new Error('Service inconnu'); kill(id, explicit === true); if (id === 'wallpaper') await gpu.stopped(); return status(id); });
   ipcMain.handle('svc-log', (_e, id) => (st[id] ? st[id].log.join('\n') : ''));
   app.on('will-quit', () => { for (const id in SV) if (st[id].ours) kill(id); if (relay) try { relay.close(); } catch { /* rien */ } });
 
@@ -130,10 +131,34 @@ module.exports = function services({ getWin, root, engine }) {
     const data = Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body));
     const r = http.request({ host: '127.0.0.1', port, path: route, method: 'POST', timeout, headers: { 'Content-Type': 'application/json', 'Content-Length': data.length, ...headers } }, x => {
       let s = ''; x.setEncoding('utf8'); x.on('data', c => { s += c; });
-      x.on('end', () => { if (x.statusCode >= 400) return rej(new Error('HTTP ' + x.statusCode + ' ' + s.slice(0, 200))); try { res(JSON.parse(s)); } catch { res(s); } });
+      x.on('end', () => { if (x.statusCode >= 400) { const error = new Error('HTTP ' + x.statusCode + ' ' + s.slice(0, 200)); error.serverResponded = true; return rej(error); } try { res(JSON.parse(s)); } catch { res(s); } });
     });
     r.on('error', rej); r.on('timeout', () => { r.destroy(); rej(new Error('Pas de réponse')); });
     r.end(data);
+  });
+  const animationStatus = async dossier => {
+    const response = await fetch('http://127.0.0.1:8780/p/' + encodeURIComponent(dossier) + '/etat', { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error('Animation HTTP ' + response.status);
+    const value = await response.json();
+    if (!['en cours', 'fini', 'erreur', 'libre'].includes(value.etat)) throw new Error('État Animation invalide');
+    return value;
+  };
+  const gpu = require('./animation-gpu.cjs')({
+    release: () => engine.release(), status: animationStatus,
+    changed: value => { engine.animationBusy?.(value.busy); const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send('animation-gpu', value); },
+  });
+  const mainOnly = event => { const w = getWin(); if (!w || event.sender !== w.webContents || event.senderFrame !== w.webContents.mainFrame) throw new Error('Commande réservée à Kane App'); };
+  ipcMain.handle('animation-gpu-state', event => { mainOnly(event); return gpu.state(); });
+  ipcMain.handle('animation-run', async (event, dossier, operation, body) => {
+    mainOnly(event);
+    try {
+      if (typeof dossier !== 'string' || !dossier || dossier.length > 240 || /[\\/\x00]/.test(dossier) || ['.', '..'].includes(dossier)) throw new Error('Projet Animation invalide');
+      if (!['super', 'animer', 'video', 'sam'].includes(operation)) throw new Error('Opération Animation inconnue');
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Paramètres Animation invalides');
+      if ((await animationStatus(dossier)).etat === 'en cours') throw new Error('Une tâche Animation est déjà en cours.');
+      const value = await gpu.run(dossier, () => post(8780, '/p/' + encodeURIComponent(dossier) + '/' + operation, body, {}, operation === 'sam' ? 600000 : 120000), { synchronous: operation === 'sam' });
+      return { ok: true, value };
+    } catch (e) { return { ok: false, error: e.message }; }
   });
   // ComfyUI : l'image va dans son dossier input (nœud « Load Image »)
   ipcMain.handle('comfy-upload', async (_e, name, data) => {

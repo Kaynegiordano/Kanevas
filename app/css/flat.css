@@ -29,6 +29,14 @@
 .iv-controls button { background:transparent; border:1px solid transparent; border-radius:3px; min-width:26px; height:25px; padding:0 7px; font-size:11px; color:var(--text-2); }
 .iv-controls button:hover { background:var(--hover); color:var(--text); }
 .iv-scale { min-width:43px; color:var(--muted); text-align:center; font:10.5px var(--mono); }
+.iv-scale[role=button] { cursor:zoom-in; padding:5px 2px; }
+.iv-controls { flex-wrap:wrap; }
+.iv-lightbox { padding:16px; background:rgba(0,0,0,.88); }
+.iv-lightbox .modal { width:100% !important; height:100%; max-width:none; max-height:none; background:transparent; border:0; box-shadow:none; }
+.iv-lightbox .modal-head { flex-shrink:0; background:var(--panel); }
+.iv-lightbox .modal-body { display:flex; flex:1; min-height:0; padding:0; overflow:hidden; }
+.iv-fullscreen.iv-host { display:flex; flex-direction:column; width:100%; height:100%; min-height:0; }
+.iv-fullscreen .iv-viewport { flex:1; height:0; min-height:0; background:transparent; }
 .iv-viewport { position:relative; width:100%; height:clamp(280px,52vh,720px); overflow:hidden; background:var(--field); touch-action:none; cursor:grab; flex-shrink:0; }
 .iv-viewport:active { cursor:grabbing; }
 .iv-viewport .iv-media { position:absolute; left:50%; top:50%; max-width:none !important; max-height:none !important; margin:0; transform-origin:center; user-select:none; -webkit-user-drag:none; object-fit:fill; }

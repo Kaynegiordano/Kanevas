@@ -81,6 +81,27 @@ async function scenario() {
   outputZoom.dispatchEvent(new PointerEvent('pointermove', { pointerId: 50, clientX: 65, clientY: 50, bubbles: true }));
   outputZoom.dispatchEvent(new PointerEvent('pointerup', { pointerId: 50, button: 0, bubbles: true }));
   assert(zoomedMedia.style.transform.includes('translate(35px, 20px)'), 'Glisser déplace l’image dans son aperçu');
+  await click('Image entière', document.querySelector('.fx-view'));
+  assert(+outputZoom.dataset.scale === oldScale && zoomedMedia.style.transform.includes('translate(0px, 0px)'), 'Image entière réinitialise le zoom et le déplacement du cadre');
+  document.querySelector('.fx-view .iv-scale').click();
+  await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+  assert(KS.modalOpen() && document.querySelector('.iv-lightbox img').src === zoomedMedia.src, 'Cliquer sur la barre au-dessus ouvre la même image en plein écran');
+  document.querySelector('.iv-fullscreen .iv-viewport').click();
+  assert(!KS.modalOpen(), 'Cliquer autour de l’image ferme le plein écran');
+  await click('⛶', document.querySelector('.fx-source'));
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert(!KS.modalOpen() && +sourceZoom.dataset.scale === 1, 'Échap ferme le plein écran sans changer le zoom de la source');
+  const dropData = new DataTransfer(); dropData.items.add(new File(['test'], 'test.png', { type: 'image/png' }));
+  await KS.cmd.toggleStudio(false);
+  window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dropData, bubbles: true, cancelable: true }));
+  assert(document.querySelector('#viewport').classList.contains('drop-active'), 'L’indicateur d’import apparaît seulement pendant un dépôt de fichier');
+  const child = document.createElement('div'); document.body.append(child);
+  child.addEventListener('drop', e => e.stopPropagation()); child.dispatchEvent(new DragEvent('drop', { dataTransfer: dropData, bubbles: true, cancelable: true })); child.remove();
+  assert(!document.querySelector('#viewport').classList.contains('drop-active'), 'Un dépôt capturé par un panneau efface aussi le voile global');
+  window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dropData, bubbles: true, cancelable: true }));
+  window.dispatchEvent(new Event('blur'));
+  assert(!document.querySelector('#viewport').classList.contains('drop-active'), 'Une sortie de fenêtre efface le faux filigrane');
+  await KS.cmd.toggleStudio(true);
   await click('Envoyer vers Img2Img');
   assert(KS.state.docs.length === 2 && KS.studio.on, 'Reprendre un résultat ne crée pas de document dans l’Édition');
   assert(KS.prefs.fx.i2i.prompt === 'original <lora:test:0.7>' && KS.prefs.fx.i2i.seed === -1, 'L’invite suit le résultat et la graine reste aléatoire');
@@ -241,6 +262,7 @@ async function scenario() {
   KS.prefs.fx.t2i.prompt = 'golden star <lora:test:0.6>'; KS.prefs.fx.t2i.negative_prompt = 'noise';
   KS.prefs.fx.t2i.styles = ['Shared style']; KS.prefs.fx.t2i.sampler_name = 'Euler'; KS.prefs.fx.t2i.scheduler = 'Automatic'; KS.prefs.fx.t2i.steps = 19; KS.prefs.fx.t2i.cfg_scale = 5;
   KS.prefs.fx.t2i.ad.enabled = true; KS.prefs.fx.t2i.ad.units[0].ad_prompt = 'a woman';
+  drawDoc.genParams = { prompt: 'initial landscape', styles: [] }; drawDoc.genInfo = 'initial landscape\nSteps: 19';
   const beforePanel = window.calls.length + window.txtCalls.length;
   await KS.cmd.openEditorDraw();
   await wait(() => drawDoc.view.init && KS.view.w > 0);
@@ -258,10 +280,18 @@ async function scenario() {
   assert(request.payload.prompt === 'a small wooden bridge <lora:test:0.6>' && request.payload.styles[0] === 'Shared style' && request.payload.sampler_name === 'Euler' && request.payload.steps === 19 && request.payload.cfg_scale === 5 && request.payload.negative_prompt === 'noise' && request.url === KS.gen.url(), 'La demande remplace la scène du Studio et conserve LoRA, styles, échantillonnage et moteur');
   assert(request.payload.denoising_strength === 0.5 && request.payload.seed === -1 && request.mask && !request.payload.enable_hr && !request.payload.alwayson_scripts.ADetailer, 'Le remplissage est un inpaint à 50 %, avec masque, graine aléatoire et sans retouche automatique des visages');
   assert(KS.prefs.fx.t2i.prompt === expectedPrompt, 'La demande locale ne modifie pas la description du Studio');
+  assert(drawDoc.genParams.prompt === 'initial landscape' && drawDoc.genInfo.startsWith('initial landscape'), 'La retouche préserve le prompt initial et les métadonnées du document');
+  await KS.cmd.sendToStudio('params');
+  assert(KS.prefs.fx.t2i.prompt === 'initial landscape', 'Renvoyer les paramètres du document au Studio retrouve le prompt initial');
+  KS.prefs.fx.t2i.prompt = expectedPrompt; KS.prefs.fx.t2i.styles = ['Shared style']; await KS.cmd.openEditorDraw();
+
   const generated = drawDoc.layers.at(-1), maskData = generated.mask.canvas.getContext('2d');
   assert(drawDoc.layers.length === 2 && generated.mask && maskData.getImageData(30, 20, 1, 1).data[0] > 200 && maskData.getImageData(100, 50, 1, 1).data[0] === 0 && !KS.studio.on, 'Le dessin dans la sélection crée un calque masqué et reste dans l’Édition');
   assert(drawDoc.layers[0].ctx.getImageData(0, 0, 1, 1).data[2] === 187, 'Le dessin IA préserve les pixels du calque original');
-  KS.cmd.undo(); assert(drawDoc.layers.length === 1, 'L’ajout du dessin peut être annulé en une seule étape');
+  assert(generated._gen.params.prompt === 'a small wooden bridge <lora:test:0.6>', 'La retouche conserve ses propres paramètres sur son calque');
+  KS.gen.setVariant(drawDoc, generated, 0);
+  assert(drawDoc.genInfo.startsWith('initial landscape'), 'Changer de variante préserve aussi le prompt initial');
+  KS.cmd.undo(); KS.cmd.undo(); assert(drawDoc.layers.length === 1, 'L’ajout du dessin peut être annulé en une seule étape');
   drawDoc.selection.clear(); KS.emit('selection', drawDoc);
   assert(drawRoot.querySelector('.fx-generate').disabled, 'Le mode sélection attend une zone avant de générer');
   const destination = drawRoot.querySelector('select'); destination.value = 'layer'; destination.dispatchEvent(new Event('change'));
@@ -343,6 +373,13 @@ app.whenReady().then(async () => {
       if (overflow) throw new Error('Débordement horizontal à ' + width + ' px');
       console.log('OK Mise en page à ' + width + ' px');
       if (process.env.KANEVAS_TEST_SCREENSHOT) fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-' + width + '.png'), (await win.webContents.capturePage()).toPNG());
+      if (process.env.KANEVAS_TEST_SCREENSHOT && width === 1440) {
+        await win.webContents.executeJavaScript('document.querySelector(".fx-view .iv-scale").click()');
+        await new Promise(r => setTimeout(r, 200));
+        fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-fullscreen.png'), (await win.webContents.capturePage()).toPNG());
+        await win.webContents.executeJavaScript('document.querySelector(".iv-fullscreen .iv-viewport").click()');
+      }
+
     }
     app.exit(0);
   } catch (err) { console.error(err); app.exit(1); }
