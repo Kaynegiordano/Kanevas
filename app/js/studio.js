@@ -1,11 +1,10 @@
-// Studio IA : la page de Forge dans Kanevas. Mêmes onglets (txt2img, Extras, PNG Info, Train LoRA, ImgCut,
+// Studio IA : la page de Forge dans Kanevas. Mêmes onglets (txt2img, img2img, Extras, PNG Info, Train LoRA, ImgCut,
 // Settings), mêmes réglages, mêmes noms et même ordre que l'interface de Forge (thème Modern UI de Kane OS).
-// img2img (Sketch, Inpaint…) vit dans l'espace Édition, en panneau à côté de la toile : l'image d'entrée est le
-// document, le masque et le croquis se peignent sur les calques « Zone IA » et « Croquis IA ». Une image passe
-// du Studio à l'Édition et inversement (boutons « Send to » et « Envoyer au Studio IA »).
+// img2img, ses masques et ses croquis vivent entièrement dans le Studio. Les documents de l'Édition
+// sont copiés à l'envoi ; les résultats ne retournent dans l'éditeur que sur demande explicite.
 'use strict';
 (() => {
-  const U = KS.util, h = KS.h, ui = KS.ui, C = KS.cmd, G = KS.gen, T = KS.tools, N = KS.native;
+  const U = KS.util, h = KS.h, ui = KS.ui, C = KS.cmd, G = KS.gen, N = KS.native;
   const D = () => KS.state.doc;
   const SD = KS.studio = { on: false, gallery: [] };
   const url = () => G.url();
@@ -32,6 +31,7 @@
   const DEF = {
     v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, seeded: false, presetName: '',
     lora: { q: '', sort: 'new' },
+    painter: { size: 40, color: '#ff7a30', erase: false },
     t2i: { ...COMMON(), width: 1920, height: 1024, enable_hr: false, hr_upscaler: 'Latent', hr_second_pass_steps: 32, denoising_strength: 0.6, hr_scale: 2, hr_resize_x: 0, hr_resize_y: 0,
       hr_distilled_cfg: 3, hr_cfg: 4, hr_checkpoint_name: 'Use same checkpoint', hr_additional_modules: ['Use same choices'], hr_sampler_name: 'Use same sampler', hr_scheduler: 'Use same scheduler',
       hr_prompt: '', hr_negative_prompt: '' },
@@ -55,10 +55,11 @@
   };
   const FX = merge(DEF, KS.prefs.fx && KS.prefs.fx.v === 1 ? KS.prefs.fx : null);
   for (const k of ['t2i', 'i2i']) FX[k].ad.units = [0, 1, 2, 3].map(i => ({ ...AD_UNIT(), ...((FX[k].ad.units || [])[i] || {}) }));
-  if (FX.tab === 'img2img') FX.tab = 'txt2img';
+  for (const k of ['t2i', 'i2i']) { FX[k].seed = -1; FX[k].subseed = -1; }
   KS.prefs.fx = FX;
   const save = U.debounce(() => { KS.prefs.fx = FX; KS.prefs.save(); }, 400);
   const OUT = { t2i: { items: [], sel: 0 }, i2i: { items: [], sel: 0 }, ex: { items: [], sel: 0 }, png: null, exSrc: null, batch: [] };
+  let i2iDoc = null; // Source explicite, indépendante du document actif dans l'Édition.
   const lastSeed = {};
 
   /* ---------------------------------------------------------------- catalogue de Forge */
@@ -66,7 +67,7 @@
   const blobUrl = u8 => URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
   async function loadCat() {
     if (!N || !N.forgeCatalog || loading) return cat;
-    loading = true; renderTop(); renderDock();
+    loading = true; renderTop();
     try {
       const r = await N.forgeCatalog(url());
       if (r.ok) {
@@ -76,6 +77,7 @@
         cat = r; catErr = '';
         if (!FX.seeded && r.defaults && r.defaults.t2i) {   // première fois : les valeurs par défaut de l'interface de Forge
           for (const k of ['t2i', 'i2i']) for (const [key, v] of Object.entries(r.defaults[k] || {})) {
+            if (key === 'seed' || key === 'subseed') continue;
             if (v == null || v === '' || ((key === 'width' || key === 'height') && !+v)) continue;
             FX[k][key] = typeof DEF[k][key] === 'number' ? +v : v;
           }
@@ -85,7 +87,6 @@
     } catch (e) { catErr = e.message; }
     loading = false;
     if (SD.on) render();
-    renderDock();
     return cat;
   }
   async function ensureCat() {
@@ -200,12 +201,12 @@
     return row;
   }
 
-  /* ---------------------------------------------------------------- surfaces : la page du Studio (txt2img) et le panneau img2img de l'Édition */
+  /* ---------------------------------------------------------------- surfaces du Studio (txt2img et img2img) */
   // Chaque surface a son invite, son bouton Generate et sa colonne de réglages
   const CTX = { t2i: { k: 't2i' }, i2i: { k: 'i2i' } };
   const els = {};
   let root = null;
-  const RAIL = [['txt2img', 'txt2img', 'file-plus'], ['extras', 'Extras', 'upscale'], ['pnginfo', 'PNG Info', 'info'],
+  const RAIL = [['txt2img', 'txt2img', 'file-plus'], ['img2img', 'img2img', 'image'], ['extras', 'Extras', 'upscale'], ['pnginfo', 'PNG Info', 'info'],
     ['train', 'Train LoRA', 'layers'], ['imgcut', 'ImgCut', 'crop'], ['settings', 'Settings', 'settings']];
   function mountPage() {
     root = KS.$('#studio');
@@ -215,7 +216,16 @@
     Object.assign(els, { rail, top, body });
     if (!root._keys) {
       root._keys = true;
-      root.addEventListener('keydown', e => { if (e.target.matches && e.target.matches('input, textarea, select')) e.stopPropagation(); });
+      root.addEventListener('keydown', e => {
+        if (e.target.matches && e.target.matches('input, textarea, select')) { e.stopPropagation(); return; }
+        if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+          e.preventDefault(); e.stopPropagation();
+          if (FX.tab !== 'img2img' || !i2iDoc) return;
+          CTX.i2i.finishStroke && CTX.i2i.finishStroke();
+          if (e.key.toLowerCase() === 'y' || e.shiftKey) i2iDoc.history.redo(); else i2iDoc.history.undo();
+          if (CTX.i2i.paintDraw) CTX.i2i.paintDraw(); else render();
+        }
+      });
     }
   }
   function renderRail() {
@@ -226,7 +236,7 @@
       els.rail.appendChild(b);
     }
     els.rail.appendChild(h('div.spacer'));
-    const back = h('button', { title: 'Espace Édition : la toile, et img2img / Inpaint / Sketch dans le panneau de droite (F6)' }, h('span', { html: KS.icon('brush') }), h('span', { text: 'Édition' }));
+    const back = h('button', { title: 'Revenir au document dans l’Édition (F6)' }, h('span', { html: KS.icon('brush') }), h('span', { text: 'Édition' }));
     back.addEventListener('click', () => C.toggleStudio(false));
     els.rail.appendChild(back);
   }
@@ -303,10 +313,14 @@
   /* ---------------------------------------------------------------- rendu de la page */
   function render() {
     if (!SD.on || !root) return;
+    CTX.i2i.finishStroke && CTX.i2i.finishStroke();
+    CTX.i2i.finishStroke = null; CTX.i2i.paintDraw = null;
     renderRail(); renderTop();
-    CTX.t2i.left = null; CTX.t2i.genbox = null; CTX.t2i.promptTa = null; els.out = null; els.exGen = null; els.exOut = null;
+    for (const c of Object.values(CTX)) { c.left = null; c.genbox = null; c.promptTa = null; c.modes = null; }
+    els.out = null; els.i2iOut = null; els.exGen = null; els.exOut = null;
     let content;
     switch (FX.tab) {
+      case 'img2img': content = i2iTab(); break;
       case 'extras': content = extrasTab(); break;
       case 'pnginfo': content = pngTab(); break;
       case 'settings': content = settingsTab(); break;
@@ -323,26 +337,117 @@
     renderParams(); renderOut();
     return wrap;
   }
+  function i2iTab() {
+    const c = CTX.i2i;
+    c.left = h('div.fx-left'); c.modes = h('div.fx-i2ihead'); els.i2iOut = h('div.fx-out');
+    const source = h('div.fx-panel.fx-source');
+    const d = i2iDoc;
+    const paintable = d && FX.i2iMode !== 'img2img' && FX.i2iMode !== 'batch';
+    const preview = d && !paintable && sourceFor(d, false);
+    const zone = h('div.fx-dropzone', { role: 'button', tabIndex: 0, 'aria-label': 'Choisir l’image source Img2Img' },
+      paintable ? painterCanvas(d) : d ? h('img', { src: preview.toDataURL('image/png'), alt: d.name }) : h('div', { text: 'Déposez une image ou cliquez pour l’importer' }));
+    const pick = async () => {
+      if (N && N.openDialog) {
+        const files = await N.openDialog({ title: 'Image source Img2Img', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
+        if (files && files[0]) await loadI2I(files[0]);
+      } else {
+        const input = h('input', { type: 'file', accept: 'image/*' });
+        input.addEventListener('change', async () => { const f = input.files[0]; if (f) await loadI2I({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) }); });
+        input.click();
+      }
+    };
+    if (!paintable) {
+      zone.addEventListener('click', pick);
+      zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+    } else { zone.classList.add('fx-paintzone'); zone.removeAttribute('role'); zone.removeAttribute('tabindex'); }
+    dropTo(zone, loadI2I);
+    source.append(h('div.fx-h', { text: 'Image source' }), zone,
+      h('div.fx-docinfo', { text: d ? `${d.name} · ${d.width} × ${d.height}` : 'Choisissez une image ou reprenez le document de l’Édition.' }),
+      h('div.fx-outbtns', tbtn('Importer une image…', pick), tbtn('Depuis l’Édition', () => C.sendToStudio(FX.i2iMode === 'inpaint' ? 'inpaint' : 'img2img')),
+        d ? tbtn('Ouvrir la source dans l’Édition', () => toEdition({ canvas: sourceFor(d, true), name: d.name, info: d.genInfo, params: d.genParams })) : null,
+        d ? tbtn('Retirer la source', () => { i2iDoc = null; render(); }) : null), c.modes);
+    const wrap = h('div.fx-gen.fx-img2img', promptRow(c),
+      h('div.fx-cols', h('div.fx-i2i-work', source, c.left), els.i2iOut));
+    renderModeTools(); renderCtx(c); renderOut('i2i');
+    return wrap;
+  }
+  async function loadI2I(entry) {
+    try {
+      const canvas = await KS.io.canvasFromEntry(entry), chunks = await KS.png.readText(new Uint8Array(entry.data));
+      i2iDoc = itemDoc({ canvas, info: chunks.parameters || '', name: entry.name });
+      if (chunks.parameters) paramsTo('i2i', { info: chunks.parameters });
+      FX.i2i.autoSize = true; save(); render();
+    } catch (e) { KS.toast('Import impossible : ' + e.message, 'err', 5000); }
+  }
+  function painterCanvas(d) {
+    const role = ['sketch', 'inpaint_sketch'].includes(FX.i2iMode) ? 'sketch' : 'zone';
+    const k = Math.min(1, 1024 / Math.max(d.width, d.height));
+    const canvas = h('canvas.fx-painter', { width: Math.max(1, Math.round(d.width * k)), height: Math.max(1, Math.round(d.height * k)), tabIndex: 0,
+      'aria-label': role === 'zone' ? 'Peindre le masque dans le Studio IA' : 'Dessiner le croquis dans le Studio IA' });
+    const background = sourceFor(d, false), x = canvas.getContext('2d');
+    const draw = () => {
+      x.setTransform(canvas.width / d.width, 0, 0, canvas.height / d.height, 0, 0);
+      x.clearRect(0, 0, d.width, d.height); x.drawImage(background, 0, 0);
+      const sketch = roleLayer(d, 'sketch'), zone = roleLayer(d, 'zone');
+      if (sketch && sketch.visible && role === 'sketch') x.drawImage(sketch.canvas, sketch.x, sketch.y);
+      if (zone && zone.visible && role === 'zone') { x.globalAlpha = 0.4; x.drawImage(zone.canvas, zone.x, zone.y); x.globalAlpha = 1; }
+    };
+    let stroke = null;
+    const point = e => { const r = canvas.getBoundingClientRect(); return { x: U.clamp((e.clientX - r.left) * d.width / r.width, 0, d.width), y: U.clamp((e.clientY - r.top) * d.height / r.height, 0, d.height) }; };
+    const dab = p => {
+      const { layer: L, last, size, color, erase } = stroke, ctx = L.ctx;
+      ctx.save(); ctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = size; ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(last.x - L.x, last.y - L.y); ctx.lineTo(p.x - L.x, p.y - L.y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x - L.x, p.y - L.y, size / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      stroke.last = p; L.touch(); d.changed(); draw();
+    };
+    const finish = e => {
+      if (!stroke || (e && e.pointerId !== stroke.id)) return;
+      const s = stroke; stroke = null;
+      KS.Hist.commitPixels(d, role === 'zone' ? 'Peindre le masque IA' : 'Peindre le croquis IA', s.token, null, s.erase ? 'eraser' : 'brush');
+      draw();
+    };
+    canvas.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || stroke) return;
+      e.preventDefault(); e.stopPropagation(); canvas.focus();
+      const L = ensureRoleLayer(d, role); L.ensureCovers(d.rect);
+      stroke = { id: e.pointerId, layer: L, token: KS.Hist.begin(L), last: point(e), size: U.clamp(+FX.painter.size || 40, 1, 512),
+        color: role === 'zone' ? '#ff2040' : FX.painter.color, erase: FX.painter.erase };
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* événements de test sans pointeur système */ }
+      dab(point(e));
+    });
+    canvas.addEventListener('pointermove', e => { if (stroke && e.pointerId === stroke.id) { e.preventDefault(); dab(point(e)); } });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(ev, finish);
+    canvas.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+        e.preventDefault(); e.stopPropagation(); finish();
+        if (e.key.toLowerCase() === 'y' || e.shiftKey) d.history.redo(); else d.history.undo();
+        draw();
+      }
+    });
+    CTX.i2i.paintDraw = draw; CTX.i2i.finishStroke = finish;
+    draw(); return canvas;
+  }
 
   /* ---------------------------------------------------------------- invite, LoRA actifs, Generate */
   function promptRow(c, { compact = false } = {}) {
     const st = FX[c.k];
     const area = (key, label, rows) => {
-      const ta = h('textarea.fx-ta.fx-prompt', { placeholder: label + '\n(Ctrl+Enter to Generate ; Alt+Enter to Skip ; Esc to Interrupt)', spellcheck: false, rows });
+      const ta = h('textarea.fx-ta.fx-prompt', { placeholder: label + '\nCtrl+Entrée : générer / interrompre · Alt+Entrée : passer une image', spellcheck: false, rows });
       ta.value = st[key] || '';
       const cnt = h('span.fx-tok');
       const upd = () => { const n = tokens(ta.value); cnt.textContent = n + '/' + Math.max(75, Math.ceil(n / 75) * 75); };
       ta.addEventListener('input', () => { st[key] = ta.value; upd(); save(); if (key === 'prompt') { trNote(c); markLoras(c); renderChips(c); } });
       ta.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); generate(c.k); }
-        else if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
+        if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
         else if (e.key === 'Escape') interrupt();
         else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); editWeight(ta, e.key === 'ArrowUp' ? 1 : -1); }
       });
       upd();
       return { box: h('div.fx-pbox', cnt, ta), ta };
     };
-    const P = area('prompt', 'Prompt', compact ? 3 : 3), Q = area('negative_prompt', 'Negative Prompt', compact ? 2 : 3);
+    const P = area('prompt', 'Décrivez l’image souhaitée', 3), Q = area('negative_prompt', 'Éléments à éviter (invite négative)', compact ? 2 : 3);
     c.promptTa = P.ta; c.negTa = Q.ta;
     c.trNote = h('div.fx-trnote'); c.chips = h('div.fx-lchips'); c.genbox = h('div.fx-genbox');
     renderGenButtons(); trNote(c); renderChips(c);
@@ -425,17 +530,18 @@
     const merge1 = (txt, add) => !add ? txt : add.includes('{prompt}') ? add.replace('{prompt}', txt) : [txt, add].filter(Boolean).join(', ');
     for (const s of list) { st.prompt = merge1(st.prompt, s.prompt); st.negative_prompt = merge1(st.negative_prompt, s.negative); }
     st.styles = []; save();
-    if (c === CTX.i2i) renderDock(); else render();
+    render();
   }
   function renderGenButtons() {
     for (const c of [CTX.t2i, CTX.i2i]) {
       const g = c.genbox; if (!g) continue;
-      if (BUSY) {
-        const i = h('button.fx-interrupt', { text: BUSY.stopping ? 'Interrupting...' : 'Interrupt', title: 'Arrêter la génération (Échap)' }); i.addEventListener('click', interrupt);
-        const s = h('button.fx-skip', { text: 'Skip', title: 'Passer à l\'image suivante du lot (Alt+Entrée)' }); s.addEventListener('click', skip);
-        g.replaceChildren(i, s);
+      if (BUSY || PREPARING) {
+        const stopping = BUSY ? BUSY.stopping : PREPARING.canceled;
+        const i = h('button.fx-interrupt', { text: stopping ? 'Interruption…' : 'Interrompre', title: 'Interrompre (Ctrl+Entrée ou Échap)', disabled: stopping }); i.addEventListener('click', interrupt);
+        const s = h('button.fx-skip', { text: 'Passer l’image', title: 'Passer à l\'image suivante du lot (Alt+Entrée)' }); s.addEventListener('click', skip);
+        g.replaceChildren(...(BUSY ? [i, s] : [i]));
       } else {
-        const b = h('button.fx-generate', { text: 'Generate', title: 'Générer (Ctrl+Entrée)' }); b.addEventListener('click', () => generate(c.k));
+        const b = h('button.fx-generate', { text: 'Générer', title: 'Générer (Ctrl+Entrée)' }); b.addEventListener('click', () => generate(c.k));
         g.replaceChildren(b);
       }
     }
@@ -446,9 +552,9 @@
   function renderCtx(c) {
     const left = c.left; if (!left) return;
     const st = FX[c.k];
-    const scroller = c.k === 'i2i' ? left.closest('.pbody') : els.body;
+    const scroller = els.body;
     const sc = scroller ? scroller.scrollTop : 0;
-    const subs = c.k === 'i2i' ? [['generation', 'Generation'], ['lora', 'Lora']] : [['generation', 'Generation'], ['checkpoints', 'Checkpoints'], ['lora', 'Lora']];
+    const subs = [['generation', 'Generation'], ['checkpoints', 'Checkpoints'], ['lora', 'Lora']];
     const sub = subs.some(s => s[0] === st.open._sub) ? st.open._sub : 'generation';
     const bar = tabs(subs, sub, v => { st.open._sub = v; save(); renderCtx(c); });
     let content;
@@ -491,17 +597,11 @@
       h('datalist', { id }, ...names.map(n => h('option', { value: n })))), sv, del);
   }
   function seedRows(st, k) {
-    const seedField = key => {
-      const inp = h('input.fx-in', { type: 'number', value: st[key] });
-      inp.addEventListener('change', () => { const v = parseInt(inp.value, 10); st[key] = isNaN(v) ? -1 : v; inp.value = st[key]; save(); });
-      return [inp, ebtn('🎲️', 'Graine au hasard (-1)', () => { st[key] = -1; inp.value = -1; save(); }),
-        ebtn('♻️', 'Reprendre la graine de la dernière image', () => { if (lastSeed[k] == null) return KS.toast('Aucune génération encore', 'info'); st[key] = lastSeed[k]; inp.value = lastSeed[k]; save(); })];
-    };
-    const [s, d1, r1] = seedField('seed');
-    const out = [h('div.fx-seedrow', field('Seed', s), d1, r1, check('Extra', st, 'seedExtra', 'Graine de variation et redimensionnement de la graine', rp))];
+    const out = [h('div.fx-seedrow', field('Graine (seed)', h('input.fx-in', { value: 'Aléatoire à chaque génération', readOnly: true })),
+      check('Variations avancées', st, 'seedExtra', 'Réglages de variation ; la graine reste aléatoire', rp))];
+    if (lastSeed[k] != null) out.push(h('div.fx-info', { text: 'Dernière graine utilisée : ' + lastSeed[k] + ' (une nouvelle sera choisie à la prochaine génération).' }));
     if (st.seedExtra) {
-      const [v, d2, r2] = seedField('subseed');
-      out.push(h('div.fx-seedrow', field('Variation seed', v), d2, r2), slider('Variation strength', st, 'subseed_strength', 0, 1, 0.01),
+      out.push(slider('Force de variation', st, 'subseed_strength', 0, 1, 0.01),
         row2(slider('Resize seed from width', st, 'seed_resize_from_w', 0, 2048, 8), slider('Resize seed from height', st, 'seed_resize_from_h', 0, 2048, 8)));
     }
     return out;
@@ -604,7 +704,7 @@
   const INPAINT_MODES = ['inpaint', 'inpaint_sketch', 'inpaint_upload'];
   const fitDoc = d => { const k = Math.min(1, 2048 / Math.max(d.width, d.height)); return { w: r8(d.width * k), h: r8(d.height * k) }; };
   function i2iParams(st) {
-    const step = cat.resStep || 16, d = D(), inpaint = INPAINT_MODES.includes(FX.i2iMode);
+    const step = cat.resStep || 16, d = i2iDoc, inpaint = INPAINT_MODES.includes(FX.i2iMode);
     if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; }
     const out = [radio('Resize mode', [[0, 'Just Resize'], [1, 'Crop and Resize'], [2, 'Resize and Fill'], [3, 'Just Resize (latent upscale)']], st, 'resize_mode')];
     if (inpaint) out.push(
@@ -619,13 +719,13 @@
         row2(slider('Difference threshold', st.soft, 'diffThr', 0, 8, 0.25), slider('Difference contrast', st.soft, 'diffContrast', 0, 8, 0.25))], { on: [st.soft, 'enabled'] }));
     const manual = () => { st.autoSize = false; save(); };
     const swap = ebtn('⇅', 'Inverser largeur et hauteur', () => { [st.width, st.height] = [st.height, st.width]; st.autoSize = false; save(); rp(); });
-    const auto = ebtn('📐', 'Taille de l\'image (suit le document)', () => { st.autoSize = true; st.sizeTab = 'to'; save(); rp(); }, st.autoSize ? '.on' : '');
+    const auto = ebtn('📐', 'Taille de l’image source', () => { st.autoSize = true; st.sizeTab = 'to'; save(); rp(); }, st.autoSize ? '.on' : '');
     const src = d ? { w: d.width, h: d.height } : null;
     const byInfo = h('div.fx-info', { text: src ? `Resize: from ${src.w}x${src.h} to ${r8(src.w * st.scale_by)}x${r8(src.h * st.scale_by)}` : 'Aucune image' });
     const sizeBody = st.sizeTab === 'by'
       ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.5, 4, 0.05, '', v => { if (src) byInfo.textContent = `Resize: from ${src.w}x${src.h} to ${r8(src.w * v)}x${r8(src.h * v)}`; }), byInfo)
       : h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', manual), slider('Height', st, 'height', 64, 2048, step, '', manual),
-        st.autoSize ? h('div.fx-info', { text: 'Taille de l\'image du document (📐)' }) : null);
+        st.autoSize ? h('div.fx-info', { text: 'Taille de l’image source (📐)' }) : null);
     out.push(samplingRow(st), presetRow(st),
       tabs([['to', 'Resize to'], ['by', 'Resize by']], st.sizeTab, v => { st.sizeTab = v; save(); rp(); }, '.fx-subtabs'),
       h('div.fx-dims', sizeBody, h('div.fx-col.fx-mid', swap, auto),
@@ -733,7 +833,7 @@
     return h('div.fx-panel', grid);
   }
 
-  /* ---------------------------------------------------------------- img2img : panneau de l'espace Édition */
+  /* ---------------------------------------------------------------- source img2img et outils du Studio */
   const I2I_MODES = [['img2img', 'img2img'], ['sketch', 'Sketch'], ['inpaint', 'Inpaint'], ['inpaint_sketch', 'Inpaint sketch'], ['inpaint_upload', 'Inpaint upload'], ['batch', 'Batch']];
   const I2I_HELP = {
     img2img: 'Toute l\'image (les calques visibles du document) est refaite selon l\'invite. Denoising Strength règle l\'écart à l\'original.',
@@ -752,20 +852,13 @@
     KS.Hist.structure(d, role === 'zone' ? 'Calque Zone IA' : 'Calque Croquis IA', () => d.addLayer(L, d.layers.length), role === 'zone' ? 'brush' : 'pencil');
     return L;
   };
-  let savedFG = null;
-  const restoreFG = () => { if (savedFG) { KS.setFG(savedFG); savedFG = null; } };
-  const paintOn = (role, erase = false) => {
-    const d = D(); if (!d) return KS.toast('Ouvrez d\'abord une image', 'info');
-    const L = ensureRoleLayer(d, role);
-    d.activeId = L.id; L.editMask = false; KS.emit('active-layer', d); KS.emit('layers', d);
-    if (role === 'zone' && !erase) { if (!savedFG) savedFG = { ...KS.state.fg }; KS.setFG({ r: 255, g: 32, b: 64 }); }
-    else if (role === 'sketch') restoreFG();
-    T.select(erase ? 'eraser' : 'brush');
-  };
   const layerAlpha = (d, L) => { const c = U.canvas(d.width, d.height); c.getContext('2d').drawImage(L.canvas, L.x, L.y); return c; };
-  const sourceFor = (d, keepSketch) => d.flatten(d.layers.filter(l => l.aiRole !== 'zone' && (keepSketch || l.aiRole !== 'sketch') && l.visible !== false));
-  const clearRole = role => {
-    const d = D(), L = roleLayer(d, role); if (!L) return;
+  const sourceFor = (d, keepSketch) => {
+    const zone = roleLayer(d, 'zone'), sketch = roleLayer(d, 'sketch');
+    return d.flatten(d.layers.filter(l => l !== zone && (keepSketch || l !== sketch) && l.visible !== false));
+  };
+  const clearRole = (role, d = D()) => {
+    const L = roleLayer(d, role); if (!L) return;
     const tok = KS.Hist.begin(L); L.ctx.clearRect(0, 0, L.canvas.width, L.canvas.height); L.touch();
     KS.Hist.commitPixels(d, role === 'zone' ? 'Effacer la zone IA' : 'Effacer le croquis', tok, null, 'trash'); d.changed();
   };
@@ -775,24 +868,24 @@
     drawFn(L);
     L.touch(); KS.Hist.commitPixels(d, label, tok, null, icon); d.changed();
   };
-  const invertZone = () => {
-    const d = D(); if (!d) return;
+  const invertZone = (d = D()) => {
+    if (!d) return;
     paintZone(d, L => {
       const c = U.canvas(L.canvas.width, L.canvas.height), x = c.getContext('2d');
       x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'destination-out'; x.drawImage(L.canvas, 0, 0);
       L.ctx.clearRect(0, 0, c.width, c.height); L.ctx.drawImage(c, 0, 0);
     }, 'Inverser la zone IA', 'select-invert');
   };
-  const selectionToZone = () => {
-    const d = D(); if (!d || !d.selection.active) return KS.toast('Faites d\'abord une sélection', 'info');
+  const selectionToZone = (d = D()) => {
+    if (!d || !d.selection.active) return KS.toast('Faites d\'abord une sélection', 'info');
     paintZone(d, L => {
       const t = U.canvas(d.width, d.height), x = t.getContext('2d');
       x.drawImage(d.selection.mask, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = 'rgb(255,32,64)'; x.fillRect(0, 0, d.width, d.height);
       L.ctx.drawImage(t, -L.x, -L.y);
     }, 'Sélection → zone IA', 'brush');
   };
-  async function uploadMask() {
-    const d = D(); if (!d) return KS.toast('Ouvrez d\'abord une image', 'info');
+  async function uploadMask(d = i2iDoc) {
+    if (!d) return KS.toast('Choisissez d’abord une image source', 'info');
     const files = await N.openDialog({ title: 'Masque (blanc = à refaire)', multi: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }] });
     if (!files || !files[0]) return;
     const m = await KS.io.canvasFromEntry(files[0]);
@@ -808,39 +901,38 @@
     for (const f of files) OUT.batch.push({ name: f.name, canvas: await KS.io.canvasFromEntry(f) });
     renderModeTools();
   }
-  let dockRoot = null;
-  function renderDock() {
-    if (!dockRoot) return;
-    const c = CTX.i2i, sc = dockRoot.closest('.pbody'), top = sc ? sc.scrollTop : 0;
-    const send = tbtn('Envoyer au Studio IA ▸', e => sendMenu(e.currentTarget), '.sm', 'Le document (tel qu\'il est maintenant) part dans le Studio IA');
-    const head = h('div.fx-dock-head', engineBadge(), h('div.spacer'), send);
-    c.modes = h('div.fx-i2ihead'); c.strip = h('div.fx-strip'); c.left = h('div.fx-left');
-    dockRoot.replaceChildren(head, promptRow(c, { compact: true }), c.modes, c.strip, c.left);
-    renderModeTools(); renderStrip(); renderCtx(c);
-    if (sc) sc.scrollTop = top;
-  }
   function renderModeTools() {
     const c = CTX.i2i, box = c.modes; if (!box) return;
-    const d = D(), m = FX.i2iMode;
-    const modes = tabs(I2I_MODES, m, v => { FX.i2iMode = v; save(); if (!['inpaint', 'inpaint_upload'].includes(v)) restoreFG(); renderModeTools(); renderCtx(c); }, '.fx-modes');
+    const d = i2iDoc, m = FX.i2iMode;
+    const modes = tabs(I2I_MODES, m, v => { FX.i2iMode = v; save(); render(); }, '.fx-modes');
     const tools = [];
-    const col = () => ui.colorChip(U.hex(KS.state.fg), hex => KS.setFG(U.parseHex(hex)), 'Couleur du croquis');
-    if (m === 'sketch' || m === 'inpaint_sketch') tools.push(tbtn('🖌 Pinceau', () => paintOn('sketch'), '.primary.sm'), tbtn('Gomme', () => paintOn('sketch', true), '.sm'), tbtn('Effacer', () => clearRole('sketch'), '.sm'), col());
-    else if (m === 'inpaint') tools.push(tbtn('🖌 Peindre le masque', () => paintOn('zone'), '.primary.sm'), tbtn('Gomme', () => paintOn('zone', true), '.sm'), tbtn('Effacer', () => clearRole('zone'), '.sm'),
-      tbtn('Inverser', invertZone, '.sm'), d && d.selection.active ? tbtn('Sélection → masque', selectionToZone, '.sm') : null);
-    else if (m === 'inpaint_upload') tools.push(tbtn('Charger un masque…', uploadMask, '.primary.sm'), tbtn('Effacer', () => clearRole('zone'), '.sm'), tbtn('Inverser', invertZone, '.sm'));
-    else if (m === 'batch') tools.push(tbtn('Choisir des images…', pickBatch, '.primary.sm'), h('span.fx-info', { text: OUT.batch.length ? OUT.batch.length + ' image(s)' : 'Aucune image choisie' }),
+    const sourceAction = fn => { if (!d) return KS.toast('Choisissez d’abord une image source', 'info'); CTX.i2i.finishStroke && CTX.i2i.finishStroke(); fn(d); CTX.i2i.paintDraw && CTX.i2i.paintDraw(); };
+    if (m !== 'img2img' && m !== 'batch') {
+      const sketch = m === 'sketch' || m === 'inpaint_sketch', role = sketch ? 'sketch' : 'zone';
+      tools.push(tbtn(sketch ? 'Pinceau' : 'Peindre le masque', () => { FX.painter.erase = false; save(); renderModeTools(); }, FX.painter.erase ? '.sm' : '.primary.sm'),
+        tbtn('Gomme', () => { FX.painter.erase = true; save(); renderModeTools(); }, FX.painter.erase ? '.primary.sm' : '.sm'),
+        slider('Taille du pinceau (px)', FX.painter, 'size', 1, 512, 1),
+        sketch ? ui.colorChip(FX.painter.color, hex => { FX.painter.color = hex; save(); }, 'Couleur du croquis') : null,
+        tbtn('Annuler', () => sourceAction(() => d.history.undo()), '.sm'), tbtn('Rétablir', () => sourceAction(() => d.history.redo()), '.sm'),
+        tbtn(sketch ? 'Effacer le croquis' : 'Effacer', () => sourceAction(() => clearRole(role, d)), '.sm'));
+      if (!sketch) tools.push(tbtn('Inverser', () => sourceAction(() => invertZone(d)), '.sm'),
+        d && d.selection.active ? tbtn('Sélection → masque', () => sourceAction(() => selectionToZone(d)), '.sm') : null);
+      if (m === 'inpaint_upload') tools.push(tbtn('Charger un masque…', async () => { await uploadMask(d); CTX.i2i.paintDraw && CTX.i2i.paintDraw(); }, '.primary.sm'));
+    }
+    if (m === 'batch') tools.push(tbtn('Choisir des images…', pickBatch, '.primary.sm'), h('span.fx-info', { text: OUT.batch.length ? OUT.batch.length + ' image(s)' : 'Aucune image choisie' }),
       OUT.batch.length ? tbtn('Vider', () => { OUT.batch = []; renderModeTools(); }, '.sm') : null);
     fillEl(box, modes, tools.length ? h('div.fx-i2itools', ...tools.filter(Boolean)) : null, h('div.fx-help', { text: (m === 'batch' ? '' : d ? `Image : ${d.name} (${d.width} × ${d.height}). ` : 'Aucune image ouverte. ') + I2I_HELP[m] }));
   }
   function sendMenu(anchor) {
     const r = anchor.getBoundingClientRect();
     ui.menu([
-      { head: 'Le document tel qu\'il est maintenant' },
-      { label: 'Vers txt2img (sortie : ✨ hires, 💾, Send to…)', icon: 'file-plus', action: () => C.sendToStudio('txt2img') },
-      { label: 'Vers Extras (agrandir)', icon: 'upscale', action: () => C.sendToStudio('extras') },
-      { label: 'Vers PNG Info', icon: 'info', action: () => C.sendToStudio('pnginfo') },
-      { label: 'Ses paramètres vers txt2img', icon: 'history', action: () => C.sendToStudio('params'), disabled: !(D() && (D().genInfo || D().genParams)) },
+      { head: 'Envoyer une copie du document' },
+      { label: 'Envoyer vers Img2Img — transformer l’image', icon: 'image', action: () => C.sendToStudio('img2img') },
+      { label: 'Envoyer vers Inpaint — retoucher une zone', icon: 'brush', action: () => C.sendToStudio('inpaint') },
+      { label: 'Agrandir dans Extras', icon: 'upscale', action: () => C.sendToStudio('extras') },
+      { label: 'Lire les paramètres dans PNG Info', icon: 'info', action: () => C.sendToStudio('pnginfo') },
+      { label: 'Agrandir avec Hires dans txt2img', icon: 'file-plus', action: () => C.sendToStudio('txt2img') },
+      { label: 'Réutiliser les réglages dans txt2img', icon: 'history', action: () => C.sendToStudio('params'), disabled: !(D() && (D().genInfo || D().genParams)) },
     ], r.left, r.bottom + 4);
   }
 
@@ -865,21 +957,33 @@
     for (const it of items) {
       const t = U.canvas(Math.max(1, Math.round(it.canvas.width * 220 / Math.max(it.canvas.width, it.canvas.height))), Math.max(1, Math.round(it.canvas.height * 220 / Math.max(it.canvas.width, it.canvas.height))));
       t.getContext('2d').drawImage(it.canvas, 0, 0, t.width, t.height);
-      SD.gallery.unshift({ id: U.uid(), canvas: it.canvas, info: it.info, kind: it.kind, time: Date.now(), thumb: t.toDataURL('image/jpeg', 0.82) });
+      SD.gallery.unshift({ id: U.uid(), canvas: it.canvas, info: it.info, params: it.params, seed: it.seed, kind: it.kind, time: Date.now(), thumb: t.toDataURL('image/jpeg', 0.82) });
     }
     if (SD.gallery.length > 120) SD.gallery.length = 120;
     renderGallery();
   }
   const selItem = key => { const o = OUT[key]; return o.items[o.sel] || null; };
   const docName = it => (it.info || 'Image IA').split('\n')[0].replace(/<[^>]+>|[\\/:*?"<>|]/g, '').trim().slice(0, 40) || 'Image IA';
-  const openItem = it => {
-    const d = new KS.Doc({ name: docName(it), width: it.canvas.width, height: it.canvas.height });
+  const itemDoc = it => {
+    const d = new KS.Doc({ name: it.name || docName(it), width: it.canvas.width, height: it.canvas.height });
     d.addLayer(new KS.Layer({ name: 'Image IA', canvas: U.copyCanvas(it.canvas) }), 0);
-    d.genInfo = it.info; d.dirty = false; KS.addDoc(d); return d;
+    d.genInfo = it.info || ''; d.genParams = it.params ? clone(it.params) : null; d.dirty = false; return d;
   };
-  const addAsLayer = it => {
+  const snapshotSource = d => {
+    const copy = itemDoc({ canvas: sourceFor(d, false), name: d.name, info: d.genInfo, params: d.genParams });
+    for (const role of ['zone', 'sketch']) {
+      const L = roleLayer(d, role); if (!L) continue;
+      const layer = new KS.Layer({ name: L.name, canvas: U.copyCanvas(L.canvas), x: L.x, y: L.y, opacity: L.opacity, visible: L.visible });
+      layer.aiRole = role; copy.addLayer(layer, copy.layers.length);
+    }
+    copy.selection.mask = d.selection.snapshot(); copy.selection.refresh();
+    copy.dirty = false; return copy;
+  };
+  const openItem = it => KS.addDoc(itemDoc(it));
+  const addAsLayer = async it => {
     const d = D(); if (!d) return KS.toast('Aucun document ouvert', 'info');
     KS.io.placeCanvas(d, it.canvas.width === d.width && it.canvas.height === d.height ? U.copyCanvas(it.canvas) : scaled(it.canvas, d.width, d.height), 'Image IA', { x: 0, y: 0 });
+    await C.toggleStudio(false);
     KS.toast('Ajoutée en calque à « ' + d.name + ' »', 'ok', 1500);
   };
   async function saveItem(it) {
@@ -903,8 +1007,8 @@
     if (P['Schedule type']) st.scheduler = P['Schedule type'];
     if (P['CFG scale']) st.cfg_scale = +P['CFG scale'];
     const sh = P['Distilled CFG Scale'] || P.Shift; if (sh) st.distilled_cfg_scale = +sh;
-    if (P.Seed) st.seed = +P.Seed;
-    if (P['Variation seed']) { st.seedExtra = true; st.subseed = +P['Variation seed']; st.subseed_strength = +(P['Variation seed strength'] || 0); }
+    st.seed = -1; st.subseed = -1;
+    if (P['Variation seed']) { st.seedExtra = true; st.subseed_strength = +(P['Variation seed strength'] || 0); }
     if (size && P.Size) { const [w, hh] = P.Size.split('x').map(Number); if (w && hh) { st.width = w; st.height = hh; if ('autoSize' in st) st.autoSize = false; } }
     if (k === 't2i') {
       if (P['Hires upscale']) { st.enable_hr = true; st.hr_scale = +P['Hires upscale']; if (P['Denoising strength']) st.denoising_strength = +P['Denoising strength']; }
@@ -913,7 +1017,6 @@
     } else if (P['Denoising strength']) st.denoising_strength = +P['Denoising strength'];
     save();
   }
-  // Vers l'Édition : l'image devient un document, img2img (ou Inpaint) s'ouvre à côté de la toile
   // Réglages repris d'un onglet à l'autre (comme « Send to img2img » de Forge) : l'invite telle qu'elle a été
   // tapée (français, balises <lora:…>), l'invite négative, les styles, l'échantillonnage, la graine, ADetailer
   const SHARED = ['prompt', 'negative_prompt', 'styles', 'sampler_name', 'scheduler', 'steps', 'cfg_scale', 'distilled_cfg_scale',
@@ -922,34 +1025,37 @@
   function paramsTo(k, it) {
     if (it.params) {
       const st = FX[k], src = clone(it.params);
-      for (const key of SHARED) if (src[key] !== undefined) st[key] = src[key];
-      if (src.ad && k === 'i2i') st.ad.skip = !!(FX.i2i.ad && FX.i2i.ad.skip);
-      if (it.seed != null && st.seed === -1) st.seed = it.seed;     // graine réelle de l'image
+      const skip = st.ad && st.ad.skip;
+      for (const key of SHARED) if (key !== 'seed' && key !== 'subseed' && src[key] !== undefined) st[key] = src[key];
+      if (src.ad && k === 'i2i') st.ad.skip = !!skip;
+      st.seed = -1; st.subseed = -1;
       save();
     } else applyInfoTo(k, it.info, { size: false });
   }
-  async function toEdition(it, mode) {
-    const d = openItem(it);
-    d.genParams = it.params || null;
-    if (it.info || it.params) paramsTo('i2i', it);
-    FX.i2i.autoSize = true; if (mode) FX.i2iMode = mode; save();
+  async function toEdition(it) {
+    openItem(it);
     await C.toggleStudio(false);
-    if (mode) KS.panels.focus('generate');
-    renderDock();
-    if (it.info || it.params) KS.toast('Invite et réglages envoyés au panneau img2img', 'ok', 1800);
   }
   function sendTo(target, it) {
     if (!it) return KS.toast('Aucune image', 'info');
     if (target === 'extras') { OUT.exSrc = { canvas: it.canvas, name: docName(it) }; FX.tab = 'extras'; save(); return C.toggleStudio(true).then(render); }
-    if (target === 'txt2img') { applyInfoTo('t2i', it.info); FX.tab = 'txt2img'; save(); return C.toggleStudio(true).then(render); }
-    if (target === 'edit') return toEdition(it, null);
-    return toEdition(it, target === 'inpaint' ? 'inpaint' : 'img2img');
+    if (target === 'txt2img') { paramsTo('t2i', it); FX.tab = 'txt2img'; save(); return C.toggleStudio(true).then(render); }
+    if (target === 'edit') return toEdition(it);
+    i2iDoc = itemDoc(it);
+    if (it.info || it.params) paramsTo('i2i', it);
+    FX.i2i.autoSize = true; FX.i2iMode = target === 'inpaint' ? 'inpaint' : 'img2img'; FX.tab = 'img2img'; save();
+    return C.toggleStudio(true).then(render);
   }
   // Depuis l'Édition : le document tel qu'il est, renvoyé au Studio
-  C.sendToStudio = async (target = 'txt2img') => {
+  C.sendToStudio = async (target = 'img2img') => {
     const d = D(); if (!d) return KS.toast('Aucun document ouvert', 'info');
     const canvas = d.composite();
-    if (target === 'params') {
+    if (target === 'img2img' || target === 'inpaint') {
+      i2iDoc = snapshotSource(d);
+      if (d.genInfo || d.genParams) paramsTo('i2i', { params: d.genParams, info: d.genInfo });
+      FX.i2i.autoSize = true; FX.i2iMode = target; FX.tab = 'img2img';
+    }
+    else if (target === 'params') {
       if (!d.genInfo && !d.genParams) return KS.toast('Ce document n\'a pas de paramètres de génération', 'info');
       paramsTo('t2i', { params: d.genParams, info: d.genInfo }); FX.tab = 'txt2img';
     }
@@ -968,61 +1074,54 @@
   };
   function readParams(k) {
     const st = FX[k];
-    if (/\bSteps: \d+/.test(st.prompt)) { applyInfoTo(k, st.prompt); k === 'i2i' ? renderDock() : render(); return KS.toast('Paramètres lus depuis l\'invite', 'ok', 1500); }
-    const it = selItem(k) || OUT[k].items[0] || (k === 'i2i' && D() && D().genInfo ? { info: D().genInfo } : null);
+    if (/\bSteps: \d+/.test(st.prompt)) { applyInfoTo(k, st.prompt); render(); return KS.toast('Paramètres lus depuis l\'invite', 'ok', 1500); }
+    const it = selItem(k) || OUT[k].items[0] || (k === 'i2i' && i2iDoc && i2iDoc.genInfo ? { info: i2iDoc.genInfo } : null);
     if (!it || !it.info) return KS.toast('Aucune génération encore', 'info');
-    applyInfoTo(k, it.info, { size: k === 't2i' }); k === 'i2i' ? renderDock() : render();
+    applyInfoTo(k, it.info, { size: k === 't2i' }); render();
     KS.toast('Paramètres repris', 'ok', 1500);
   }
   function outButtons(key, it) {
     const sub = key === 'i2i' ? 'img2img-images' : key === 'ex' ? 'extras-images' : 'txt2img-images';
     const items = OUT[key].items;
-    if (key === 'i2i') return h('div.fx-outbtns',
-      ebtn('📂', 'Ouvrir le dossier des images (output\\img2img-images de Forge)', () => N.openForgeOutput(sub)),
-      ebtn('💾', 'Enregistrer cette image sous…', () => saveItem(it)),
-      ebtn('🗃️', 'Enregistrer toutes ces images dans un dossier…', () => saveAll(items)),
-      ebtn('🖼️', 'Repartir de ce résultat (nouveau document)', () => it && sendTo('img2img', it)),
-      ebtn('📐', 'Envoyer vers Extras (Studio IA)', () => sendTo('extras', it)),
-      ebtn('✨', 'Envoyer vers txt2img (Studio IA) pour un hires fix', () => it && C.sendToStudioItem(it)));
     return h('div.fx-outbtns',
       ebtn('📂', key === 'ex' ? 'Ouvrir le dossier des images (output\\kanevas)' : 'Ouvrir le dossier des images (output\\' + sub + ' de Forge)', () => key === 'ex' ? N.openOutputs() : N.openForgeOutput(sub)),
       ebtn('💾', 'Enregistrer cette image sous…', () => saveItem(it)),
       ebtn('🗃️', 'Enregistrer toutes ces images dans un dossier…', () => saveAll(items)),
-      ebtn('🖼️', 'Send to img2img : ouvre l\'image dans l\'Édition, panneau img2img', () => sendTo('img2img', it)),
-      ebtn('🎨️', 'Send to inpaint : ouvre l\'image dans l\'Édition, panneau img2img en mode Inpaint', () => sendTo('inpaint', it)),
-      key !== 'ex' ? ebtn('📐', 'Send to extras', () => sendTo('extras', it)) : null,
+      tbtn('Envoyer vers Img2Img', () => sendTo('img2img', it), '', 'Utiliser cette image comme source pour une nouvelle transformation'),
+      tbtn('Envoyer vers Inpaint', () => sendTo('inpaint', it), '', 'Retoucher une zone de cette image dans le Studio IA'),
+      key !== 'ex' ? tbtn('Agrandir dans Extras', () => sendTo('extras', it)) : null,
       key === 't2i' ? ebtn('✨', 'Agrandir cette image avec le hires fix (réglages de « Hires. fix »)', () => upscaleHires(it)) : null,
+      key === 'i2i' ? tbtn('Agrandir avec Hires', () => it && C.sendToStudioItem(it)) : null,
       h('span.fx-sep'),
-      tbtn('Ouvrir dans l\'Édition', () => it && sendTo('edit', it), '', 'Nouveau document, retour à l\'Édition'),
+      tbtn('Ouvrir le résultat dans l’Édition', () => it && sendTo('edit', it), '', 'Créer un nouveau document avec ce résultat'),
       tbtn('Ajouter en calque', () => it && addAsLayer(it), '', 'Au document ouvert dans l\'Édition'));
   }
-  C.sendToStudioItem = async it => { OUT.t2i.items.unshift({ ...it, url: URL.createObjectURL(new Blob([it.bytes], { type: 'image/png' })) }); OUT.t2i.sel = 0; FX.tab = 'txt2img'; await C.toggleStudio(true); render(); };
+  C.sendToStudioItem = async it => {
+    const bytes = it.bytes || await pngBytes(it.canvas);
+    OUT.t2i.items.unshift({ ...it, bytes, url: URL.createObjectURL(new Blob([bytes], { type: 'image/png' })) });
+    OUT.t2i.sel = 0; paramsTo('t2i', it); FX.tab = 'txt2img'; save(); await C.toggleStudio(true); render();
+  };
   function progressBox() {
     const bar = h('i'), txt = h('span', { text: 'En attente de Forge…' }), img = h('img.fx-live', { alt: '', hidden: true });
     Object.assign(els, { progBar: bar, progTxt: txt, progImg: img });
     return { box: h('div.fx-prog', h('div.fx-prog-bar', bar), txt), img };
   }
-  function renderOut() {
-    const box = els.out; if (!box) return;
-    const o = OUT.t2i, it = o.items[o.sel];
+  function renderOut(key = 't2i') {
+    const box = key === 'i2i' ? els.i2iOut : els.out; if (!box) return;
+    const o = OUT[key], it = o.items[o.sel];
     const view = h('div.fx-view');
-    if (BUSY && BUSY.k === 't2i') { const p = progressBox(); view.append(p.box, p.img); }
+    if (BUSY && BUSY.k === key) { const p = progressBox(); view.append(p.box, p.img); }
     else if (it) { const im = h('img', { src: it.url, alt: '', title: 'Double-clic : ouvrir dans l\'Édition' }); im.addEventListener('dblclick', () => sendTo('edit', it)); view.append(im); }
-    else view.append(h('div.fx-ph', { html: KS.icon('image') }));
-    const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(); }); return t; })) : null;
-    fillEl(box, view, thumbs, outButtons('t2i', it), it ? h('div.fx-outinfo', { text: (it.from ? 'Venue de l\'Édition : ' + it.from + '\n\n' : '') + (it.info || '(sans paramètres de génération)') + (o.time && !it.from ? `\n\nTime taken: ${o.time}` : '') }) : null);
+    else view.append(h('div.fx-ph', key === 'i2i' ? { text: 'Les résultats apparaîtront ici' } : { html: KS.icon('image') }));
+    const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(key); }); return t; })) : null;
+    fillEl(box, key === 'i2i' ? h('div.fx-h', { text: 'Résultat' }) : null, view, thumbs, outButtons(key, it), it ? h('div.fx-outinfo', { text: (it.from ? 'Venue de l\'Édition : ' + it.from + '\n\n' : '') + (it.info || '(sans paramètres de génération)') + (o.time && !it.from ? `\n\nTime taken: ${o.time}` : '') }) : null);
   }
   function renderStrip() {
-    const box = CTX.i2i.strip; if (!box) return;
-    const o = OUT.i2i, it = o.items[o.sel];
-    if (BUSY && BUSY.k === 'i2i') { const p = progressBox(); box.replaceChildren(h('div.fx-strip-prog', p.img, p.box)); return; }
-    if (!o.items.length) { box.replaceChildren(); return; }
-    const thumbs = h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: 'Résultat ' + (i + 1) }); t.addEventListener('click', () => { o.sel = i; renderStrip(); }); return t; }));
-    fillEl(box, thumbs, outButtons('i2i', it), it && it.info ? h('div.fx-outinfo.fx-oneline', { text: it.info.replace(/\n/g, '  ·  '), title: it.info }) : null);
+    renderOut('i2i');
   }
 
   /* ---------------------------------------------------------------- génération */
-  let BUSY = null, progTimer = null, tickBusy = false;
+  let BUSY = null, PREPARING = null, progTimer = null, tickBusy = false;
   async function tick() {
     if (tickBusy || !BUSY) return; tickBusy = true;
     try {
@@ -1049,7 +1148,14 @@
       refreshBusy(k);
     }
   }
-  const interrupt = () => { if (!BUSY) return; BUSY.stopping = true; N.forgeInterrupt(url()); renderGenButtons(); };
+  const interrupt = () => {
+    if (BUSY) {
+      if (BUSY.stopping) return;
+      BUSY.stopping = true;
+      Promise.resolve(N.forgeInterrupt(url())).catch(e => KS.toast('Interruption impossible : ' + e.message, 'err'));
+    } else if (PREPARING) PREPARING.canceled = true;
+    renderGenButtons(); renderExGen();
+  };
   const skip = () => { if (BUSY) N.forgeSkip(url()); };
   let warnedFr = false;
   async function english(t) {
@@ -1064,9 +1170,9 @@
     const p = {
       prompt: await english(st.prompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
       sampler_name: st.sampler_name, scheduler: st.scheduler, steps: +st.steps, width: +st.width, height: +st.height, n_iter: +st.n_iter, batch_size: +st.batch_size,
-      cfg_scale: +st.cfg_scale, distilled_cfg_scale: +st.distilled_cfg_scale, seed: +st.seed, save_images: FX.saveImages !== false, send_images: true, alwayson_scripts: {},
+      cfg_scale: +st.cfg_scale, distilled_cfg_scale: +st.distilled_cfg_scale, seed: -1, save_images: FX.saveImages !== false, send_images: true, alwayson_scripts: {},
     };
-    if (st.seedExtra) Object.assign(p, { subseed: +st.subseed, subseed_strength: +st.subseed_strength, seed_resize_from_w: +st.seed_resize_from_w, seed_resize_from_h: +st.seed_resize_from_h });
+    if (st.seedExtra) Object.assign(p, { subseed: -1, subseed_strength: +st.subseed_strength, seed_resize_from_w: +st.seed_resize_from_w, seed_resize_from_h: +st.seed_resize_from_h });
     if (k === 't2i' && st.enable_hr) Object.assign(p, {
       enable_hr: true, hr_upscaler: st.hr_upscaler, hr_second_pass_steps: +st.hr_second_pass_steps, denoising_strength: +st.denoising_strength, hr_scale: +st.hr_scale,
       hr_resize_x: +st.hr_resize_x, hr_resize_y: +st.hr_resize_y, hr_distilled_cfg: +st.hr_distilled_cfg, hr_cfg: +st.hr_cfg,
@@ -1110,15 +1216,20 @@
     return !!r;
   }
   async function generate(k) {
-    if (BUSY) return KS.toast('Une génération est déjà en cours', 'info');
-    if (await trainingRuns()) return;
-    if (!(await ensureCat())) return;
-    const st = FX[k];
+    if (BUSY || PREPARING) return;
+    CTX.i2i.finishStroke && CTX.i2i.finishStroke();
+    const prep = PREPARING = { k, canceled: false };
+    renderGenButtons();
     try {
+      if (await trainingRuns() || prep.canceled) return;
+      if (!(await ensureCat()) || prep.canceled) return;
+      const st = FX[k]; st.seed = -1; st.subseed = -1; save();
       const p = await payloadFor(k, st);
+      if (prep.canceled) return;
       if (k === 't2i') await runT2I(p);
       else await runI2I(p, st);
     } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 7000); }
+    finally { if (PREPARING === prep) PREPARING = null; renderGenButtons(); }
   }
   async function runT2I(p, firstpass, snap = snapParams(FX.t2i)) {
     const r = await runForge('t2i', () => N.forgeTxt2img(url(), p, firstpass));
@@ -1132,17 +1243,19 @@
   }
   // ✨ de Forge : la même image, refaite avec le hires fix (image de première passe)
   async function upscaleHires(it) {
-    if (!it || BUSY) return;
-    if (await trainingRuns()) return;
-    if (!(await ensureCat())) return;
+    if (!it || BUSY || PREPARING) return;
+    const prep = PREPARING = { k: 't2i', canceled: false }; renderGenButtons();
     try {
+      if (await trainingRuns() || prep.canceled) return;
+      if (!(await ensureCat()) || prep.canceled) return;
       const p = await payloadFor('t2i', { ...FX.t2i, enable_hr: true, n_iter: 1, batch_size: 1, script: 'None' });
+      if (prep.canceled) return;
       const I = KS.png.parseInfo(it.info);
-      if (I.params.Seed) p.seed = +I.params.Seed;
       if (it.info && I.prompt) { p.prompt = I.prompt; p.negative_prompt = I.negative; }
       p.width = it.canvas.width; p.height = it.canvas.height;
       await runT2I(p, it.bytes || await pngBytes(it.canvas), it.params || snapParams(FX.t2i));
     } catch (e) { KS.toast('Agrandissement impossible : ' + e.message, 'err', 7000); }
+    finally { if (PREPARING === prep) PREPARING = null; renderGenButtons(); }
   }
   const maskCanvas = alpha => {
     const m = U.canvas(alpha.width, alpha.height), x = m.getContext('2d');
@@ -1150,18 +1263,17 @@
     x.globalCompositeOperation = 'destination-over'; x.fillStyle = '#000'; x.fillRect(0, 0, m.width, m.height);
     return m;
   };
-  const MODE_NAMES = { img2img: 'img2img', sketch: 'Sketch', inpaint: 'Inpaint', inpaint_sketch: 'Inpaint sketch', inpaint_upload: 'Inpaint upload' };
   const i2iSize = (st, w, hh) => st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : st.autoSize ? fitDoc({ width: w, height: hh }) : { w: +st.width, h: +st.height };
   async function runI2I(p, st) {
     const mode = FX.i2iMode;
     Object.assign(p, { resize_mode: +st.resize_mode, denoising_strength: +st.denoising_strength });
     if (mode === 'batch') return runBatch(p, st);
-    const d = D(); if (!d) return KS.toast('Ouvrez une image (ou envoyez-en une depuis le Studio IA avec 🖼️)', 'info', 4000);
+    const d = i2iDoc; if (!d) return KS.toast('Choisissez une image source dans Img2Img', 'info', 4000);
     const keepSketch = mode === 'sketch' || mode === 'inpaint_sketch';
-    let mask = null, roleL = null;
+    let mask = null;
     if (INPAINT_MODES.includes(mode)) {
       const role = mode === 'inpaint_sketch' ? 'sketch' : 'zone';
-      roleL = roleLayer(d, role);
+      const roleL = roleLayer(d, role);
       let alpha = roleL && roleL.visible !== false ? layerAlpha(d, roleL) : null;
       if (alpha && !U.alphaBounds(alpha, 8)) alpha = null;
       if (!alpha && role === 'zone' && d.selection.active) alpha = U.copyCanvas(d.selection.mask);
@@ -1169,37 +1281,34 @@
       if (role === 'sketch') { const g = U.blurCanvas(alpha, 6), gx = g.getContext('2d'); gx.drawImage(alpha, 0, 0); alpha = g; }
       mask = maskCanvas(alpha);
       Object.assign(p, { mask_blur: +st.mask_blur, inpainting_mask_invert: +st.inpainting_mask_invert, inpainting_fill: +st.inpainting_fill, inpaint_full_res: +st.inpaint_full_res, inpaint_full_res_padding: +st.inpaint_full_res_padding });
-    } else if (mode === 'sketch') roleL = roleLayer(d, 'sketch');
+    }
     const init = sourceFor(d, keepSketch);
     const sz = i2iSize(st, init.width, init.height); p.width = sz.w; p.height = sz.h;
     const initB = await pngBytes(init), maskB = mask ? await pngBytes(mask) : null;
+    const snap = snapParams(st);
     const r = await runForge('i2i', () => N.forgeImg2img(url(), p, initB, maskB));
     if (!r.ok) throw new Error(r.error);
     const items = await toItems(r, 'img2img', p);
     if (!items.length) throw new Error('Forge n\'a renvoyé aucune image (génération interrompue ?)');
     releaseItems(OUT.i2i);
     OUT.i2i.items = items; OUT.i2i.sel = 0;
+    for (const it of items) { it.params = snap; const m = /\bSeed: (\d+)/.exec(it.info || ''); if (m) it.seed = +m[1]; }
     const imgs = items.filter(i => !i.grid);
-    if (imgs.length && KS.state.docs.includes(d)) {
-      const variants = imgs.map(i => i.canvas.width === d.width && i.canvas.height === d.height ? i.canvas : scaled(i.canvas, d.width, d.height));
-      G.addGenLayer(d, { variants, rect: { x: 0, y: 0, w: d.width, h: d.height }, infos: imgs.map(i => i.info) }, null,
-        { name: MODE_NAMES[mode] + ' : ' + (st.prompt.replace(/<[^>]+>/g, '').trim().slice(0, 32) || '…'), hist: MODE_NAMES[mode], noMask: true, icon: 'sparkles' });
-      if (roleL && KS.prefs.hideAfterGen !== false) { roleL.visible = false; roleL.touch(); d.changed(); KS.emit('layers', d); }
-      restoreFG();
-    }
     renderStrip(); pushGallery(imgs);
   }
   async function runBatch(p, st) {
     if (!OUT.batch.length) return KS.toast('Choisissez d\'abord des images (« Choisir des images… »)', 'info');
-    const all = [];
+    const all = [], snap = snapParams(st), batch = OUT.batch.slice();
     await runForge('i2i', async () => {
-      for (let i = 0; i < OUT.batch.length; i++) {
+      for (let i = 0; i < batch.length; i++) {
         if (BUSY && BUSY.stopping) break;
-        const b = OUT.batch[i], sz = i2iSize(st, b.canvas.width, b.canvas.height);
-        BUSY.label = `Image ${i + 1} / ${OUT.batch.length}`;
+        const b = batch[i], sz = i2iSize(st, b.canvas.width, b.canvas.height);
+        BUSY.label = `Image ${i + 1} / ${batch.length}`;
         const r = await N.forgeImg2img(url(), { ...p, width: sz.w, height: sz.h }, await pngBytes(b.canvas), null);
         if (!r.ok) throw new Error(r.error);
-        all.push(...await toItems(r, 'img2img', p));
+        const items = await toItems(r, 'img2img', p);
+        for (const it of items) { it.params = snap; const m = /\bSeed: (\d+)/.exec(it.info || ''); if (m) it.seed = +m[1]; }
+        all.push(...items);
       }
     });
     releaseItems(OUT.i2i);
@@ -1239,8 +1348,8 @@
   }
   function renderExGen() {
     const g = els.exGen; if (!g) return;
-    if (BUSY) { const i = h('button.fx-interrupt', { text: 'Interrupt' }); i.addEventListener('click', interrupt); g.replaceChildren(i); return; }
-    const b = h('button.fx-generate', { text: 'Generate' }); b.addEventListener('click', runExtras); g.replaceChildren(b);
+    if (BUSY || PREPARING) { const i = h('button.fx-interrupt', { text: 'Interrompre', title: 'Interrompre (Ctrl+Entrée)' }); i.addEventListener('click', interrupt); g.replaceChildren(i); return; }
+    const b = h('button.fx-generate', { text: 'Agrandir', title: 'Agrandir (Ctrl+Entrée)' }); b.addEventListener('click', runExtras); g.replaceChildren(b);
   }
   function renderExOut() {
     renderExGen();
@@ -1255,16 +1364,18 @@
   }
   const stamp = () => { const t = new Date(), p = n => String(n).padStart(2, '0'); return `${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}`; };
   async function runExtras() {
-    if (BUSY) return;
-    const ex = FX.ex;
-    const sources = ex.batch ? await Promise.all((OUT.exBatch || []).map(async f => ({ canvas: await KS.io.canvasFromEntry(f), name: f.name }))) : OUT.exSrc ? [OUT.exSrc] : [];
-    if (!sources.length) return KS.toast(ex.batch ? 'Choisissez d\'abord des images' : 'Choisissez d\'abord une image', 'info');
-    if (await trainingRuns()) return;
-    if (!(await ensureCat())) return;
-    const payload = { resize_mode: ex.mode === 'to' ? 1 : 0, upscaling_resize: +ex.resize, upscaling_resize_w: +ex.w, upscaling_resize_h: +ex.h, upscaling_crop: !!ex.crop,
-      upscaler_1: ex.up1, upscaler_2: ex.up2, extras_upscaler_2_visibility: +ex.vis2, show_extras_results: true };
+    if (BUSY || PREPARING) return;
+    const prep = PREPARING = { k: 'ex', canceled: false }; renderExGen();
     const items = [];
     try {
+      const ex = FX.ex;
+      const sources = ex.batch ? await Promise.all((OUT.exBatch || []).map(async f => ({ canvas: await KS.io.canvasFromEntry(f), name: f.name }))) : OUT.exSrc ? [OUT.exSrc] : [];
+      if (prep.canceled) return;
+      if (!sources.length) return KS.toast(ex.batch ? 'Choisissez d\'abord des images' : 'Choisissez d\'abord une image', 'info');
+      if (await trainingRuns() || prep.canceled) return;
+      if (!(await ensureCat()) || prep.canceled) return;
+      const payload = { resize_mode: ex.mode === 'to' ? 1 : 0, upscaling_resize: +ex.resize, upscaling_resize_w: +ex.w, upscaling_resize_h: +ex.h, upscaling_crop: !!ex.crop,
+        upscaler_1: ex.up1, upscaler_2: ex.up2, extras_upscaler_2_visibility: +ex.vis2, show_extras_results: true };
       await runForge('ex', async () => {
         for (let i = 0; i < sources.length; i++) {
           if (BUSY && BUSY.stopping) break;
@@ -1277,6 +1388,7 @@
         }
       });
     } catch (e) { KS.toast('Extras : ' + e.message, 'err', 6000); }
+    finally { if (PREPARING === prep) PREPARING = null; renderExGen(); }
     if (items.length) { releaseItems(OUT.ex); OUT.ex.items = items; OUT.ex.sel = 0; renderExOut(); pushGallery(items); }
   }
   function dropTo(el, fn) {
@@ -1310,7 +1422,7 @@
     const others = o ? Object.entries(o.chunks).filter(([k2]) => k2 !== 'parameters') : [];
     const right = h('div.fx-out',
       h('div.fx-outinfo.fx-pnginfo', { text: o ? (o.text || 'Aucun paramètre de génération dans cette image.') + others.map(([k2, v]) => `\n\n${k2}:\n${v}`).join('') : 'Les paramètres de génération de l\'image (Prompt, Negative prompt, Steps, Sampler…) apparaîtront ici.' }),
-      h('div.fx-outbtns', ...[['txt2img', 'Send to txt2img'], ['img2img', 'Send to img2img'], ['inpaint', 'Send to inpaint'], ['extras', 'Send to extras']].map(([t, l]) => {
+      h('div.fx-outbtns', ...[['txt2img', 'Réutiliser les réglages dans txt2img'], ['img2img', 'Envoyer vers Img2Img'], ['inpaint', 'Envoyer vers Inpaint'], ['extras', 'Agrandir dans Extras']].map(([t, l]) => {
         const b = tbtn(l, () => { if (!o) return; if (t === 'txt2img' && !o.text) return KS.toast('Aucun paramètre à envoyer', 'info'); sendTo(t, it); }); b.disabled = !o; return b;
       }), o && o.text ? tbtn('Copier', () => { navigator.clipboard.writeText(o.text); KS.toast('Copié', 'ok', 900); }) : null));
     return h('div.fx-gen', h('div.fx-cols', h('div.fx-left', h('div.fx-panel', zone, h('div.fx-outbtns', fromDoc))), right));
@@ -1348,8 +1460,10 @@
       cell.addEventListener('click', () => {
         const r = cell.getBoundingClientRect();
         ui.menu([
-          { label: 'Ouvrir dans un nouveau document', icon: 'file-plus', action: () => openItem(it) },
+          { label: 'Ouvrir dans l’Édition', icon: 'file-plus', action: () => sendTo('edit', it) },
           { label: 'Ajouter comme calque', icon: 'layers', action: () => addAsLayer(it), disabled: !D() },
+          { label: 'Envoyer vers Img2Img', icon: 'image', action: () => sendTo('img2img', it) },
+          { label: 'Envoyer vers Inpaint', icon: 'brush', action: () => sendTo('inpaint', it) },
           { label: 'Réutiliser ces réglages (txt2img)', icon: 'history', action: () => sendTo('txt2img', it), disabled: !it.info },
           { label: 'Copier', icon: 'copy', action: async () => { try { await navigator.clipboard.write([new ClipboardItem({ 'image/png': await U.blobFromCanvas(it.canvas) })]); KS.toast('Copié', 'ok', 900); } catch (er) { KS.toast(er.message, 'err'); } } },
         ], r.left, r.bottom + 4);
@@ -1359,18 +1473,9 @@
     galleryRoot.append(head, grid);
   }
   KS.panels.register('gallery', { title: 'Galerie', build(el) { galleryRoot = h('div.ga'); el.appendChild(galleryRoot); renderGallery(); } });
-  // Le panneau img2img de l'Édition (remplace l'ancien panneau IA)
-  KS.panels.register('generate', {
-    title: 'img2img',
-    build(el) { dockRoot = h('div.fx.fx-dock'); el.appendChild(dockRoot); dockRoot.addEventListener('keydown', e => { if (e.target.matches && e.target.matches('input, textarea, select')) e.stopPropagation(); }); renderDock(); },
-    show() {
-      const Gp = KS.panels.groups.find(x => x.panes.generate);
-      if (Gp && !Gp.g.grow && (Gp.s.height || 0) < 520) { Gp.s.height = 560; const b = Gp.el.querySelector('.pbody'); if (b) b.style.height = '560px'; KS.prefs.save(); }
-      if (!cat && !loading && KS.engine && KS.engine.ready()) loadCat(); else renderDock();
-    },
-  });
-  KS.genPanel = { render: renderDock, reload: loadCat, mount() {}, unmount() {} };
-  C.openGenPanel = () => { if (SD.on) C.toggleStudio(false); KS.panels.focus('generate'); };
+  KS.genPanel = { render, reload: loadCat, mount() {}, unmount() {} };
+  C.openStudioTab = async tab => { FX.tab = tab; save(); await C.toggleStudio(true); render(); };
+  C.openGenPanel = () => D() && !SD.on ? C.sendToStudio('img2img') : (async () => { FX.tab = 'img2img'; save(); await C.toggleStudio(true); render(); })();
   // Résultats des commandes de l'espace Édition (remplissage génératif…) : galerie et enregistrement
   G.onResults = async (res, job) => {
     const kind = job.txt ? 'txt2img' : job.mask ? 'inpaint' : 'img2img';
@@ -1411,7 +1516,12 @@
   };
 
   /* ---------------------------------------------------------------- bascule Édition ⇄ Studio IA */
-  C.studioGenerate = () => SD.on ? (FX.tab === 'extras' ? runExtras() : generate('t2i')) : generate('i2i');
+  C.studioGenerate = () => {
+    if (BUSY || PREPARING) return interrupt();
+    if (!SD.on) return C.sendToStudio('img2img');
+    if (FX.tab === 'extras') return runExtras();
+    if (FX.tab === 'txt2img' || FX.tab === 'img2img') return generate(FX.tab === 'img2img' ? 'i2i' : 't2i');
+  };
   C.toggleStudio = async (on = !SD.on) => {
     if (on === SD.on && (!on || root)) return;
     SD.on = on;
@@ -1421,10 +1531,11 @@
       if (KS.engine) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && !cat) loadCat(); else if (ok) renderTop(); });
       else loadCat();
     } else {
-      restoreFG();
+      CTX.i2i.finishStroke && CTX.i2i.finishStroke();
+      CTX.i2i.finishStroke = null; CTX.i2i.paintDraw = null;
       if (root) { root.replaceChildren(); root.className = ''; }
-      CTX.t2i.left = null;
-      renderDock();
+      for (const c of Object.values(CTX)) { c.left = null; c.genbox = null; c.promptTa = null; c.modes = null; }
+      els.out = null; els.i2iOut = null;
     }
     KS.prefs.studio = on; KS.prefs.save();
     switchBtns.forEach(b => b.classList.toggle('on', (b.dataset.v === 'studio') === on));
@@ -1440,16 +1551,24 @@
       switchBtns.push(b); sw.appendChild(b);
     }
     switchBtns[0].classList.add('on');
-    box.prepend(sw);
+    const send = h('button.ws-btn.ws-to-studio', { text: 'Envoyer au Studio ▸', disabled: !D() });
+    send.addEventListener('click', () => sendMenu(send));
+    KS.on('doc', () => { send.disabled = !D(); });
+    box.prepend(send, sw);
     if (KS.prefs.studio) setTimeout(() => C.toggleStudio(true), 300);
   });
   // l'état du moteur est relu toutes les 15 s : seuls le voyant et la colonne bougent (jamais l'invite en cours de frappe)
   KS.on('engine', E => {
     if (SD.on) renderTop();
-    const badge = dockRoot && dockRoot.querySelector('.fx-dock-head .fx-eng'); if (badge) badge.replaceWith(engineBadge());
-    if (E.ready() && !cat && !loading && (SD.on || (dockRoot && dockRoot.isConnected))) loadCat(); else if (!cat) renderCtx(CTX.i2i);
+    if (E.ready() && !cat && !loading && SD.on) loadCat(); else if (!cat) renderCtx(CTX.i2i);
   });
-  const onDoc = U.debounce(() => { if (!dockRoot || !dockRoot.isConnected) return; renderModeTools(); if (FX.i2i.autoSize) renderCtx(CTX.i2i); }, 150);
+  const onDoc = U.debounce(() => { if (SD.on && FX.tab === 'img2img') { renderModeTools(); if (FX.i2i.autoSize) renderCtx(CTX.i2i); } }, 150);
   for (const ev of ['doc', 'selection']) KS.on(ev, onDoc);
-  document.addEventListener('keydown', e => { if (BUSY && e.key === 'Escape' && !e.defaultPrevented) interrupt(); });
+  document.addEventListener('keydown', e => {
+    if (!SD.on || KS.modalOpen() || e.isComposing) return;
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !e.altKey && !e.shiftKey) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (!e.repeat) C.studioGenerate();
+    } else if ((BUSY || PREPARING) && e.key === 'Escape' && !e.defaultPrevented) interrupt();
+  }, true);
 })();

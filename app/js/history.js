@@ -24,10 +24,10 @@
     }
     get canUndo() { return this.pos > 0; }
     get canRedo() { return this.pos < this.items.length - 1; }
-    undo() { if (!this.canUndo) return; KS.cancelActiveOps && KS.cancelActiveOps(); const it = this.items[this.pos]; it.undo(); this.pos--; this._after(it.dirty); }
-    redo() { if (!this.canRedo) return; KS.cancelActiveOps && KS.cancelActiveOps(); this.pos++; const it = this.items[this.pos]; it.redo(); this._after(it.dirty); }
+    undo() { if (!this.canUndo) return; if (this.doc === KS.state.doc && KS.cancelActiveOps) KS.cancelActiveOps(); const it = this.items[this.pos]; it.undo(); this.pos--; this._after(it.dirty); }
+    redo() { if (!this.canRedo) return; if (this.doc === KS.state.doc && KS.cancelActiveOps) KS.cancelActiveOps(); this.pos++; const it = this.items[this.pos]; it.redo(); this._after(it.dirty); }
     goto(i) {
-      KS.cancelActiveOps && KS.cancelActiveOps();
+      if (this.doc === KS.state.doc && KS.cancelActiveOps) KS.cancelActiveOps();
       while (this.pos > i) { this.items[this.pos].undo(); this.pos--; }
       while (this.pos < i) { this.pos++; this.items[this.pos].redo(); }
       this._after();

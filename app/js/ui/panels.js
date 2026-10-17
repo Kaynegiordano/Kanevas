@@ -9,7 +9,7 @@
   P.LAYOUT = [
     { id: 'g-nav', tabs: ['navigator', 'histogram', 'info'], collapsed: true },
     { id: 'g-color', tabs: ['color', 'swatches'] },
-    { id: 'g-props', tabs: ['properties', 'adjustments', 'generate', 'gallery'], height: 250 },
+    { id: 'g-props', tabs: ['properties', 'adjustments', 'gallery'], height: 250 },
     { id: 'g-layers', tabs: ['layers', 'channels', 'paths', 'history'], grow: true },
   ];
   P.register = (id, def) => { P.defs[id] = def; };
@@ -76,6 +76,7 @@
   };
   P.isVisible = id => P.groups.some(G => G.s.active === id && !G.s.collapsed && G.panes[id]);
   P.focus = id => {
+    if (id === 'generate') return KS.cmd.openGenPanel && KS.cmd.openGenPanel();
     const G = P.groups.find(x => x.panes[id]);
     if (!G) return;
     G.s.active = id; G.s.collapsed = false; G.el.classList.remove('collapsed'); G.show(); KS.prefs.save();

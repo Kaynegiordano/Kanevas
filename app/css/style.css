@@ -882,6 +882,23 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-dropzone { border: 2px dashed var(--border-2); border-radius: 12px; min-height: 280px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); cursor: pointer; text-align: center; padding: 12px; }
 .fx-dropzone.over, .fx-dropzone:hover { border-color: var(--fx-accent); }
 .fx-dropzone img { max-width: 100%; max-height: 52vh; border-radius: 8px; }
+.fx-i2i-work { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.fx-source .fx-dropzone { min-height: 170px; }
+.fx-source .fx-dropzone img { max-height: 30vh; object-fit: contain; }
+.fx-source .fx-docinfo { overflow-wrap: anywhere; }
+.fx-painter { display: block; max-width: 100%; max-height: 42vh; width: auto; height: auto; touch-action: none; cursor: crosshair; outline: none; }
+.fx-painter:focus-visible { outline: 2px solid var(--fx-accent); }
+.fx-source .fx-paintzone { cursor: crosshair; }
+.fx-i2itools > .fx-slider { width: 175px; }
+body.studio .ws-to-studio { display: none; }
+.fx-img2img > .fx-cols > .fx-out { position: sticky; top: 0; }
+.fx-img2img .fx-view { min-height: 340px; }
+.fx-img2img .fx-view > img { max-height: 48vh; }
+@media (max-width: 1100px) {
+  .fx-img2img .fx-cols { grid-template-columns: minmax(0, 1fr); }
+  .fx-img2img > .fx-cols > .fx-out { position: static; }
+  .fx-img2img .fx-toprow { grid-template-columns: minmax(0, 1fr); }
+}
 .fx-settings { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
 /* LoRA actifs sous l'invite, bouton 🛠 des cartes, fiche d'un LoRA */
 .fx-lchips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -901,22 +918,7 @@ body.fx-i2i .fx-left { overflow: auto; padding-right: 4px; }
 .fx-md { font-size: 12.5px; line-height: 1.5; color: var(--text-2); overflow-wrap: anywhere; }
 .fx-md:empty { display: none; }
 .fx-md code { font: 11.5px var(--mono); background: var(--raised); padding: 0 4px; border-radius: 4px; }
-/* img2img dans l'espace Édition : le panneau du dock */
-.fx-dock { display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; }
-.fx-dock-head { display: flex; align-items: center; gap: 6px; }
-.fx-dock-head .fx-eng { padding-bottom: 0; }
 .fx-toprow.fx-compact { display: flex; flex-direction: column; gap: 6px; }
-.fx-dock .fx-ta.fx-prompt { min-height: 60px; padding-right: 60px; }
-.fx-dock .fx-generate, .fx-dock .fx-interrupt, .fx-dock .fx-skip { height: 44px; font-size: 15px; }
-.fx-dock .fx-tabs button { padding: 5px 8px; font-size: 11.5px; }
-.fx-dock .fx-panel { padding: 9px; gap: 9px; }
-.fx-dock .fx-row3, .fx-dock .fx-dims { grid-template-columns: minmax(0, 1fr); }
-.fx-dock .fx-row2 { gap: 8px 10px; }
-.fx-dock .fx-mid { flex-direction: row; }
-.fx-dock .fx-cards { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
-.fx-dock .fx-strip .fx-thumbs img { width: 48px; height: 48px; }
-.fx-dock .fx-strip-prog img { height: 80px; }
-.fx-dock .fx-preset { flex-wrap: wrap; }
 /* Train LoRA */
 .fx-train { display: flex; flex-direction: column; gap: 12px; max-width: 1280px; }
 .lt-intro { font-size: 12.5px; line-height: 1.55; color: var(--text-2); }

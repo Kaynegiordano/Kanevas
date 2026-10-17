@@ -26,7 +26,7 @@
       const go = () => { const p = inp.value; KS.state.lastPrompt = p; mode = null; render(); C.generativeFill(p); };
       inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') go(); else if (e.key === 'Escape') { mode = null; render(); } });
       setTimeout(() => inp.focus(), 0);
-      return [h('span.ctx-ico', { html: KS.icon('sparkles') }), inp, btn('sparkles', 'Générer', go, '.primary'), iconOnly('settings', 'Modèle, LoRA et réglages (panneau IA)', () => { KS.state.lastPrompt = inp.value; mode = null; render(); C.openGenPanel(); }), iconOnly('close', 'Fermer', () => { mode = null; render(); })];
+      return [h('span.ctx-ico', { html: KS.icon('sparkles') }), inp, btn('sparkles', 'Générer', go, '.primary'), iconOnly('settings', 'Ouvrir le Studio IA', () => { KS.state.lastPrompt = inp.value; mode = null; render(); C.openGenPanel(); }), iconOnly('close', 'Fermer', () => { mode = null; render(); })];
     }
     const L = d.active;
     if (d.selection.active) {
@@ -40,7 +40,8 @@
           { label: 'Contour progressif…', action: C.feather }, { label: 'Sélectionner et masquer…', action: C.refineEdge },
           { label: 'Calque par copier', action: () => C.layerViaCopy(false) }, { label: 'Remplir…', action: C.fill },
           { label: 'Remplissage d\'après le contenu', action: () => C.contentAwareFill(d) },
-          { sep: true }, { label: 'Panneau IA (modèle, LoRA, réglages)…', action: () => C.openGenPanel() },
+          { sep: true }, { label: 'Envoyer vers Img2Img', action: () => C.sendToStudio('img2img') },
+          { label: 'Envoyer vers Inpaint', action: () => C.sendToStudio('inpaint') },
         ]),
       ];
     }
@@ -50,15 +51,17 @@
       if (n > 1) parts.push(iconOnly('chevron-left', 'Variante précédente', () => G.setVariant(d, L, g.i - 1)), h('span.ctx-count', { text: `${g.i + 1} / ${n}` }), iconOnly('chevron-right', 'Variante suivante', () => G.setVariant(d, L, g.i + 1)));
       if (g.job) parts.push(btn('sparkles', 'Générer encore', () => G.generateMore(d, L), '.primary'));
       parts.push(btn('mask', 'Modifier le masque', () => { L.editMask = true; KS.emit('layers', d); T.select('brush'); }));
-      parts.push(more([{ label: 'Harmoniser…', action: C.harmonize }, { label: 'Fusionner vers le bas', action: C.mergeDown }, { label: 'Supprimer le calque', action: C.deleteLayer }]));
+      parts.push(more([{ label: 'Envoyer vers Img2Img', action: () => C.sendToStudio('img2img') }, { label: 'Envoyer vers Inpaint', action: () => C.sendToStudio('inpaint') },
+        { sep: true }, { label: 'Harmoniser…', action: C.harmonize }, { label: 'Fusionner vers le bas', action: C.mergeDown }, { label: 'Supprimer le calque', action: C.deleteLayer }]));
       return parts;
     }
     const parts = [btn('sparkles', 'Sélectionner le sujet', () => C.selectSubject())];
     if (L && L.kind === 'raster') parts.push(btn('remove-bg', 'Supprimer l\'arrière-plan', () => C.removeBackground()));
     if (L && L.kind === 'raster' && d.layers.indexOf(L) > 0) parts.push(btn('harmonize', 'Harmoniser', () => C.harmonize()));
     parts.push(btn('gen-expand', 'Développement génératif', () => C.generativeExpand()));
-    parts.push(btn('image', 'Générer une image', () => C.openGenPanel()));
-    parts.push(more([{ label: 'Super résolution IA…', action: C.superResolution }, { label: 'Ton automatique', action: C.autoTone }, { label: 'Couleur automatique', action: C.autoColor }]));
+    parts.push(btn('image', 'Envoyer vers Img2Img', () => C.sendToStudio('img2img')));
+    parts.push(more([{ label: 'Envoyer vers Inpaint', action: () => C.sendToStudio('inpaint') }, { label: 'Créer une image dans txt2img', action: () => C.openStudioTab('txt2img') },
+      { sep: true }, { label: 'Super résolution IA…', action: C.superResolution }, { label: 'Ton automatique', action: C.autoTone }, { label: 'Couleur automatique', action: C.autoColor }]));
     return parts;
   }
 

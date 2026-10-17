@@ -75,7 +75,27 @@ sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte
 - Forge est appelé par le processus principal, uniquement sur une adresse locale (127.0.0.1 par défaut, réglable dans
   Paramètres avancés). Rien ne part en ligne.
 
-## Édition ⇄ Studio IA, LoRA, Train LoRA (1.4.0)
+## Img2Img dans le Studio IA
+- **Img2Img** retrouve son onglet dans le Studio, avec une image source et un aperçu des résultats côte à côte.
+  Importer une image par clic ou glisser-déposer, ou utiliser **Envoyer vers Img2Img / Inpaint** depuis l'Édition.
+- Depuis txt2img, Extras, PNG Info ou la Galerie, **Envoyer vers Img2Img / Inpaint** transfère l'image et ses paramètres.
+  La source reste choisie lorsque l'on change de document dans l'Édition ou d'onglet dans le Studio.
+- **Inpaint, Sketch et Inpaint sketch restent dans le Studio** : peindre sur l'image source avec le pinceau
+  ou la gomme, régler la taille et la couleur, annuler/rétablir les traits, effacer ou inverser le masque.
+  L'import d'un masque et le traitement par lots sont également accessibles dans cet onglet.
+- L'Édition ne contient plus de panneau Img2Img. Son bouton **Envoyer au Studio** copie l'image et ses paramètres ;
+  peindre ou générer dans le Studio ne modifie pas le document de l'Édition.
+- Générer conserve les résultats dans le Studio. **Ouvrir le résultat dans l'Édition** crée un document ;
+  **Ajouter en calque** revient au document actif ; **Envoyer vers Img2Img** reprend le résultat comme source
+  sans créer de documents supplémentaires.
+- **Graine aléatoire à chaque génération** : les graines des images restent consultables dans leurs informations,
+  mais un import ou un transfert ne les fixe pas pour la génération suivante.
+- **Ctrl+Entrée** démarre ou interrompt la génération dans tout le Studio, y compris depuis les champs de texte.
+  Pendant la préparation, le même raccourci annule le lancement.
+- Vérification des parcours sans moteur réel : `node_modules/.bin/electron tools/test-studio.cjs`
+  (profil temporaire et réponses Forge simulées).
+
+## Édition ⇄ Studio IA, LoRA, Train LoRA (1.4.0 — ancien parcours)
 - **img2img passe dans l'Édition** : le panneau IA de l'Édition est remplacé par le panneau **img2img** de Forge (mêmes
   réglages que dans le Studio : Resize mode, Inpaint, Soft inpainting, Denoising, ADetailer, MultiDiffusion, scripts…),
   avec ses modes img2img / Sketch / Inpaint / Inpaint sketch / Inpaint upload / Batch, juste à côté de la toile.
