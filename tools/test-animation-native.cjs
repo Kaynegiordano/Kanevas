@@ -17,6 +17,7 @@ const dir=owned.components.wallpaper.directory;
 const child=spawn(path.join(dir,'venv/Scripts/python.exe'),['-u',path.join(root.replace(/app\.asar$/,'app.asar.unpacked'),'animation-runtime.py'),'--server',path.join(dir,'outils/peintre.py'),'--port','8780'],
   {cwd:dir,windowsHide:true,env:{...process.env,WEA_PROJETS:output,PYTHONIOENCODING:'utf-8'},stdio:'ignore'});
 let handled=false;
+const cleanup=()=>{try{execFileSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}catch{}};
 app.on('browser-window-created',(_e,win)=>{
   if(handled)return;handled=true;win.setOpacity(0);win.setSkipTaskbar(true);
   win.webContents.once('did-finish-load',async()=>{
@@ -39,8 +40,24 @@ app.on('browser-window-created',(_e,win)=>{
       assert.equal(await frame.executeJavaScript('kcNative.outputDir()'),path.join(tmp,'output','montage'));
       console.log('OK Import Animation natif réel : image visible 128×64, aucun document Edition, source dans output/animation');
       console.log('OK Pont réel : sauvegarde Studio dans output/studio et dossier de rendu Montage dans output/montage');
-      child.kill();app.exit(0);
-    }catch(error){console.error(error);child.kill();app.exit(1);}
+      if(process.env.KANEVAS_TEST_SAM){
+        await win.webContents.executeJavaScript("KS.ws.go('wallpaper')");
+        const animationFrame=win.webContents.mainFrame.frames.find(f=>f.url.startsWith('http://127.0.0.1:8780/'));
+        const selection=await animationFrame.executeJavaScript(`(async()=>{
+          document.querySelector('#typesGrille button').click();document.getElementById('mMagique').click();
+          memorise('v',sel);await magique(sel,[64,32],false);
+          const added=sel.v.reduce((a,b)=>a+b,0), error=document.getElementById('bulle').textContent;
+          memorise('v',sel);await magique(sel,[64,32],true);
+          const removed=sel.v.reduce((a,b)=>a+b,0);annule();
+          return {mode,added,removed,restored:sel.v.reduce((a,b)=>a+b,0),error};
+        })()`);
+        assert.equal(selection.mode,'magique');assert(selection.added>0,selection.error);
+        assert(selection.removed<selection.added);assert.equal(selection.restored,selection.added);
+        assert(!(await win.webContents.executeJavaScript('KS.native.animationGPUState()')).busy);
+        console.log('OK Magique réel : masque SAM appliqué, retrait Alt, annulation et GPU libéré après sélection');
+      }
+      cleanup();app.exit(0);
+    }catch(error){console.error(error);cleanup();app.exit(1);}
   });
 });
 require(path.join(root,'main.js'));

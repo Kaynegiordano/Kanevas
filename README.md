@@ -13,6 +13,12 @@ sauvegardes de secours et les mises à jour restent propres à l'application de 
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
 ## Outils récents
+### Sélection Magique dans Animation (1.9.4)
+
+- Le moteur SAM de **Magique** peut de nouveau se charger sous Windows. L'adaptateur conserve
+  une vraie classe `subprocess.Popen`, nécessaire aux imports de Torch et asyncio.
+- Sélection automatique, retrait, annulation et libération du GPU sont vérifiés avec le vrai modèle SAM.
+
 ### Import Animation et sorties communes (1.9.3)
 
 - **Ouvrir une image…** est visible dans la barre Animation. Le choix de fichier et le dépôt dans l'atelier

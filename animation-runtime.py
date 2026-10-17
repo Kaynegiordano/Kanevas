@@ -54,15 +54,18 @@ def server(script, args):
     context = module['lance'].__globals__
     real_popen = subprocess.Popen
 
-    def launch(command, *a, **kw):
-        if isinstance(command, list):
-            for i, part in enumerate(command[1:], 1):
-                if os.path.basename(str(part)) in ('auto_anim.py', 'super_magique.py'):
-                    command = command[:i] + [os.path.abspath(__file__), '--worker', part] + command[i + 1:]
-                    break
-        return real_popen(command, *a, **kw)
+    # asyncio.windows_utils hérite de Popen au premier chargement de torch/SAM.
+    # Une fonction de remplacement casse cet import ; conserver une vraie classe.
+    class AnimationPopen(real_popen):
+        def __init__(self, command, *a, **kw):
+            if isinstance(command, list):
+                for i, part in enumerate(command[1:], 1):
+                    if os.path.basename(str(part)) in ('auto_anim.py', 'super_magique.py'):
+                        command = command[:i] + [os.path.abspath(__file__), '--worker', part] + command[i + 1:]
+                        break
+            super().__init__(command, *a, **kw)
 
-    subprocess.Popen = launch
+    subprocess.Popen = AnimationPopen
     original_sam = context['sam']
 
     def sam(*a, **kw):

@@ -55,6 +55,8 @@ exec('def lance(): pass\ndef sam(): return "mask"', context)
 commands = []
 
 def serve_forever():
+    assert isinstance(runtime.subprocess.Popen, type)
+    assert issubclass(runtime.subprocess.Popen, FakePopen)
     assert context['sam']() == 'mask'
     assert not context['_sam']
     runtime.subprocess.Popen(['python', '-u', 'C:/tools/auto_anim.py', '--titre', 'Test'])
@@ -63,6 +65,10 @@ def serve_forever():
     assert commands[-1] == ['python', '-u', 'C:/tools/depth.py']
 
 context['serveur'] = lambda port: SimpleNamespace(serve_forever=serve_forever)
-with patch.dict(sys.modules, torch=torch), patch.object(runtime.runpy, 'run_path', lambda *a, **kw: context), patch.object(runtime.subprocess, 'Popen', lambda command, *a, **kw: commands.append(command)):
+class FakePopen:
+    def __init__(self, command, *a, **kw):
+        commands.append(command)
+
+with patch.dict(sys.modules, torch=torch), patch.object(runtime.runpy, 'run_path', lambda *a, **kw: context), patch.object(runtime.subprocess, 'Popen', FakePopen):
     runtime.server('C:/tools/peintre.py', ['--port', '18780'])
 print('OK Serveur : SAM libéré après segmentation, workers Animation adaptés, autres scripts conservés')
