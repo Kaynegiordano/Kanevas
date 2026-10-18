@@ -12,7 +12,9 @@ module.exports = function setupUpdater(getWin) {
   let state = { status: 'idle' };
   const set = s => { state = s; send('update-status', s); };
 
-  if (enabled) {
+  // electron-updater pèse plusieurs dizaines de fichiers : on le charge après l'ouverture de la fenêtre, pas au démarrage.
+  const load = () => {
+    if (autoUpdater || !enabled) return autoUpdater;
     ({ autoUpdater } = require('electron-updater'));
     autoUpdater.autoDownload = false;            // l'utilisateur décide
     autoUpdater.autoInstallOnAppQuit = false;
@@ -29,18 +31,18 @@ module.exports = function setupUpdater(getWin) {
   ipcMain.handle('update-state', () => state);
   ipcMain.handle('update-check', async () => {
     if (!enabled) return { status: 'unavailable' };
-    try { await autoUpdater.checkForUpdates(); } catch (e) { set({ status: 'error', error: String((e && e.message) || e).split('\n')[0] }); }
+    try { await load().checkForUpdates(); } catch (e) { set({ status: 'error', error: String((e && e.message) || e).split('\n')[0] }); }
     return state;
   });
   ipcMain.handle('update-download', async () => {
     if (!enabled) return { status: 'unavailable' };
-    try { await autoUpdater.downloadUpdate(); } catch (e) { set({ status: 'error', error: String((e && e.message) || e).split('\n')[0] }); }
+    try { await load().downloadUpdate(); } catch (e) { set({ status: 'error', error: String((e && e.message) || e).split('\n')[0] }); }
     return state;
   });
-  ipcMain.on('update-install', () => { if (enabled && state.status === 'ready') autoUpdater.quitAndInstall(false, true); });
+  ipcMain.on('update-install', () => { if (enabled && state.status === 'ready') load().quitAndInstall(false, true); });
 
   // Vérification discrète au démarrage
   return {
-    checkSoon() { if (enabled) setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 8000); },
+    checkSoon() { if (enabled) setTimeout(() => { try { load().checkForUpdates().catch(() => {}); } catch { /* module indisponible */ } }, 8000); },
   };
 };

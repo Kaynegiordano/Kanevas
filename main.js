@@ -81,13 +81,14 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function createWindow() {
+  const chrome = readChrome() || { color: '#f4f6f8', symbolColor: '#3b4552' };
   win = new BrowserWindow({
     width: 1600, height: 980, minWidth: 1024, minHeight: 640,
-    backgroundColor: '#f4f6f8',
+    backgroundColor: chrome.color,
     title: 'Kane App',
     icon: path.join(__dirname, 'app', process.platform === 'win32' ? 'kanevas.ico' : 'icon.png'),
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#f4f6f8', symbolColor: '#3b4552', height: 40 },
+    titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 40 },
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -200,7 +201,18 @@ ipcMain.handle('list-fonts', () => new Promise(resolve => {
 
 ipcMain.on('confirm-close', () => { allowClose = true; if (win) win.close(); });
 ipcMain.on('set-title', (_e, t) => { if (win) win.setTitle(t); });
-ipcMain.on('set-titlebar', (_e, o) => { try { if (win) win.setTitleBarOverlay(o); } catch { /* ancien Windows */ } });
+// Couleurs de la barre de titre mémorisées : la fenêtre s'ouvre déjà dans le thème choisi (pas de flash clair avant le thème sombre).
+const chromeFile = () => path.join(app.getPath('userData'), 'window-chrome.json');
+const readChrome = () => { try { const c = JSON.parse(fs.readFileSync(chromeFile(), 'utf8')); return /^#[\da-f]{6}$/i.test(c.color) && /^#[\da-f]{6}$/i.test(c.symbolColor) ? c : null; } catch { return null; } };
+let savedChrome = '';
+ipcMain.on('set-titlebar', (_e, o) => {
+  try { if (win) win.setTitleBarOverlay(o); } catch { /* ancien Windows */ }
+  const key = o && o.color + '|' + o.symbolColor;
+  if (key && key !== savedChrome && /^#[\da-f]{6}$/i.test(o.color) && /^#[\da-f]{6}$/i.test(o.symbolColor)) {
+    savedChrome = key;
+    fs.promises.writeFile(chromeFile(), JSON.stringify({ color: o.color, symbolColor: o.symbolColor })).catch(() => {});
+  }
+});
 ipcMain.on('toggle-devtools', () => { if (win) win.webContents.toggleDevTools(); });
 ipcMain.on('toggle-fullscreen', () => { if (win) win.setFullScreen(!win.isFullScreen()); });
 ipcMain.on('show-in-folder', (_e, p) => shell.showItemInFolder(p));
