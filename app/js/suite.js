@@ -81,7 +81,7 @@
   };
   S.library = async () => {
     await S.ready;
-    if (document.body.classList.contains('suite-home')) { search = ''; render(); list?.scrollIntoView({ block: 'nearest' }); return; }
+    if (document.body.classList.contains('suite-home') && KS.prefs.showLibrary !== false) { search = ''; render(); list?.scrollIntoView({ block: 'nearest' }); return; }
     drawer.hidden = !drawer.hidden; if (!drawer.hidden) renderLibrary(drawer);
   };
   async function inputName(title, initial) {
@@ -337,7 +337,7 @@
     home = h('section#suite-home'); KS.$('#main').append(home);
     drawer = h('aside#suite-library-drawer', { hidden: true, 'aria-label': 'Bibliothèque du projet' }); document.body.append(drawer);
     projectButton = ui.btn('Kane App', () => S.chooseProject(), '.suite-project-button', 'folder-open');
-    taskButton = ui.btn('Activité', () => S.showTasks(), '.small');
+    taskButton = ui.btn('Activité', () => S.showTasks(), '.small.sb-activity');
     const sw = document.querySelector('.ws-switch');
     const projectTab = h('button.ws-btn', { 'data-v': 'project', text: 'Projet' }); projectTab.addEventListener('click', () => S.home()); sw.prepend(projectTab);
     document.querySelector('.ws-to-studio')?.remove();
@@ -346,8 +346,8 @@
         { label: 'Document avec ses calques', disabled: !KS.state.doc, action: () => S.run('Capture du document', () => S.capture()).catch(() => {}) },
         { label: 'Sélection seule', disabled: !KS.state.doc?.selection.bounds, action: () => S.run('Capture de la sélection', () => S.capture('selection')).catch(() => {}) },
       ], r.left, r.bottom + 4);
-    }, '.small');
-    bar = h('div#suite-toolbar', projectButton, sw, h('div.spacer'), captureButton, ui.btn('Bibliothèque', () => S.library(), '.small'), taskButton);
+    }, '.small.sb-capture');
+    bar = h('div#suite-toolbar', projectButton, sw, h('div.spacer'), captureButton, ui.btn('Bibliothèque', () => S.library(), '.small.sb-library'), taskButton);
     KS.$('#titlebar').after(bar);
     const themeObserver = new MutationObserver(() => { for (const id in KS.ws.el) KS.ws.theme(id); });
     themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -360,7 +360,7 @@
       if (S.project.name === 'Mon atelier') S.project = await call('rename', { name: 'Kane App' });
       KS.prefs.suiteProject = S.project.id; KS.prefs.save(); S.selected = S.project.items[0]?.id;
       render(); resolveReady();
-      if (!KS.state.doc && !KS.prefs.studio) await S.home();
+      if (!KS.state.doc && !KS.prefs.studio && KS.prefs.startPage !== 'edit') await S.home();
     } catch (err) { resolveReady(); KS.toast('Projet indisponible : ' + err.message, 'err', 8000); }
   }, 0));
 })();

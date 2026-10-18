@@ -102,15 +102,15 @@
       ui.btn('Nouveau fichier', () => KS.cmd.newDoc(), '.primary.big', 'file-plus'),
       ui.btn('Ouvrir…', () => KS.cmd.open(), '.big', 'folder-open'),
       ui.btn('Depuis le presse-papiers', () => KS.cmd.newFromClipboard(), '.big', 'paste')));
-    inner.appendChild(h('h2', { text: 'Démarrer rapidement' }));
     const grid = h('div.preset-grid');
+    if (KS.prefs.showQuickStart !== false) inner.appendChild(h('h2', { text: 'Démarrer rapidement' }));
     for (const p of KS.dialogs.PRESETS.filter(p => p.w).slice(0, 10)) {
       const s = Math.min(70 / p.w, 54 / p.h);
       const card = h('div.preset', h('div.shape', h('i', { style: { width: p.w * s + 'px', height: p.h * s + 'px' } })), h('div.t', { text: p.t }), h('div.s', { text: p.s + ' px' }));
       card.addEventListener('click', () => KS.addDoc(KS.createDoc({ name: 'Sans titre ' + (KS.state.docs.length + 1), width: p.w, height: p.h, background: 'white' })));
       grid.appendChild(card);
     }
-    inner.appendChild(grid);
+    if (KS.prefs.showQuickStart !== false) inner.appendChild(grid);
     const rec = KS.prefs.recent || [];
     const showRecent = KS.prefs.showRecent !== false;
     if (rec.length && KS.native) {
@@ -128,7 +128,7 @@
       }
       inner.appendChild(list);
     }
-    inner.appendChild(h('div.drop-hint', { html: KS.icon('import', 'style="width:28px;height:28px;display:block;margin:0 auto 8px"') }, h('div', { text: 'Déposez des images, des PSD ou des fichiers .ksp n\'importe où dans la fenêtre' })));
+    if (KS.prefs.showDropHint !== false) inner.appendChild(h('div.drop-hint', { html: KS.icon('import', 'style="width:28px;height:28px;display:block;margin:0 auto 8px"') }, h('div', { text: 'Déposez des images, des PSD ou des fichiers .ksp n\'importe où dans la fenêtre' })));
     home.appendChild(inner);
   }
   KS.on('recent', () => { if (!KS.state.doc) renderHome(); });

@@ -516,34 +516,8 @@
     });
   });
 
-  /* ---------------------------------------------------------------- préférences */
-  D.prefs = () => {
-    const P = KS.prefs;
-    const set = (k, v) => { P[k] = v; if (k === 'accent' && P.spaceColors) delete P.spaceColors.project; P.save(); KS.applyPrefs && KS.applyPrefs(); KS.recovery?.configure(); document.querySelectorAll('[data-space-color]').forEach(i => i.value = KS.appearance.color(i.dataset.spaceColor)); };
-    const accent = ['#2f6fdb', '#8a5cf6', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#64748b'];
-    const accRow = h('div.form-row', accent.map(c => { const b = h('button.color-chip', { style: { background: c, borderRadius: '50%' }, title: c }); b.addEventListener('click', () => set('accent', c)); return b; }));
-    const body = h('div.form-grid', { style: { minWidth: '460px' } },
-      h('label.l', { text: 'Protection du travail' }), ui.check('Sauvegardes de secours automatiques', P.autoRecovery !== false, v => set('autoRecovery', v)),
-      h('label.l', { text: 'Intervalle de secours' }), ui.seg([['15', '15 s'], ['30', '30 s'], ['60', '1 min'], ['120', '2 min']], String(P.recoveryInterval || 30), v => set('recoveryInterval', +v)),
-      h('span'), h('div.note', { text: 'Copies locales séparées du projet, après 5 secondes d’inactivité et à intervalle régulier. La récupération est proposée au lancement.' }),
-      h('label.l', { text: 'Réglages d’image' }), ui.check('Créer des réglages modifiables', P.editableAdjustments !== false, v => set('editableAdjustments', v)),
-      h('span'), h('div.note', { text: 'Les réglages sont conservés dans des calques. Double-cliquez sur leur vignette pour les reprendre. Le format .ksp conserve tous les réglages.' }),
-      h('label.l', { text: 'Thème' }), ui.seg([['dark', 'Sombre'], ['graphite', 'Graphite'], ['light', 'Givre']], P.theme, v => set('theme', v)),
-      h('label.l', { text: 'Accent de Kane App' }), accRow,
-      h('label.l', { text: 'Couleurs des espaces' }), KS.appearance.controls(),
-      h('label.l', { text: 'Studio IA' }), ui.btn('Configurer le moteur local…', () => D.enginePrefs(), '.small'),
-      h('label.l', { text: 'Applications intégrées' }), ui.btn('Migration vers Kanevas…', () => D.runtimeMigration(), '.small'),
-      h('label.l', { text: "Taille de l'interface" }), ui.seg([['0.9', '90 %'], ['1', '100 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.5', '150 %']], String(P.uiScale || 1), v => set('uiScale', +v)),
-      h('label.l', { text: 'Molette' }), ui.seg([['zoom', 'Zoome'], ['scroll', 'Fait défiler']], P.wheelZoom ? 'zoom' : 'scroll', v => set('wheelZoom', v === 'zoom')),
-      h('label.l', { text: 'États d\'historique' }), ui.scrub({ value: P.historySize, min: 5, max: 300, onChange: v => set('historySize', v) }),
-      h('label.l', { text: 'Grille tous les' }), h('div.form-row', ui.scrub({ value: P.gridSize, min: 2, max: 1000, unit: 'px', onChange: v => set('gridSize', v) }), ui.scrub({ label: 'Subdivisions', value: P.gridSub, min: 1, max: 10, onChange: v => set('gridSub', v) })),
-      h('label.l', { text: 'Couleur des repères' }), ui.colorChip(P.guideColor, v => set('guideColor', v)),
-      h('label.l', { text: 'Damier' }), ui.seg([['4', 'Petit'], ['8', 'Moyen'], ['16', 'Grand']], String(P.checker), v => { set('checker', +v); KS.view.checker = null; KS.requestRender(); }),
-      h('span'), ui.check('Grille de pixels aux forts zooms', P.pixelGrid, v => set('pixelGrid', v)),
-      h('span'), ui.check('Magnétisme (repères, bords, centres)', P.snap, v => set('snap', v)),
-      h('label.l', { text: 'Accueil' }), ui.check('Afficher les projets récents', P.showRecent !== false, v => { set('showRecent', v); KS.emit('prefs'); }));
-    KS.modal({ title: 'Préférences', width: 680, body, buttons: [{ label: 'Fermer', primary: true }] });
-  };
+  /* ---------------------------------------------------------------- préférences (voir ui/preferences.js) */
+  D.prefs = tab => KS.prefsDialog && KS.prefsDialog.open(typeof tab === 'string' ? tab : undefined);
 
   D.enginePrefs = async () => {
     const N = KS.native;

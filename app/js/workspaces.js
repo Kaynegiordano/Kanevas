@@ -37,7 +37,8 @@
       controls.push(btn('Charger un workflow…', () => KS.suite.loadWorkflow()),
         btn('Utiliser le document', () => C.toComfy(), !KS.state.doc));
     } else controls.push(btn('Ajouter le document', () => C.toVideo(), !KS.state.doc), btn('Enregistrer le montage', () => WX.request('video', 'save')));
-    controls.push(h('div.spacer'), btn('Bibliothèque', () => KS.suite.library()));
+    const libButton = btn('Bibliothèque', () => KS.suite.library()); libButton.classList.add('sb-library');
+    controls.push(h('div.spacer'), libButton);
     if (W.svc) controls.push(btn('Récupérer les résultats', () => KS.suite.collectOutputs(id)),
       ui.btn(up(s) ? 'Moteur prêt' : s?.state === 'starting' ? 'Démarrage…' : 'Moteur arrêté', e => {
         const r = e.currentTarget.getBoundingClientRect();
