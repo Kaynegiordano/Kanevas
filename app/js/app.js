@@ -112,8 +112,12 @@
     }
     inner.appendChild(grid);
     const rec = KS.prefs.recent || [];
+    const showRecent = KS.prefs.showRecent !== false;
     if (rec.length && KS.native) {
-      inner.appendChild(h('h2', { text: 'Récents' }));
+      const toggle = ui.btn(showRecent ? 'Masquer' : 'Afficher', () => { KS.prefs.showRecent = !showRecent; KS.prefs.save(); renderHome(); }, '.small', showRecent ? 'eye-off' : 'eye');
+      inner.appendChild(h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' } }, h('h2', { text: 'Récents' }), toggle));
+    }
+    if (rec.length && KS.native && showRecent) {
       const list = h('div.recent-list');
       for (const r of rec) {
         const thumb = r.thumb ? h('img', { src: r.thumb, style: { width: '44px', height: '44px', objectFit: 'cover', borderRadius: '6px', flexShrink: '0' } }) : h('span', { html: KS.icon('image') });
@@ -128,6 +132,7 @@
     home.appendChild(inner);
   }
   KS.on('recent', () => { if (!KS.state.doc) renderHome(); });
+  KS.on('prefs', () => { if (!KS.state.doc) renderHome(); });
 
   /* ---------------------------------------------------------------- barre d'état */
   function buildStatus() {

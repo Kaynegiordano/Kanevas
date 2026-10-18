@@ -540,7 +540,8 @@
       h('label.l', { text: 'Couleur des repères' }), ui.colorChip(P.guideColor, v => set('guideColor', v)),
       h('label.l', { text: 'Damier' }), ui.seg([['4', 'Petit'], ['8', 'Moyen'], ['16', 'Grand']], String(P.checker), v => { set('checker', +v); KS.view.checker = null; KS.requestRender(); }),
       h('span'), ui.check('Grille de pixels aux forts zooms', P.pixelGrid, v => set('pixelGrid', v)),
-      h('span'), ui.check('Magnétisme (repères, bords, centres)', P.snap, v => set('snap', v)));
+      h('span'), ui.check('Magnétisme (repères, bords, centres)', P.snap, v => set('snap', v)),
+      h('label.l', { text: 'Accueil' }), ui.check('Afficher les projets récents', P.showRecent !== false, v => { set('showRecent', v); KS.emit('prefs'); }));
     KS.modal({ title: 'Préférences', width: 680, body, buttons: [{ label: 'Fermer', primary: true }] });
   };
 
