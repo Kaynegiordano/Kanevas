@@ -1076,7 +1076,7 @@ body.pf-home-empty .suite-home-scroll::before { content: "Tout est masqué sur c
 .brand.kn-brand { cursor: pointer; border-radius: 8px; }
 .brand.kn-brand:hover .brand-mark { filter: brightness(1.15); }
 .brand.kn-brand.kn-on .brand-mark { outline: 2px solid var(--accent-2); outline-offset: 2px; }
-#kane-nav { position: fixed; left: 0; top: var(--titlebar-h); bottom: 0; width: 236px; z-index: 150; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; background: var(--chrome); border-right: 1px solid var(--border); box-shadow: 8px 0 26px rgba(0,0,0,.28); overflow: auto; animation: kn-in .14s ease-out; }
+#kane-nav { position: fixed; left: 0; top: var(--titlebar-h); bottom: 0; width: 236px; z-index: 90; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; background: var(--chrome); border-right: 1px solid var(--border); box-shadow: 8px 0 26px rgba(0,0,0,.28); overflow: auto; animation: kn-in .14s ease-out; }
 #kane-nav[hidden] { display: none; }
 @keyframes kn-in { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
 html.kn-pinned #kane-nav { box-shadow: none; animation: none; }

@@ -373,10 +373,16 @@
       brand.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); KS.nav.toggle(); } }); }
     // Le panneau se ferme tout de suite (avant le travail lourd d'un espace qui se charge), puis la commande choisie est lancée à l'image suivante.
     const passing = new WeakSet();
+    let menuFromNav = false;
+    // Un menu ouvert depuis le panneau (clic droit sur un espace, Capturer) passe au-dessus ; le panneau se referme avec lui.
+    nav.addEventListener('contextmenu', () => { menuFromNav = true; });
+    KS.on('menus-closed', () => { if (menuFromNav) { menuFromNav = false; if (!pinned()) setTimeout(() => setNav(false), 0); } });
     nav.addEventListener('click', e => {
       const target = e.target.closest('.ws-btn, .kn-actions .btn, .suite-project-button');
       if (!target || pinned()) return;
       if (passing.delete(target)) return;
+      // Capturer ouvre un menu placé sous le bouton : le panneau reste jusqu'à la fermeture de ce menu.
+      if (target.matches('.sb-capture')) { setTimeout(() => { menuFromNav = true; }, 0); return; }
       e.stopPropagation(); e.preventDefault();
       setNav(false);
       requestAnimationFrame(() => setTimeout(() => { passing.add(target); target.click(); }, 0));
