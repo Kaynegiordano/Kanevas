@@ -8,7 +8,7 @@
   let resolveReady; S.ready = new Promise(r => resolveReady = r);
   const captures = new WeakMap(), animations = new Map();
   const mediaURL = p => 'kcm://f/' + encodeURIComponent(p);
-  const titleOf = source => ({ edition: 'Edition', studio: 'Studio IA', wallpaper: 'Animation', comfyui: 'Animation Vidéo', video: 'Montage', import: 'Import' })[source] || source;
+  const titleOf = source => ({ edition: 'Retouche', studio: 'Studio IA', wallpaper: 'Animation', comfyui: 'Animation Vidéo', video: 'Montage', import: 'Import' })[source] || source;
   const action = (label, fn, cls = '', disabled = false, icon) => {
     const b = ui.btn(label, () => S.run(label, fn).catch(() => {}), cls, icon); b.disabled = disabled; return b;
   };
@@ -124,7 +124,7 @@
   };
   S.capture = async (scope = 'document') => {
     KS.panels.defs.properties?.commitPending?.();
-    await S.ready; const d = KS.state.doc; if (!d) throw new Error('Ouvrez une illustration dans l’Édition');
+    await S.ready; const d = KS.state.doc; if (!d) throw new Error('Ouvrez une illustration dans Retouche');
     const project = S.project.id, known = captures.get(d), revision = d.revision;
     if (scope === 'document' && known?.project === project && known.revision === revision) return S.project.items.find(it => it.id === known.id);
     let canvas = U.copyCanvas(d.composite()), suffix = '';
@@ -295,7 +295,7 @@
     const image = it.kind === 'image';
     el.replaceChildren(h('span.suite-eyebrow', { text: titleOf(it.source) + ' · version ' + it.revision }), h('h3', { text: it.name }),
       h('p.note', { text: (it.snapshotPath ? 'Document avec calques conservé · ' : '') + U.fmtBytes(it.size) + ' · ' + new Date(it.added).toLocaleDateString('fr-FR') }),
-      action(it.snapshotPath ? 'Reprendre avec les calques' : 'Ouvrir dans l’Édition', () => S.open(it), '.primary', !image, 'image'),
+      action(it.snapshotPath ? 'Reprendre avec les calques' : 'Ouvrir dans Retouche', () => S.open(it), '.primary', !image, 'image'),
       action(KS.state.doc ? 'Ajouter en calque · ' + KS.state.doc.name : 'Ajouter en calque', () => S.addLayer(it), '.small', !image || !KS.state.doc, 'layers'),
       action('Animer cette image', () => S.animate(it), '', !image, 'sparkles'),
       action('Ajouter au montage', () => S.toVideo(it), '', false, 'play'),
@@ -317,7 +317,7 @@
       h('div.suite-project-actions', action('Renommer', () => S.rename(), '.small'), action('Dossier du projet', () => N.openFolder(p.folder), '.small'))),
       h('div.suite-pipeline',
         pipeline('01', 'Créer', 'Imaginez dans le Studio IA.', 'sparkles', () => C.openStudioTab('txt2img')),
-        pipeline('02', 'Éditer', 'Composez et retouchez vos images.', 'image', () => C.toggleStudio(false)),
+        pipeline('02', 'Retoucher', 'Composez et retouchez vos images.', 'image', () => C.toggleStudio(false)),
         pipeline('03', 'Animer', p.animation ? 'Reprenez les mouvements du projet.' : 'Donnez du mouvement à une illustration.', 'play', () => S.resumeAnimation()),
         pipeline('04', 'Monter', 'Assemblez les séquences et le son.', 'layers', () => S.openVideo())),
       list = h('section.suite-library'),

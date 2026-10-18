@@ -248,7 +248,7 @@
       els.rail.appendChild(b);
     }
     els.rail.appendChild(h('div.spacer'));
-    const back = h('button', { title: 'Revenir au document dans l’Édition (F6)' }, h('span', { html: KS.icon('brush') }), h('span', { text: 'Édition' }));
+    const back = h('button', { title: 'Revenir au document dans Retouche (F6)' }, h('span', { html: KS.icon('brush') }), h('span', { text: 'Retouche' }));
     back.addEventListener('click', () => C.toggleStudio(false));
     els.rail.appendChild(back);
   }
@@ -359,9 +359,9 @@
     } else { if (paintable) zone.classList.add('fx-paintzone'); zone.removeAttribute('role'); zone.removeAttribute('tabindex'); }
     dropTo(zone, loadI2I);
     source.append(h('div.fx-h', { text: 'Image source' }), zone,
-      h('div.fx-docinfo', { text: d ? `${d.name} · ${d.width} × ${d.height}` : 'Choisissez une image ou reprenez le document de l’Édition.' }),
-      h('div.fx-outbtns', tbtn('Importer une image…', pick), tbtn('Depuis l’Édition', () => C.sendToStudio(FX.i2iMode === 'inpaint' ? 'inpaint' : 'img2img')),
-        d ? tbtn('Ouvrir la source dans l’Édition', () => toEdition({ canvas: sourceFor(d, true), name: d.name, info: d.genInfo, params: d.genParams })) : null,
+      h('div.fx-docinfo', { text: d ? `${d.name} · ${d.width} × ${d.height}` : 'Choisissez une image ou reprenez le document de Retouche.' }),
+      h('div.fx-outbtns', tbtn('Importer une image…', pick), tbtn('Depuis Retouche', () => C.sendToStudio(FX.i2iMode === 'inpaint' ? 'inpaint' : 'img2img')),
+        d ? tbtn('Ouvrir la source dans Retouche', () => toEdition({ canvas: sourceFor(d, true), name: d.name, info: d.genInfo, params: d.genParams })) : null,
         d ? tbtn('Retirer la source', () => { i2iDoc = null; render(); }) : null), c.modes);
     const wrap = h('div.fx-gen.fx-img2img', promptRow(c),
       h('div.fx-cols', h('div.fx-i2i-work', source, c.left), els.i2iOut));
@@ -1100,8 +1100,8 @@
     const action = (label, fn, { enabled = !!it, primary = false, tip = '' } = {}) => { const b = tbtn(label, fn, primary ? '.primary' : '', tip); b.disabled = !enabled; return b; };
     const group = (id, label, ...buttons) => h('div.fx-actiongroup', { 'data-group': id }, h('span.fx-actionlabel', { text: label }), h('div.fx-actionbuttons', ...buttons.filter(Boolean)));
     return h('div.fx-output-actions',
-      group('edit', 'Utiliser dans l’Édition',
-        action('Ouvrir le résultat dans l’Édition', () => sendTo('edit', it), { primary: true, tip: 'Créer un nouveau document avec ce résultat' }),
+      group('edit', 'Utiliser dans Retouche',
+        action('Ouvrir le résultat dans Retouche', () => sendTo('edit', it), { primary: true, tip: 'Créer un nouveau document avec ce résultat' }),
         action('Ajouter en calque', () => addAsLayer(it), { enabled: !!it && !!D(), tip: D() ? 'Ajouter au document « ' + D().name + ' »' : 'Ouvrez d’abord un document' })),
       group('transform', 'Transformer',
         action('Envoyer vers Img2Img', () => sendTo('img2img', it)), action('Envoyer vers Inpaint', () => sendTo('inpaint', it))),
@@ -1486,7 +1486,7 @@
       cell.addEventListener('click', () => {
         const r = cell.getBoundingClientRect();
         ui.menu([
-          { label: 'Ouvrir dans l’Édition', icon: 'file-plus', action: () => sendTo('edit', it) },
+          { label: 'Ouvrir dans Retouche', icon: 'file-plus', action: () => sendTo('edit', it) },
           { label: 'Ajouter comme calque', icon: 'layers', action: () => addAsLayer(it), disabled: !D() },
           { label: 'Envoyer vers Img2Img', icon: 'image', action: () => sendTo('img2img', it) },
           { label: 'Envoyer vers Inpaint', icon: 'brush', action: () => sendTo('inpaint', it) },
@@ -1685,7 +1685,7 @@
   KS.on('ui-ready', () => {
     const box = KS.$('#workspace-actions'); if (!box) return;
     const sw = h('div.ws-switch');
-    for (const [v, label] of [['edit', 'Edition'], ['studio', 'Studio IA']]) {
+    for (const [v, label] of [['edit', 'Retouche'], ['studio', 'Studio IA']]) {
       const b = h('button.ws-btn', { 'data-v': v, text: label }); b.addEventListener('click', () => C.toggleStudio(v === 'studio'));
       switchBtns.push(b); sw.appendChild(b);
     }

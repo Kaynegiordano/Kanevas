@@ -233,7 +233,7 @@
     },
     {
       label: 'IA', items: () => [
-        { label: () => KS.studio && KS.studio.on ? 'Revenir à l’Édition' : 'Ouvrir le Studio IA', kb: 'F6', icon: 'sparkles', action: () => C.toggleStudio() },
+        { label: () => KS.studio && KS.studio.on ? 'Revenir à Retouche' : 'Ouvrir le Studio IA', kb: 'F6', icon: 'sparkles', action: () => C.toggleStudio() },
         { label: 'Créer une image dans txt2img', icon: 'file-plus', action: () => C.openStudioTab('txt2img') },
         { label: 'Générer / interrompre dans le Studio', kb: 'Ctrl+Entrée', action: () => C.studioGenerate(), hidden: !(KS.studio && KS.studio.on) },
         { sep: true },
@@ -253,7 +253,7 @@
         { label: 'Ajouter l’illustration au montage', icon: 'play', action: () => KS.suite.run('Ajout au montage', () => C.toVideo()).catch(() => {}), disabled: noDoc, hidden: !KS.ws },
         { label: () => KS.engine && KS.engine.ready() ? 'Arrêter le moteur IA' : 'Démarrer le moteur IA', icon: 'settings', action: () => KS.engine && (KS.engine.ready() ? KS.engine.stop() : KS.engine.ensure()), hidden: !KS.engine },
         { sep: true },
-        { head: 'Retoucher dans l’Édition' },
+        { head: 'Retoucher' },
         { label: 'Ajouter un dessin IA…', icon: 'sparkles', action: () => C.openEditorDraw(), disabled: noDoc },
         { label: 'Remplissage génératif…', icon: 'sparkles', action: () => C.generativeFill(), disabled: noSel },
         { label: 'Supprimer avec l\'IA', icon: 'remove', action: () => C.removeSelection(), disabled: noSel },

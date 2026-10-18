@@ -36,23 +36,23 @@
   const spaceColor = () => KS.appearance.controls();
 
   // Général
-  add({ tab: 'general', group: 'Démarrage', key: 'startPage', def: 'project', label: 'Écran au lancement', desc: 'Ce que Kanevas affiche à l’ouverture, quand aucun document n’est repris.', type: 'seg', opts: [['project', 'Projet'], ['edit', 'Édition']] });
+  add({ tab: 'general', group: 'Démarrage', key: 'startPage', def: 'project', label: 'Écran au lancement', desc: 'Ce que Kanevas affiche à l’ouverture, quand aucun document n’est repris.', type: 'seg', opts: [['project', 'Projet'], ['edit', 'Retouche']] });
   on('general', 'Protection du travail', 'autoRecovery', 'Sauvegardes de secours automatiques', 'Copies locales séparées du projet, après 5 secondes d’inactivité puis à intervalle régulier. La récupération est proposée au lancement.', true, { after: () => KS.recovery?.configure() });
   add({ tab: 'general', group: 'Protection du travail', key: 'recoveryInterval', def: 30, label: 'Intervalle de secours', type: 'seg', num: true, opts: [['15', '15 s'], ['30', '30 s'], ['60', '1 min'], ['120', '2 min']], after: () => KS.recovery?.configure() });
-  add({ tab: 'general', group: 'Édition', key: 'historySize', def: 60, label: 'États d’historique', desc: 'Nombre d’étapes que l’on peut annuler. Plus il est élevé, plus la mémoire est sollicitée.', type: 'scrub', min: 5, max: 300 });
-  on('general', 'Édition', 'editableAdjustments', 'Créer des réglages modifiables', 'Les réglages d’image sont conservés dans des calques. Double-cliquez sur leur vignette pour les reprendre.', true);
-  on('general', 'Édition', 'keepGenInfo', 'Conserver les paramètres de génération dans les PNG', 'Ajoute le prompt et les réglages IA aux fichiers PNG exportés.', true);
+  add({ tab: 'general', group: 'Retouche', key: 'historySize', def: 60, label: 'États d’historique', desc: 'Nombre d’étapes que l’on peut annuler. Plus il est élevé, plus la mémoire est sollicitée.', type: 'scrub', min: 5, max: 300 });
+  on('general', 'Retouche', 'editableAdjustments', 'Créer des réglages modifiables', 'Les réglages d’image sont conservés dans des calques. Double-cliquez sur leur vignette pour les reprendre.', true);
+  on('general', 'Retouche', 'keepGenInfo', 'Conserver les paramètres de génération dans les PNG', 'Ajoute le prompt et les réglages IA aux fichiers PNG exportés.', true);
   add({ tab: 'general', group: 'Mises à jour', label: 'Mises à jour de Kanevas', desc: 'Vérifie les nouvelles versions publiées sur GitHub.', kw: 'version télécharger', type: 'btns', hidden: () => !KS.updates?.available,
     btns: () => [['Rechercher maintenant', () => C.checkUpdates()], P.skipUpdate ? ['Réafficher la version ignorée', e => { delete P.skipUpdate; P.save(); e.currentTarget.remove(); KS.toast('Les mises à jour seront de nouveau proposées', 'ok'); }] : null] });
 
   // Affichage : tout ce que l’on peut masquer
   on('display', 'Écran Projet', 'showHero', 'En-tête du projet', 'Nom du projet, Renommer et Dossier du projet.', true);
-  on('display', 'Écran Projet', 'showPipeline', 'Parcours Créer · Éditer · Animer · Monter', 'Les quatre grandes étapes en haut de l’écran Projet.', true);
+  on('display', 'Écran Projet', 'showPipeline', 'Parcours Créer · Retoucher · Animer · Monter', 'Les quatre grandes étapes en haut de l’écran Projet.', true);
   on('display', 'Écran Projet', 'showLibrary', 'Bibliothèque du projet', 'La grille des médias sur l’écran Projet. Le bouton Bibliothèque la rouvre dans un panneau.', true, { kw: 'médias images grille' });
   on('display', 'Écran Projet', 'showHomeFooter', 'Pied de page', 'Le rappel sur la copie des médias et le raccourci Animation Vidéo.', true);
-  on('display', 'Écran Édition', 'showRecent', 'Projets récents', 'La liste des derniers fichiers ouverts. Un bouton Masquer / Afficher est aussi présent sur l’écran.', true, { kw: 'récents derniers fichiers' });
-  on('display', 'Écran Édition', 'showQuickStart', 'Démarrer rapidement', 'Les formats prêts à l’emploi.', true, { kw: 'préréglages formats' });
-  on('display', 'Écran Édition', 'showDropHint', 'Indication de dépôt de fichiers', null, true);
+  on('display', 'Écran Retouche', 'showRecent', 'Projets récents', 'La liste des derniers fichiers ouverts. Un bouton Masquer / Afficher est aussi présent sur l’écran.', true, { kw: 'récents derniers fichiers' });
+  on('display', 'Écran Retouche', 'showQuickStart', 'Démarrer rapidement', 'Les formats prêts à l’emploi.', true, { kw: 'préréglages formats' });
+  on('display', 'Écran Retouche', 'showDropHint', 'Indication de dépôt de fichiers', null, true);
   for (const [id, name] of SPACES) add({ tab: 'display', group: 'Espaces du panneau Kane App', label: name, desc: id === 'studio' ? 'Décochez un espace pour le retirer du panneau. Il reste accessible par le parcours du projet.' : null, type: 'check', kw: 'onglet espace atelier',
     get: () => !P.hiddenSpaces?.[id], set: v => { P.hiddenSpaces = { ...(P.hiddenSpaces || {}), [id]: !v }; } });
   on('display', 'Panneau Kane App', 'navPinned', 'Garder le panneau ouvert', 'Le panneau vertical s’ouvre avec le bouton K en haut à gauche. Épinglé, il reste affiché et réserve sa place ; sinon il se referme après chaque choix.', false, { kw: 'navigation espaces menu latéral barre verticale k', apply: false });
