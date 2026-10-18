@@ -4,7 +4,7 @@
   const N = KS.native, h = KS.h, ui = KS.ui, C = KS.cmd, U = KS.util;
   if (!N?.suiteCall) return;
   const S = KS.suite = { project: null, tasks: [], selected: null };
-  let home, drawer, bar, list, stage, details, taskButton, projectButton, search = '', filter = 'all', started = false;
+  let home, drawer, nav, list, stage, details, taskButton, projectButton, search = '', filter = 'all', started = false;
   let resolveReady; S.ready = new Promise(r => resolveReady = r);
   const captures = new WeakMap(), animations = new Map();
   const mediaURL = p => 'kcm://f/' + encodeURIComponent(p);
@@ -347,12 +347,47 @@
         { label: 'Sélection seule', disabled: !KS.state.doc?.selection.bounds, action: () => S.run('Capture de la sélection', () => S.capture('selection')).catch(() => {}) },
       ], r.left, r.bottom + 4);
     }, '.small.sb-capture');
-    bar = h('div#suite-toolbar', projectButton, sw, h('div.spacer'), captureButton, ui.btn('Bibliothèque', () => S.library(), '.small.sb-library'), taskButton);
-    KS.$('#titlebar').after(bar);
+    // Navigation Kane App : panneau vertical ouvert par le bouton K de la barre de titre (à la place de l'ancienne barre horizontale).
+    const pinButton = ui.btn('', () => { KS.prefs.navPinned = !KS.prefs.navPinned; KS.prefs.save(); KS.emit('prefs'); }, '.small.kn-pin');
+    const brand = KS.$('#titlebar .brand');
+    nav = h('aside#kane-nav', { hidden: true, 'aria-label': 'Navigation Kane App' },
+      h('div.kn-head', projectButton, pinButton),
+      h('div.kn-title', { text: 'Espaces' }), sw,
+      h('div.kn-title', { text: 'Projet' }),
+      h('div.kn-actions', captureButton, ui.btn('Bibliothèque', () => S.library(), '.small.sb-library'), taskButton),
+      h('div.kn-foot', ui.btn('Préférences', () => KS.dialogs.prefs(), '.small', 'settings')));
+    document.body.append(nav);
+    const pinned = () => !!KS.prefs.navPinned;
+    const layoutNav = () => {
+      const open = !nav.hidden;
+      document.documentElement.classList.toggle('kn-pinned', open && pinned());
+      brand?.classList.toggle('kn-on', open);
+      pinButton.textContent = pinned() ? 'Détacher' : 'Épingler';
+      pinButton.title = pinned() ? 'Le panneau se ferme après chaque choix' : 'Garder le panneau ouvert et réserver sa place';
+      setTimeout(() => { window.dispatchEvent(new Event('resize')); try { KS.view.resize(); } catch { /* pas encore prêt */ } }, 0);
+    };
+    const setNav = open => { nav.hidden = !open; layoutNav(); };
+    KS.nav = { open: () => setNav(true), close: () => setNav(false), toggle: () => setNav(nav.hidden) };
+    if (brand) { brand.classList.add('kn-brand'); brand.setAttribute('role', 'button'); brand.tabIndex = 0; brand.title = 'Kane App : espaces et navigation';
+      brand.addEventListener('click', () => KS.nav.toggle());
+      brand.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); KS.nav.toggle(); } }); }
+    // Le panneau se ferme tout de suite (avant le travail lourd d'un espace qui se charge), puis la commande choisie est lancée à l'image suivante.
+    const passing = new WeakSet();
+    nav.addEventListener('click', e => {
+      const target = e.target.closest('.ws-btn, .kn-actions .btn, .suite-project-button');
+      if (!target || pinned()) return;
+      if (passing.delete(target)) return;
+      e.stopPropagation(); e.preventDefault();
+      setNav(false);
+      requestAnimationFrame(() => setTimeout(() => { passing.add(target); target.click(); }, 0));
+    }, true);
+    document.addEventListener('pointerdown', e => { if (!nav.hidden && !pinned() && !nav.contains(e.target) && !e.target.closest('.brand, .menu, .modal-back')) setNav(false); }, true);
+    KS.on('prefs', () => { if (pinned() && nav.hidden) setNav(true); else layoutNav(); });
+    setNav(pinned());
     const themeObserver = new MutationObserver(() => { for (const id in KS.ws.el) KS.ws.theme(id); });
     themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !KS.modalOpen()) drawer.hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !KS.modalOpen()) { drawer.hidden = true; if (!KS.prefs.navPinned) KS.nav?.close(); } });
     drawer.addEventListener('keydown', e => { if (e.target.matches('input,select')) e.stopPropagation(); });
     try {
       const projects = await call('list'); const current = projects.find(p => p.id === KS.prefs.suiteProject) || projects[0];

@@ -316,25 +316,32 @@
   ];
 
   /* ---------------------------------------------------------------- barre de menus */
+  // Un espace intégré (Montage) peut remplacer les menus : { labels: [...], items: async label => [...] }
+  let external = null, built = [], showToken = 0;
+  KS.on('menus-closed', () => { built.forEach(x => x.classList.remove('open')); });
+  M.setExternal = ext => { if (external === ext) return; external = ext; M.build(); };
   M.build = () => {
     const bar = KS.$('#menubar');
     bar.innerHTML = '';
     let open = -1;
-    const defs = M.defs();
-    const btns = defs.map((m, i) => {
+    const defs = external ? external.labels.map(label => ({ label })) : M.defs();
+    const btns = built = defs.map((m, i) => {
       const b = KS.h('button.menu-btn', { text: m.label });
-      const show = () => {
-        const r = b.getBoundingClientRect();
+      const show = async () => {
+        const r = b.getBoundingClientRect(), token = ++showToken;
         btns.forEach(x => x.classList.remove('open'));
         b.classList.add('open'); open = i;
-        ui.menu(typeof m.items === 'function' ? m.items() : M.defs()[i].items, r.left, r.bottom + 4);
+        let items;
+        if (external) { try { items = await external.items(m.label); } catch (err) { KS.toast(err.message, 'err'); b.classList.remove('open'); return; } }
+        else items = typeof m.items === 'function' ? m.items() : M.defs()[i].items;
+        if (token !== showToken || !b.classList.contains('open')) return;
+        ui.menu(items, r.left, r.bottom + 4);
       };
       b.addEventListener('pointerdown', e => { e.preventDefault(); if (open === i && ui.menuOpen()) { ui.closeMenus(); } else show(); });
       b.addEventListener('mouseenter', () => { if (open >= 0 && ui.menuOpen() && open !== i) show(); });
       bar.appendChild(b);
       return b;
     });
-    KS.on('menus-closed', () => { btns.forEach(x => x.classList.remove('open')); open = -1; });
   };
 
   /* ---------------------------------------------------------------- raccourcis */

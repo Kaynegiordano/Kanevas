@@ -3,7 +3,7 @@
 (() => {
   if (window.parent === window || !KC.native) return;
   const style = document.createElement('style');
-  style.textContent = '.in-kanevas #titlebar .brand,.in-kanevas #titlebar .drag-region{display:none}.in-kanevas #titlebar{padding-right:8px;height:30px;min-height:30px}.in-kanevas .btn,.in-kanevas button,.in-kanevas .pane,.in-kanevas .modal,.in-kanevas .menu{box-shadow:none;border-radius:3px;background-image:none}.in-kanevas .primary{background:var(--accent)}';
+  style.textContent = '.in-kanevas #titlebar{display:none}.in-kanevas .btn,.in-kanevas button,.in-kanevas .pane,.in-kanevas .modal,.in-kanevas .menu{box-shadow:none;border-radius:3px;background-image:none}.in-kanevas .primary{background:var(--accent)}';
   document.head.append(style);
   let project = null, saving = null;
   const send = data => window.parent.postMessage({ kv: 'suite-event', kind: 'video', ...data }, '*');
@@ -21,6 +21,30 @@
     })();
     try { await saving; } finally { saving = null; }
   }
+  /* Les menus de KaneClip sont affichés dans la barre de menus de Kane App : on les décrit en données (état évalué à la demande) et on exécute par chemin. */
+  const dyn = (v, ...a) => (typeof v === 'function' ? v(...a) : v);
+  const HIDDEN = /^(Quitter|Thème )/;
+  const describe = (items, path) => {
+    const out = [];
+    items.forEach((it, i) => {
+      if (it === '-') { if (out.length && !out[out.length - 1].sep) out.push({ sep: true }); return; }
+      if (HIDDEN.test(it.label)) return;
+      const p = [...path, i], node = { label: it.label, kb: it.key || '', path: p, disabled: !!dyn(it.disabled) };
+      if (it.checked !== undefined) node.checked = !!dyn(it.checked);
+      if (it.sub) node.sub = describe(dyn(it.sub), p);
+      out.push(node);
+    });
+    while (out.length && out[out.length - 1].sep) out.pop();
+    return out;
+  };
+  const menuTree = () => KC.menus.defs().map(([label, items], i) => ({ label, items: describe(items, [i]) }));
+  const menuRun = path => {
+    let items = KC.menus.defs()[path[0]][1], item = null;
+    for (const idx of path.slice(1)) { item = items[idx]; if (!item) break; if (item.sub) items = dyn(item.sub); }
+    if (!item || item.sub || !item.action) throw new Error('Commande de menu introuvable');
+    if (dyn(item.disabled)) return;
+    item.action();
+  };
   window.addEventListener('message', async e => {
     const m = e.data;
     if (e.source !== window.parent || m?.kv !== 'suite-request') return;
@@ -42,7 +66,9 @@
           else if (KC.project.dirty || KC.project.path) throw new Error('Changement de montage annulé');
           project = m.project; KC.project.info.title ||= m.project.name;
         }
-      } else if (m.op === 'save') await save();
+      } else if (m.op === 'menu-tree') value = menuTree();
+      else if (m.op === 'menu-run') menuRun(m.path);
+      else if (m.op === 'save') await save();
       else if (m.op === 'stop') { KC.engine.stop(); clearTimeout(timer); await save(); }
       else if (m.op === 'add') {
         if (!project) throw new Error('Choisissez un projet Kanevas');

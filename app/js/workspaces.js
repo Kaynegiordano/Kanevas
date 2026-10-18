@@ -23,9 +23,23 @@
     E.sec = h('section.wx-ws', { 'data-ws': id }, E.bar, E.frameBox); host.append(E.sec);
     renderBar(id); renderFrame(id); return E;
   }
+  /* Montage : les menus de KaneClip vivent dans la barre de menus du haut de Kane App, pas dans une seconde barre. */
+  const convertMenu = nodes => nodes.map(n => n.sep ? { sep: true } : n.sub ? { label: n.label, sub: convertMenu(n.sub) }
+    : { label: n.label, kb: n.kb, checked: n.checked, disabled: n.disabled, action: () => WX.request('video', 'menu-run', { path: n.path }).catch(e => KS.toast(e.message, 'err')) });
+  const videoMenu = {
+    labels: ['Fichier', 'Édition', 'Affichage', 'Insérer', 'Outils', 'Options', 'Aide'],
+    items: async label => {
+      const menu = (await WX.request('video', 'menu-tree')).find(m => m.label === label);
+      const items = convertMenu(menu ? menu.items : []);
+      if (label !== 'Fichier') return items;
+      return [{ label: 'Ajouter le document Kanevas', disabled: !KS.state.doc, action: () => KS.suite.run('Ajout au montage', () => C.toVideo()).catch(() => {}) },
+        { label: 'Bibliothèque du projet', action: () => KS.suite.library() }, { sep: true }, ...items];
+    },
+  };
   function renderBar(id) {
     const E = WX.el[id]; if (!E) return;
     const W = WS[id], s = WX.st[id];
+    if (id === 'video') { E.bar.style.display = 'none'; return; }
     const btn = (label, fn, disabled = false) => { const b = ui.btn(label, () => KS.suite?.run(label, fn).catch(() => {}), '.small'); b.disabled = disabled; return b; };
     const subtitle = id === 'video' ? KS.suite?.project?.name || W.engine : E.title || W.engine;
     const controls = [h('div.wx-identity', h('b', { text: W.label }), h('span', { text: subtitle, title: subtitle }))];
@@ -150,6 +164,7 @@
   function sync() {
     const cur = document.body.classList.contains('suite-home') ? 'project' : WX.cur || (KS.studio.on ? 'studio' : 'edit');
     KS.appearance.activate(cur);
+    KS.menus?.setExternal(cur === 'video' ? videoMenu : null);
     document.querySelectorAll('.ws-btn[data-v]').forEach(b => {
       const id = b.dataset.v;
       b.classList.toggle('on', id === cur); b.setAttribute('aria-current', id === cur ? 'page' : 'false');

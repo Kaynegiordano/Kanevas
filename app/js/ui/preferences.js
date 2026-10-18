@@ -53,11 +53,12 @@
   on('display', 'Écran Édition', 'showRecent', 'Projets récents', 'La liste des derniers fichiers ouverts. Un bouton Masquer / Afficher est aussi présent sur l’écran.', true, { kw: 'récents derniers fichiers' });
   on('display', 'Écran Édition', 'showQuickStart', 'Démarrer rapidement', 'Les formats prêts à l’emploi.', true, { kw: 'préréglages formats' });
   on('display', 'Écran Édition', 'showDropHint', 'Indication de dépôt de fichiers', null, true);
-  for (const [id, name] of SPACES) add({ tab: 'display', group: 'Onglets des espaces', label: name, desc: id === 'studio' ? 'Décochez un espace pour retirer son onglet. Il reste accessible par le parcours du projet.' : null, type: 'check', kw: 'onglet espace atelier',
+  for (const [id, name] of SPACES) add({ tab: 'display', group: 'Espaces du panneau Kane App', label: name, desc: id === 'studio' ? 'Décochez un espace pour le retirer du panneau. Il reste accessible par le parcours du projet.' : null, type: 'check', kw: 'onglet espace atelier',
     get: () => !P.hiddenSpaces?.[id], set: v => { P.hiddenSpaces = { ...(P.hiddenSpaces || {}), [id]: !v }; } });
-  on('display', 'Barre du haut', 'showCapture', 'Bouton Capturer', null, true);
-  on('display', 'Barre du haut', 'showLibraryButton', 'Bouton Bibliothèque', null, true);
-  on('display', 'Barre du haut', 'showActivity', 'Bouton Activité', null, true);
+  on('display', 'Panneau Kane App', 'navPinned', 'Garder le panneau ouvert', 'Le panneau vertical s’ouvre avec le bouton K en haut à gauche. Épinglé, il reste affiché et réserve sa place ; sinon il se referme après chaque choix.', false, { kw: 'navigation espaces menu latéral barre verticale k', apply: false });
+  on('display', 'Panneau Kane App', 'showCapture', 'Bouton Capturer', 'Dans le panneau Kane App.', true);
+  on('display', 'Panneau Kane App', 'showLibraryButton', 'Bouton Bibliothèque', null, true);
+  on('display', 'Panneau Kane App', 'showActivity', 'Bouton Activité', null, true);
   on('display', 'Fenêtre', 'ctxBar', 'Barre des tâches contextuelle', 'La barre flottante d’actions rapides sous l’image.', true, { after: () => KS.taskbar?.render() });
   on('display', 'Fenêtre', 'showStatusbar', 'Barre d’état de l’édition', 'Zoom, taille, position du curseur et couleur.', true);
   on('display', 'Fenêtre', 'showGpu', 'Mémoire graphique (VRAM)', 'La jauge en bas de la fenêtre.', true, { kw: 'gpu jauge' });

@@ -272,5 +272,5 @@
     if (/^[1-9]$/.test(k)) return run(() => C.jumpMarker(parseInt(k, 10)));
   }
 
-  KC.menus = { init: () => { buildMenubar(); buildToolbar(); window.addEventListener('keydown', onKey); }, updateToolbar };
+  KC.menus = { defs: MENUS, init: () => { buildMenubar(); buildToolbar(); window.addEventListener('keydown', onKey); }, updateToolbar };
 })();

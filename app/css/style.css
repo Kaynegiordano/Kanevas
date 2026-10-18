@@ -1071,3 +1071,25 @@ body.pf-hide-ws-studio .ws-btn[data-v="studio"], body.pf-hide-ws-wallpaper .ws-b
 body.pf-hide-ws-comfyui .ws-btn[data-v="comfyui"], body.pf-hide-ws-video .ws-btn[data-v="video"] { display: none !important; }
 body.pf-reduce-motion *, body.pf-reduce-motion *::before, body.pf-reduce-motion *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 body.pf-home-empty .suite-home-scroll::before { content: "Tout est masqué sur cet écran. Rétablissez-le dans Préférences › Affichage (Ctrl+K)."; display: block; margin: 80px auto; max-width: 420px; text-align: center; color: var(--muted); }
+
+/* ------------------------------------------------------------ panneau vertical Kane App (bouton K) */
+.brand.kn-brand { cursor: pointer; border-radius: 8px; }
+.brand.kn-brand:hover .brand-mark { filter: brightness(1.15); }
+.brand.kn-brand.kn-on .brand-mark { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+#kane-nav { position: fixed; left: 0; top: var(--titlebar-h); bottom: 0; width: 236px; z-index: 150; display: flex; flex-direction: column; gap: 6px; padding: 12px 10px; background: var(--chrome); border-right: 1px solid var(--border); box-shadow: 8px 0 26px rgba(0,0,0,.28); overflow: auto; animation: kn-in .14s ease-out; }
+#kane-nav[hidden] { display: none; }
+@keyframes kn-in { from { transform: translateX(-14px); opacity: 0; } to { transform: none; opacity: 1; } }
+html.kn-pinned #kane-nav { box-shadow: none; animation: none; }
+html.kn-pinned #app > :not(#titlebar) { margin-left: 236px; }
+.kn-head { display: flex; align-items: center; gap: 6px; }
+#kane-nav .suite-project-button { flex: 1; min-width: 0; max-width: none; height: 32px; }
+.kn-title { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 12px 8px 2px; }
+#kane-nav .ws-switch { flex-direction: column; gap: 2px; padding: 0; margin: 0; background: transparent; border-radius: 0; }
+#kane-nav .ws-btn { display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; text-align: left; font-size: 13px; border-radius: 6px; position: relative; color: var(--text-2); }
+#kane-nav .ws-btn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--space-color, var(--accent)); opacity: .85; }
+#kane-nav .ws-btn:not(.on):hover { background: var(--hover); color: var(--text); }
+#kane-nav .ws-btn.on { background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 var(--space-color, var(--accent)); }
+#kane-nav .ws-btn[data-running="true"]::after { content: "actif"; margin-left: auto; font-size: 10px; color: var(--muted); }
+.kn-actions { display: flex; flex-direction: column; gap: 4px; }
+.kn-actions .btn, .kn-foot .btn { width: 100%; justify-content: flex-start; }
+.kn-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--border); }

@@ -15,6 +15,11 @@ fs.rmSync(dst, { recursive: true, force: true });
 fs.mkdirSync(dst, { recursive: true });
 fs.cpSync(path.join(src, 'app'), path.join(dst, 'app'), { recursive: true, filter: f => !f.endsWith('.map') });
 for (const f of ['media-tools.cjs', 'ai-upscale.cjs']) fs.copyFileSync(path.join(src, f), path.join(dst, f));
+// Menus exposés à Kane App (barre de menus du haut) : KC.menus.defs.
+const menusFile = path.join(dst, 'app', 'js', 'menus.js');
+const menusSource = fs.readFileSync(menusFile, 'utf8');
+if (!menusSource.includes('KC.menus = { init: () =>')) throw new Error('Contrat KaneClip modifié : KC.menus a changé, vérifiez l’exposition des menus.');
+fs.writeFileSync(menusFile, menusSource.replace('KC.menus = { init: () =>', 'KC.menus = { defs: MENUS, init: () =>'));
 fs.writeFileSync(path.join(dst, 'media-tools.cjs'), mediaSource.replace('    findFfmpeg, probe, waveform, thumbs, jobStart, keyInterval, jobCancel, proxyPath, proxyStart, encoders,', '    findFfmpeg, probe, waveform, thumbs, jobStart, keyInterval, jobCancel, proxyPath, proxyStart, encoders,\n    cancelAll: () => { for (const id of jobs.keys()) jobCancel(id); },'));
 fs.writeFileSync(path.join(dst, 'ai-upscale.cjs'), aiSource.replace('return { installed, install, start, cancel, size: ZIP_SIZE, toolDir };', 'return { installed, install, start, cancel, cancelAll: () => { for (const id of jobs.keys()) cancel(id); }, size: ZIP_SIZE, toolDir };'));
 const pkg = JSON.parse(fs.readFileSync(path.join(src, 'package.json'), 'utf8'));
