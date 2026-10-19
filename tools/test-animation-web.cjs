@@ -58,9 +58,18 @@ app.whenReady().then(async()=>{
   assert(result.gazeOnly>10 && result.headOnly>100 && result.loop<30,JSON.stringify(result));
   assert(result.vertical>30 && result.lift>.4,JSON.stringify(result));
   assert(result.right>0 && result.left<0 && result.blink>.5 && result.settled===0 && result.off===0 && Math.abs(result.gone)<.01,JSON.stringify(result));
+  const breath=await win.webContents.executeJavaScript(`(()=>{
+    const pixels=()=>{render();const b=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,b);return b;};
+    const diff=(a,b)=>a.reduce((n,v,i)=>n+(v!==b[i]),0);
+    time=1.5;S.kane_respire=true;const on=pixels(),move=bodyD(IMG_W/2,0,1.5);S.kane_respire=false;const off=pixels();S.kane_respire=true;
+    time=0;const loopA=pixels();time=LOOP;const loopB=pixels();
+    return {diff:diff(on,off),total:on.length/4,dy:move[1],loop:diff(loopA,loopB)};
+  })()`);
+  assert(breath.diff>50 && breath.diff<breath.total*.9 && Math.abs(breath.dy)>.3 && Math.abs(breath.dy)<20 && breath.loop<30,JSON.stringify(breath));
+  assert(JSON.parse(fs.readFileSync(path.join(tmp,'anim.json'),'utf8')).effets.filter(e=>e.kane==='respire').length===1,'Un seul effet de respiration douce');
   assert.equal(result.error,0);assert.equal(errors.length,0,errors.join('\n'));
   assert(fs.readFileSync(path.join(tmp,'a poster/index.html')).equals(original));
   console.log('OK WebGL réel : pixels modifiés par le regard, la tête et le clic ; retrait souris, désactivation et absence d’erreur shader');
-  console.log(JSON.stringify(result));app.exit(0);
+  console.log(JSON.stringify(result),JSON.stringify(breath));app.exit(0);
  }catch(error){console.error(error);app.exit(1);}
 });

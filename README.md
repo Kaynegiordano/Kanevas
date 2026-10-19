@@ -20,6 +20,10 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Respiration douce de tout le personnage (1.12.12)
+
+- Animation, panneau « Interactions souris » : nouvelle case **Respiration douce de tout le personnage**, cochée par défaut et sans zone à peindre. Le personnage se soulève et gonfle très légèrement (de 0,1 % à 0,7 % de la hauteur, réglable avec « Amplitude de la respiration »), les calques (cheveux, visage...) suivent le même mouvement et la boucle reste sans à-coup. Un curseur « Respiration douce » est aussi créé pour Wallpaper Engine. Cliquez « Appliquer au Web » pour la prendre en compte.
+
 ### 📐 = taille exacte de la source (1.12.11)
 
 - Transformer : le bouton 📐 donne maintenant la taille exacte de l'image source (5568 x 3072 reste 5568 x 3072), comme dans Forge ; les curseurs Width/Height montent assez haut pour l'afficher. Une nouvelle image arrive toujours ajustée (mêmes proportions, côté long <= 2048, ex. 1856 x 1024). Au-dessus de 2048 px, un avertissement et un bouton « Réduire à… » ramènent à la taille ajustée.

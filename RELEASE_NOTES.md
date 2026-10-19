@@ -1,3 +1,7 @@
+Kane App / Kanevas 1.12.12 — Respiration douce
+
+- Animation : case « Respiration douce de tout le personnage » (par défaut, sans zone à peindre) avec réglage d'amplitude ; le corps et les calques suivent, boucle sans à-coup, curseur Wallpaper Engine. Cliquez « Appliquer au Web ».
+
 Kane App / Kanevas 1.12.11 — 📐 = taille exacte de la source
 
 - Transformer : 📐 prend la taille exacte de l'image source (5568 x 3072 reste 5568 x 3072) ; curseurs étendus. Une nouvelle image reste ajustée par défaut (1856 x 1024) ; avertissement au-dessus de 2048 px avec un bouton « Réduire à… ».

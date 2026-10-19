@@ -17,14 +17,23 @@ def configure(directory):
     paint = folder / 'peinture' / 'peinture.json'
     settings = json.loads(paint.read_text(encoding='utf-8')).get('reglages', {}) if paint.is_file() else {}
     config = {key: bool(settings.get('interaction_' + key, False)) for key in ('regard', 'tete', 'clic')}
+    # respiration douce de tout le personnage : aucune zone à peindre, activée par défaut
+    config['respire'] = bool(settings.get('interaction_respire', True))
+    config['respire_force'] = max(0, min(1, float(settings.get('interaction_respire_force', 0.5))))
     config['force'] = max(0, min(1, float(settings.get('interaction_force', 0.65))))
     anim['interaction'] = config
+    # Effet « respiration » sans masque : le canal absent vaut 1 partout, le corps et les calques suivent le même déplacement.
+    # Centré sur le bas de l'image : le personnage se soulève et gonfle très légèrement (de 0,1 % à 0,7 % de la hauteur).
+    width, height = anim.get('taille', [1000, 1000])
+    anim['effets'] = [e for e in anim.get('effets', []) if e.get('kane') != 'respire']
+    anim['effets'].append({'type': 'respiration', 'kane': 'respire', 'centre': [round(width / 2), round(height)],
+                           'force': round(0.0012 + 0.0058 * config['respire_force'], 5), 'curseur': 'kane_respire'})
     available = {
         'tete': any(e.get('type') == 'tete' and e.get('force', 0) > 0 for e in anim.get('effets', [])),
         'regard': any(l.get('type') == 'visage' and l.get('mode') == 'expression' and l.get('images', 0) > 1 for l in anim.get('calques', [])),
         'clignement': any(l.get('type') == 'visage' and l.get('mode') != 'expression' and l.get('images', 0) > 1 for l in anim.get('calques', [])),
     }
-    labels = {'regard': 'Regard suit la souris', 'tete': 'Tête suit la souris', 'clic': 'Réaction au clic'}
+    labels = {'regard': 'Regard suit la souris', 'tete': 'Tête suit la souris', 'clic': 'Réaction au clic', 'respire': 'Respiration douce'}
     definitions = {f'kane_{k}': {'type': 'bool', 'texte': label, 'defaut': config[k]} for k, label in labels.items()}
     definitions['kane_interaction_force'] = {'texte': 'Intensité des interactions', 'defaut': config['force'], 'min': 0, 'max': 1}
     anim.setdefault('curseurs', {}).update(definitions)

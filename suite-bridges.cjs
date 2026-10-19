@@ -31,13 +31,21 @@ module.exports = function installSuiteBridge(kind) {
     if (typeof REGL !== 'undefined' && document.getElementById('cote')) {
       const panel = document.createElement('div'); panel.className = 'bloc'; panel.id = 'kane-interactions';
       panel.innerHTML = '<h2>Interactions souris</h2><div class="aide">Préparez les zones Regard, Tête et Yeux. Testez ensuite leurs réactions dans l’aperçu Web.</div>';
-      for (const [key, label] of [['regard','Le regard suit la souris'],['tete','La tête suit la souris'],['clic','Réagir au clic : clignement et petit mouvement']]) {
+      for (const [key, label] of [['respire','Respiration douce de tout le personnage (aucune zone à peindre)'],['regard','Le regard suit la souris'],['tete','La tête suit la souris'],['clic','Réagir au clic : clignement et petit mouvement']]) {
         const row=document.createElement('label'), input=document.createElement('input');
         input.id='kane-'+key; input.type='checkbox'; row.append(input,document.createTextNode(' '+label)); panel.append(row);
         if(key==='regard')row.title='Le regard préparé se déplace de gauche à droite.';
-        REGL.push([input.id,'interaction_'+key,false]);
-        input.checked=!!(typeof reglages === 'undefined' ? false : reglages['interaction_'+key]);
+        if(key==='respire')row.title='Le personnage se soulève et gonfle très légèrement, comme s’il respirait, même sans zone Respiration peinte.';
+        REGL.push([input.id,'interaction_'+key,key==='respire']);
+        input.checked=typeof reglages === 'undefined' ? key==='respire' : !!(reglages['interaction_'+key] ?? (key==='respire'));
         input.oninput=()=>{memoriseReglage(input.id);change();};
+        if(key==='respire'){
+          const bl=document.createElement('label'), bv=document.createElement('b'), br=document.createElement('input');
+          bl.textContent='Amplitude de la respiration '; bv.id='kane-respire_forceV'; bl.append(bv);
+          br.id='kane-respire_force'; br.type='range'; br.min='0'; br.max='1'; br.step='.05'; br.value=String(typeof reglages==='undefined' ? .5 : reglages.interaction_respire_force ?? .5);
+          REGL.push([br.id,'interaction_respire_force',.5,v=>Math.round(+v*100)+' %']);
+          br.oninput=()=>{memoriseReglage(br.id);majValeurs();change();}; row.after(bl,br);
+        }
       }
       const label=document.createElement('label'), amount=document.createElement('b'), range=document.createElement('input');
       label.textContent='Intensité '; amount.id='kane-forceV'; label.append(amount);
@@ -76,6 +84,7 @@ module.exports = function installSuiteBridge(kind) {
       const buttons=document.createElement('div');buttons.className='ligne';buttons.style.marginTop='8px';buttons.append(apply,test);panel.append(buttons,note);
       document.getElementById('gMode')?.closest('.bloc')?.before(panel);
       amount.textContent=Math.round(+range.value*100)+' %';
+      const bvEl=document.getElementById('kane-respire_forceV'), brEl=document.getElementById('kane-respire_force'); if(bvEl&&brEl)bvEl.textContent=Math.round(+brEl.value*100)+' %';
     }
     window.fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
