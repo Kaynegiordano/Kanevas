@@ -743,7 +743,19 @@
       ...seedRows(st, 't2i'), adAcc(st, 't2i'), noomAcc(st), ...scriptBlock(st, 't2i'));
   }
   const INPAINT_MODES = ['inpaint', 'inpaint_sketch', 'inpaint_upload'];
-  const fitDoc = d => { const k = Math.min(1, 2048 / Math.max(d.width, d.height)); return { w: r8(d.width * k), h: r8(d.height * k) }; };
+  // Taille de génération la plus fidèle aux proportions de la source (multiples de 8, côté long <= 2048) :
+  // 5568 x 3072 (29:16) donne 1856 x 1024 pile, au lieu de 2048 x 1128 (proportions faussées, donc recadrage).
+  const fitDoc = d => {
+    const wide = d.width >= d.height, big = Math.max(d.width, d.height), small = Math.min(d.width, d.height);
+    const cap = Math.min(big, 2048), ratio = small / big, q = v => Math.max(64, Math.round(v / 8) * 8);
+    let best = null;
+    for (let L = Math.min(2048, q(cap)); L >= Math.max(64, cap * 0.75); L -= 8) {
+      const S = q(L * ratio), score = Math.abs(S / L - ratio) / ratio + (cap - L) / cap * 0.002;
+      if (!best || score < best.score - 1e-9) best = { L, S, score };
+    }
+    best = best || { L: q(cap), S: q(cap * ratio) };
+    return wide ? { w: best.L, h: best.S } : { w: best.S, h: best.L };
+  };
   function i2iParams(st) {
     const step = cat.resStep || 16, d = i2iDoc, inpaint = INPAINT_MODES.includes(FX.i2iMode);
     if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; }
@@ -766,7 +778,7 @@
     const sizeBody = st.sizeTab === 'by'
       ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.5, 4, 0.05, '', v => { if (src) byInfo.textContent = `Resize: from ${src.w}x${src.h} to ${r8(src.w * v)}x${r8(src.h * v)}`; }), byInfo)
       : h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', manual), slider('Height', st, 'height', 64, 2048, step, '', manual),
-        st.autoSize ? h('div.fx-info', { text: 'Taille de l’image source (📐)' }) : null);
+        st.autoSize ? h('div.fx-info', { text: d ? `Taille de l’image source (📐) : ${d.width} × ${d.height} → ${st.width} × ${st.height}, mêmes proportions` : 'Taille de l’image source (📐)' }) : null);
     out.push(samplingRow(st), presetRow(st),
       tabs([['to', 'Resize to'], ['by', 'Resize by']], st.sizeTab, v => { st.sizeTab = v; save(); rp(); }, '.fx-subtabs'),
       h('div.fx-dims', sizeBody, h('div.fx-col.fx-mid', swap, auto),

@@ -20,6 +20,10 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Taille de l'image source plus juste (1.12.9)
+
+- Transformer (img2img, inpaint) : la taille automatique (📐) garde maintenant exactement les proportions de la source. Avant, 5568 x 3072 devenait 2048 x 1128 (proportions faussées, donc image recadrée) ; maintenant 1856 x 1024. Le côté long reste limité à 2048, par multiples de 8, et la zone indique « source -> taille utilisée ».
+
 ### Atelier Lora en deux colonnes (1.12.8)
 
 - L'onglet Lora du Studio occupe toute la largeur : projet, preset et légendes à gauche, réglages d'entraînement et lancement à droite (une seule colonne sur petit écran). Plus de vide à droite sur grand écran.

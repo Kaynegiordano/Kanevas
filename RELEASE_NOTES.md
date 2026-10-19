@@ -1,3 +1,7 @@
+Kane App / Kanevas 1.12.9 — Taille de l'image source plus juste
+
+- Transformer : la taille automatique garde les proportions exactes de l'image donnée (5568 x 3072 donne 1856 x 1024 au lieu de 2048 x 1128, qui recadrait). La zone Taille affiche source et taille utilisée.
+
 Kane App / Kanevas 1.12.8 — Atelier Lora en deux colonnes
 
 - Onglet Lora du Studio : projet, preset et légendes à gauche, réglages et entraînement à droite, au lieu d'une colonne qui laissait un grand vide à droite.
