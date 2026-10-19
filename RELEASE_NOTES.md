@@ -1,3 +1,8 @@
+Kane App / Kanevas 1.12.8 — Atelier Lora en deux colonnes
+
+- Onglet Lora du Studio : projet, preset et légendes à gauche, réglages et entraînement à droite, au lieu d'une colonne qui laissait un grand vide à droite.
+- Correction : « null » affiché en bas de l'onglet sans projet ouvert.
+
 Kane App / Kanevas 1.12.7 — Aperçu net, Studio plus rapide, clic droit sur Lora
 
 - Aperçu en direct net : le latent est décodé par le VAE, à la taille du résultat, et remplit la zone (avant : petite image approximative au milieu d'un grand cadre). Réglage Net / Rapide / Désactivé dans Réglages. Environ 6 % de temps en plus.

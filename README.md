@@ -20,6 +20,11 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Atelier Lora en deux colonnes (1.12.8)
+
+- L'onglet Lora du Studio occupe toute la largeur : projet, preset et légendes à gauche, réglages d'entraînement et lancement à droite (une seule colonne sur petit écran). Plus de vide à droite sur grand écran.
+- Correction : le mot « null » s'affichait en bas de l'onglet quand aucun projet n'était ouvert.
+
 ### Aperçu net, Studio plus rapide, clic droit sur Lora (1.12.7)
 
 - **Aperçu en direct net** : pendant la génération, l'aperçu est le latent décodé par le VAE, à la taille du résultat

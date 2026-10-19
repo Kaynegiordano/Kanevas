@@ -388,7 +388,11 @@
     train.title = 'Clic droit : arrêter / relancer l\'entraînement';
     const intro = h('div.fx-panel.lt-intro', { html: '<b>Train an ANIMA LoRA</b> with kohya-ss/sd-scripts, on the recipe read from a working reference LoRA, resized for the type you pick and for how many images you gave it.<br>Import images → caption them → pick a preset or set your own numbers → train. The result is loaded like any other LoRA in txt2img / img2img.' + (I.sd_scripts ? '' : '<br><b>sd-scripts (avec ANIMA) est introuvable à côté du dossier de Forge.</b>') + (I.tagger ? '' : '<br>Légendes automatiques indisponibles : ' + (I.tagger_error || '')) });
     intro.append(h('div.lt-row', tbtn('Actualiser', () => refreshAll()), h('span.fx-note', { text: 'Recharge les projets et l’état de l’entraînement, et libère un entraînement bloqué : à utiliser si « Start training » ne repart pas.' })));
-    root.replaceChildren(intro, project, on ? preset : null, on ? captions : null, on ? settings : null, on ? train : null);
+    // deux colonnes sur grand écran : données à gauche (projet, preset, légendes), réglages et entraînement à droite
+    const colL = h('div.lt-col'), colR = h('div.lt-col');
+    colL.append(...[project, on ? preset : null, on ? captions : null].filter(Boolean));
+    colR.append(...[intro, on ? settings : null, on ? train : null].filter(Boolean));
+    root.replaceChildren(colL, colR);
     if (sc) sc.scrollTop = top;
   }
 
