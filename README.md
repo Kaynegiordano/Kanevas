@@ -20,6 +20,10 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### 📐 = taille exacte de la source (1.12.11)
+
+- Transformer : le bouton 📐 donne maintenant la taille exacte de l'image source (5568 x 3072 reste 5568 x 3072), comme dans Forge ; les curseurs Width/Height montent assez haut pour l'afficher. Une nouvelle image arrive toujours ajustée (mêmes proportions, côté long <= 2048, ex. 1856 x 1024). Au-dessus de 2048 px, un avertissement et un bouton « Réduire à… » ramènent à la taille ajustée.
+
 ### « Resize by » fidèle à la source (1.12.10)
 
 - Transformer : avec 📐 actif, l'onglet « Resize by » prend lui aussi la taille ajustée à la source (5568 x 3072 donne une échelle de 0,333, soit 1856 x 1024) au lieu de 1,0 (5568 x 3072, bien trop lourd). L'échelle descend maintenant jusqu'à 0,1 et un avertissement apparaît au-dessus de 2048 px.

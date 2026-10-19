@@ -756,9 +756,12 @@
     best = best || { L: q(cap), S: q(cap * ratio) };
     return wide ? { w: best.L, h: best.S } : { w: best.S, h: best.L };
   };
+  // autoSize : true = ajusté à la source (côté long <= 2048), 'exact' = taille exacte de la source (clic sur 📐)
+  const shrinkBtn = (d, st) => { const b = h('button.fx-ebtn', { text: 'Réduire à ' + fitDoc(d).w + ' × ' + fitDoc(d).h, style: { width: 'auto', height: 'auto', marginLeft: '8px', padding: '2px 8px' } }); b.addEventListener('click', () => { st.autoSize = true; save(); rp(); }); return b; };
+  const autoDims = (st, d) => st.autoSize === 'exact' ? { w: r8(d.width), h: r8(d.height) } : fitDoc(d);
   function i2iParams(st) {
     const step = cat.resStep || 16, d = i2iDoc, inpaint = INPAINT_MODES.includes(FX.i2iMode);
-    if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; st.scale_by = Math.round(f.w / d.width * 1000) / 1000; }
+    if (st.autoSize && d) { const f = autoDims(st, d); st.width = f.w; st.height = f.h; st.scale_by = Math.round(f.w / d.width * 1000) / 1000; }
     const out = [radio('Resize mode', [[0, 'Just Resize'], [1, 'Crop and Resize'], [2, 'Resize and Fill'], [3, 'Just Resize (latent upscale)']], st, 'resize_mode')];
     if (inpaint) out.push(
       slider('Mask blur', st, 'mask_blur', 0, 64, 1),
@@ -771,16 +774,19 @@
         row2(slider('Transition contrast boost', st.soft, 'contrast', 1, 32, 0.5), slider('Mask influence', st.soft, 'influence', 0, 1, 0.05)),
         row2(slider('Difference threshold', st.soft, 'diffThr', 0, 8, 0.25), slider('Difference contrast', st.soft, 'diffContrast', 0, 8, 0.25))], { on: [st.soft, 'enabled'] }));
     const manual = () => { st.autoSize = false; save(); };
+    const maxSz = Math.max(2048, d ? r8(Math.max(d.width, d.height)) : 0);
     const swap = ebtn('⇅', 'Inverser largeur et hauteur', () => { [st.width, st.height] = [st.height, st.width]; st.autoSize = false; save(); rp(); });
-    const auto = ebtn('📐', 'Taille de l’image source (proportions exactes, côté long <= 2048)', () => { st.autoSize = true; save(); rp(); }, st.autoSize ? '.on' : '');
+    const auto = ebtn('📐', 'Prendre la taille exacte de l’image source', () => { st.autoSize = 'exact'; save(); rp(); }, st.autoSize ? '.on' : '');
     const src = d ? { w: d.width, h: d.height } : null;
-    const byText = v => { const w = r8(src.w * v), hh = r8(src.h * v); return `Resize: from ${src.w}x${src.h} to ${w}x${hh}` + (Math.max(w, hh) > 2048 ? ' — très grand pour la génération (mémoire, lenteur) : réduisez l’échelle ou cliquez 📐' : ''); };
+    const byText = v => { const w = r8(src.w * v), hh = r8(src.h * v); return `Resize: from ${src.w}x${src.h} to ${w}x${hh}` + (Math.max(w, hh) > 2048 ? ' — très grand pour la génération (mémoire, lenteur) : réduisez l’échelle' : ''); };
     const byInfo = h('div.fx-info', { text: src ? byText(st.scale_by) : 'Aucune image' });
     const sizeBody = st.sizeTab === 'by'
       ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.1, 4, 0.01, '', v => { st.autoSize = false; if (src) byInfo.textContent = byText(v); }), byInfo,
-        st.autoSize && src ? h('div.fx-info', { text: 'Échelle ajustée à la taille de l’image source (📐) : mêmes proportions, côté long <= 2048' }) : null)
-      : h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', manual), slider('Height', st, 'height', 64, 2048, step, '', manual),
-        st.autoSize ? h('div.fx-info', { text: d ? `Taille de l’image source (📐) : ${d.width} × ${d.height} → ${st.width} × ${st.height}, mêmes proportions` : 'Taille de l’image source (📐)' }) : null);
+        st.autoSize && src ? h('div.fx-info', { text: st.autoSize === 'exact' ? 'Échelle 1 : taille exacte de la source (📐).' : 'Échelle ajustée à la source : mêmes proportions, côté long <= 2048. Cliquez 📐 pour la taille exacte.' }) : null)
+      : h('div.fx-col', slider('Width', st, 'width', 64, maxSz, step, '', manual), slider('Height', st, 'height', 64, maxSz, step, '', manual),
+        st.autoSize && d ? (st.autoSize === 'exact'
+          ? h('div.fx-info', { text: `Taille exacte de la source (📐) : ${d.width} × ${d.height}` + (Math.max(st.width, st.height) > 2048 ? ' — très grand pour la génération (mémoire, lenteur). ' : '. ') }, shrinkBtn(d, st))
+          : h('div.fx-info', { text: `Source ${d.width} × ${d.height} → ${st.width} × ${st.height} (mêmes proportions, côté long <= 2048). Cliquez 📐 pour la taille exacte.` })) : null);
     out.push(samplingRow(st), presetRow(st),
       tabs([['to', 'Resize to'], ['by', 'Resize by']], st.sizeTab, v => { st.sizeTab = v; save(); rp(); }, '.fx-subtabs'),
       h('div.fx-dims', sizeBody, h('div.fx-col.fx-mid', swap, auto),
@@ -1336,7 +1342,7 @@
     x.globalCompositeOperation = 'destination-over'; x.fillStyle = '#000'; x.fillRect(0, 0, m.width, m.height);
     return m;
   };
-  const i2iSize = (st, w, hh) => st.autoSize ? fitDoc({ width: w, height: hh }) : st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : { w: +st.width, h: +st.height };
+  const i2iSize = (st, w, hh) => st.autoSize ? autoDims(st, { width: w, height: hh }) : st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : { w: +st.width, h: +st.height };
   async function runI2I(p, st) {
     const mode = FX.i2iMode;
     Object.assign(p, { resize_mode: +st.resize_mode, denoising_strength: +st.denoising_strength });
