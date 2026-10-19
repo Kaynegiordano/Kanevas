@@ -82,11 +82,13 @@ if (!app.requestSingleInstanceLock()) {
 
 function createWindow() {
   const chrome = readChrome() || { color: '#f4f6f8', symbolColor: '#3b4552' };
+  // Le shell Windows ne sait pas lire une icône située dans app.asar.
+  const windowsIcon = app.isPackaged ? path.join(process.resourcesPath, 'kanevas-app.ico') : path.join(__dirname, 'app', 'kanevas.ico');
   win = new BrowserWindow({
     width: 1600, height: 980, minWidth: 1024, minHeight: 640,
     backgroundColor: chrome.color,
     title: 'Kane App',
-    icon: path.join(__dirname, 'app', process.platform === 'win32' ? 'kanevas.ico' : 'icon.png'),
+    icon: process.platform === 'win32' ? windowsIcon : path.join(__dirname, 'app', 'icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: chrome.color, symbolColor: chrome.symbolColor, height: 40 },
     show: false,
@@ -105,7 +107,7 @@ function createWindow() {
   if (process.platform === 'win32') {
     win.setAppDetails({
       appId: 'com.kane.kanevas',
-      appIconPath: path.join(__dirname, 'app', 'kanevas.ico'),
+      appIconPath: windowsIcon,
       appIconIndex: 0,
       relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${__dirname}"`,
       relaunchDisplayName: 'Kanevas',

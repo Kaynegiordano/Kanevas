@@ -12,7 +12,18 @@ https://kaynegiordano.github.io/Kanevas/ : le dossier `app/` publié sur GitHub 
 sauvegardes de secours et les mises à jour restent propres à l'application de bureau. Les polices du PC
 sont proposées dans Chrome et Edge (bouton « Polices du PC » de l'outil Texte, après autorisation du site).
 
+## Icône
+
+Le K géométrique corail, jaune et turquoise sur fond anthracite distingue Kane App / Kanevas du lanceur Kane OS. Le visuel source est
+`build/icon-source.png`. `python tools/build-icon.py` (Pillow requis) reconstruit `app/icon.png`
+et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installateur. Les ICO contiennent
+dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
+
 ## Outils récents
+### Actualiser dans l’atelier LoRA, ComfyUI à jour (1.12.6)
+
+Le bouton Actualiser de Studio IA > LoRA libère un entraînement bloqué et relit les projets. ComfyUI se met à jour (git + paquets) à chaque démarrage depuis Kanevas.
+
 ### Illustrations interactives dans Animation (1.10.0)
 
 - Le panneau **Interactions souris** propose le regard qui suit le curseur (gauche/droite), une tête réactive
