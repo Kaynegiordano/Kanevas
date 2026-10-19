@@ -179,6 +179,35 @@
     await refreshProjects(); S.cur = ''; await openProject('');
   }
 
+  /* ---------------------------------------------------------------- actualiser (relancer un entraînement après un bug) */
+  // Relit tout depuis le disque : libère un entraînement « fantôme » (processus mort ou PID réutilisé par Windows, qui
+  // bloquait « Un entraînement tourne déjà » et les générations), recharge catalogue, projets, images et état du suivi.
+  let refreshing = false;
+  async function refreshAll() {
+    if (refreshing) return; refreshing = true;
+    let note = '';
+    try {
+      stopPoll();
+      let r = null;
+      try { r = await call('refresh'); } catch (e) { note = '⚠️ ' + e.message; }
+      S.run = r && r.status || null; S.checked = 0; S.thumbs.clear();
+      if (r && r.fixed && r.fixed.length) note = '🔧 Entraînement bloqué libéré : ' + r.fixed.map(x => x.reason).join(' ; ') + '. Vous pouvez relancer.';
+      const cat = KS.studioApi && KS.studioApi.cat();
+      S.info = await call('info', { modules: (cat && cat.current.modules) || [] });
+      await refreshProjects();
+      if (S.cur && S.projects.some(p => p.name === S.cur)) await openProject(S.cur); else if (S.cur) { S.cur = ''; await openProject(''); } else render();
+      if (r && r.status && r.status.running) {
+        S.run = r.status; startPoll();
+        if (r.idle_s > 900) note += (note ? '\n\n' : '') + `⚠️ Le journal n'a pas bougé depuis ${Math.round(r.idle_s / 60)} min : l'entraînement semble bloqué. Cliquez sur **Stop** pour le fermer, puis relancez.`;
+      }
+      const etat = S.run ? S.run.text : 'Aucun entraînement en cours.';
+      msg('train', (note ? note + '\n\n' : '') + etat);
+      if (!note) KS.toast('Atelier LoRA actualisé', 'ok', 2500);
+      render();
+    } catch (e) { msg('train', '⚠️ Actualisation impossible : ' + e.message); }
+    finally { refreshing = false; }
+  }
+
   /* ---------------------------------------------------------------- rendu */
   function render() {
     if (!root || !root.isConnected) return;
@@ -207,7 +236,7 @@
       gallery.appendChild(cell);
     }
     const project = h('div.fx-panel.lt-card',
-      h('div.lt-row', field('Project', sel), tbtn('Refresh', async () => { await refreshProjects(); render(); }), tbtn('Delete', del)),
+      h('div.lt-row', field('Project', sel), tbtn('Actualiser', () => refreshAll()), tbtn('Delete', del)),
       h('div.lt-row', field('New project', newName, 'Also names the project when you import below, instead of the source folder\'s name'),
         tbtn('Create', async () => {
           const n = newName.value.trim(); if (!n) return msg('project', 'Give the project a name first.');
@@ -284,11 +313,7 @@
       h('div.lt-row', check('Free VRAM before training', freeFirst, 'v', 'sd-scripts loads its own copy of the weights; whatever Forge still holds is taken away from training', v => { S.freeFirst = v; }),
         tbtn('Free VRAM now', async () => { try { msg('vram', await freeVram()); } catch (e) { msg('vram', '⚠️ ' + e.message); } })),
       msgBox('vram'),
-      h('div.lt-row.lt-go', tbtn(running ? 'Training…' : 'Start training', () => start(), '.primary.lt-start'), tbtn('Stop', () => stop()), tbtn('Refresh progress', async () => {
-        if (!S.run) { const st = (await call('status')).status; if (st) { S.run = st; if (st.running) startPoll(); } }
-        else S.run = (await call('status', { run: S.run.run })).status;
-        S.msgs.train = S.run ? S.run.text : 'No training has been started in this session.'; render();
-      })),
+      h('div.lt-row.lt-go', tbtn(running ? 'Training…' : 'Start training', () => start(), '.primary.lt-start'), tbtn('Stop', () => stop()), tbtn('Actualiser', () => refreshAll())),
       h('div.lt-row', check('Éteindre le PC quand l\'entraînement est terminé', power, 'v', '2 min après la fin, réussi ou en échec ; pas si vous l\'arrêtez vous-même. Kanevas doit rester ouvert.', v => { S.power = v; msg('power', v ? '⏻ Le PC s\'éteindra 2 minutes après la fin de l\'entraînement (réussi ou en échec). Pas d\'extinction si vous l\'arrêtez vous-même.' : 'Le PC restera allumé à la fin de l\'entraînement.'); }),
         tbtn('Annuler l\'extinction', async () => { S.power = false; await N.loraShutdown(false); msg('power', 'Extinction annulée : le PC restera allumé.'); render(); })),
       msgBox('power'),
@@ -297,6 +322,7 @@
       run && run.tail ? h('pre.lt-log', { text: run.tail }) : null,
       samples, results);
     const intro = h('div.fx-panel.lt-intro', { html: '<b>Train an ANIMA LoRA</b> with kohya-ss/sd-scripts, on the recipe read from a working reference LoRA, resized for the type you pick and for how many images you gave it.<br>Import images → caption them → pick a preset or set your own numbers → train. The result is loaded like any other LoRA in txt2img / img2img.' + (I.sd_scripts ? '' : '<br><b>sd-scripts (avec ANIMA) est introuvable à côté du dossier de Forge.</b>') + (I.tagger ? '' : '<br>Légendes automatiques indisponibles : ' + (I.tagger_error || '')) });
+    intro.append(h('div.lt-row', tbtn('Actualiser', () => refreshAll()), h('span.fx-note', { text: 'Recharge les projets et l’état de l’entraînement, et libère un entraînement bloqué : à utiliser si « Start training » ne repart pas.' })));
     root.replaceChildren(intro, project, on ? preset : null, on ? captions : null, on ? settings : null, on ? train : null);
     if (sc) sc.scrollTop = top;
   }

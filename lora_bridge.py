@@ -402,6 +402,70 @@ def cmd_stop(a):
     return {"status": run_state(rf)}
 
 
+def _image_name(pid: int) -> str:
+    """Nom de l'executable d'un processus ('' si illisible : on ne conclut alors rien)."""
+    if os.name != "nt":
+        return ""
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenProcess(0x1000, False, pid)           # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = ctypes.c_ulong(1024)
+        return os.path.basename(buf.value).lower() if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)) else ""
+    finally:
+        k32.CloseHandle(h)
+
+
+def cmd_refresh(a):
+    """« Actualiser » : remet d'aplomb l'etat des entrainements, pour pouvoir en relancer un.
+
+    Un run.json non termine dont le processus n'existe plus (plantage, PC eteint) ou dont le PID a ete reattribue a un
+    autre programme (Windows reutilise les PID) bloquait « Un entrainement tourne deja » et les generations de Kanevas.
+    On le clot proprement ; un vrai entrainement en cours n'est jamais touche (le bouton Arreter sert a cela).
+    """
+    t = LIB.train
+    fixed = []
+    root = LIB.store.ROOT
+    for rf in (sorted(root.glob("*/_training/runs/*/run.json")) if root.is_dir() else []):
+        try:
+            data = json.loads(rf.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if data.get("finished_at") is not None or data.get("stopped"):
+            continue
+        pid = data.get("pid")
+        if not isinstance(pid, int):
+            continue                                   # jamais demarre : find_adoptable_run l'ignore deja
+        vivant = t.pid_alive(pid)
+        raison = "le processus n'existe plus"
+        if vivant:
+            nom = _image_name(pid)
+            if nom and nom not in ("python.exe", "pythonw.exe", "accelerate.exe", "py.exe"):
+                vivant, raison = False, f"le PID {pid} est maintenant utilise par {nom}"
+        if vivant:
+            continue
+        output = Path(data["output"]) if data.get("output") else None
+        code = 0 if output and output.is_file() and output.stat().st_size > 0 else None
+        data.update(return_code=code, finished_at=datetime.now(timezone.utc).isoformat(), stale=raison)
+        try:
+            LIB.store.atomic_json(rf, data)
+            fixed.append({"project": data.get("project", ""), "run": str(rf.parent), "reason": raison})
+        except Exception:
+            pass
+    found = t.find_adoptable_run(max_log_age=10 ** 9)
+    status = run_state(found["run_file"]) if found else None
+    idle = None
+    if found:
+        try:
+            idle = int(time.time() - found["log"].stat().st_mtime)
+        except OSError:
+            pass
+    return {"fixed": fixed, "status": status, "idle_s": idle}
+
+
 COMMANDS = {k[4:]: v for k, v in globals().items() if k.startswith("cmd_")}
 
 
