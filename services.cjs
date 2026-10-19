@@ -58,6 +58,32 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
     try { return !!require('./local-process.cjs').identify({ port: SV[id].port, script: path.join(d, id === 'comfyui' ? 'main.py' : 'outils/peintre.py'), python: path.join(d, 'venv/Scripts/python.exe') }); } catch { return false; }
   };
 
+  // ComfyUI : fetch + fast-forward de master si l'arbre est propre et sans commit local, puis ses paquets Python ;
+  // retour à l'état d'avant si pip échoue. Un échec (hors-ligne, modifications locales…) ne bloque jamais le démarrage.
+  const run = (cmd, args, cwd, timeout) => new Promise((res, rej) => require('child_process').execFile(cmd, args, { cwd, windowsHide: true, timeout, encoding: 'utf8', maxBuffer: 1 << 24 }, (e, so, se) => e ? rej(Object.assign(e, { out: String(se || so || '') })) : res(String(so).trim())));
+  async function updateComfy(d, id) {
+    const git = (...a) => run('git', a, d, 120000);
+    try {
+      log(id, '[Kane OS] Recherche d’une mise à jour de ComfyUI…');
+      await git('fetch', '--quiet', 'origin', 'master');
+      const behind = +(await git('rev-list', '--count', 'HEAD..origin/master'));
+      const ahead = +(await git('rev-list', '--count', 'origin/master..HEAD'));
+      if (!behind) { log(id, '[Kane OS] ComfyUI est à jour.'); return; }
+      if (ahead) { log(id, '[Kane OS] Pas de mise à jour : ComfyUI a des commits locaux.'); return; }
+      if (await git('status', '--porcelain', '--untracked-files=no')) { log(id, '[Kane OS] Pas de mise à jour : fichiers de ComfyUI modifiés.'); return; }
+      log(id, `[Kane OS] ${behind} nouveauté(s) : mise à jour…`); emit(id);
+      const avant = await git('rev-parse', 'HEAD');
+      await git('merge', '--ff-only', 'origin/master');
+      const py = path.join(d, 'venv', 'Scripts', 'python.exe');
+      for (const f of ['requirements.txt', 'manager_requirements.txt']) {
+        if (!fs.existsSync(path.join(d, f))) continue;
+        try { await run(py, ['-m', 'pip', 'install', '--quiet', '-r', path.join(d, f)], d, 1800000); }
+        catch (e) { await git('reset', '--hard', avant).catch(() => {}); log(id, `[Kane OS] pip a échoué sur ${f} : retour à la version précédente. ` + String(e.out || e.message).slice(-300)); return; }
+      }
+      log(id, '[Kane OS] ComfyUI mis à jour. Démarrage.');
+    } catch (e) { log(id, '[Kane OS] Mise à jour de ComfyUI ignorée : ' + String((e && (e.out || e.message)) || e).slice(0, 300)); }
+  }
+
   async function start(id) {
     const S = st[id], D = SV[id];
     if (S.state === 'ready' || S.state === 'external' || S.state === 'starting') return status(id);
@@ -65,10 +91,12 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
     const d = D.dir();
     if (!D.check(d)) { S.state = 'error'; S.error = D.name + ' introuvable ou incomplet : ' + d; emit(id); return status(id); }
     if (id === 'wallpaper') startRelay();
+    S.log = []; S.error = ''; S.state = 'starting'; S.ours = true; emit(id);
+    if (id === 'comfyui') await updateComfy(d, id);       // mise à jour à chaque lancement, puis démarrage sur le code à jour
+    if (S.state !== 'starting') return status(id);         // arrêté pendant la mise à jour
     const [py, args] = D.cmd(d);
     const env = { ...environment(id), PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1', ...(D.env ? await D.env() : {}) };
     S.forge = env.WEA_FORGE_URL || '';
-    S.log = []; S.error = ''; S.state = 'starting'; S.ours = true; emit(id);
     log(id, '> ' + [py, ...args].join(' '));
     const child = spawn(py, args, { cwd: d, windowsHide: true, env });
     S.pid = child.pid;
