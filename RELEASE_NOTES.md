@@ -1,3 +1,7 @@
+Kane App / Kanevas 1.12.10 — Resize by fidèle à la source
+
+- Transformer : « Resize by » suit la taille ajustée à la source quand 📐 est actif (5568 x 3072 : échelle 0,333 = 1856 x 1024, plus 1,0). Échelle de 0,1 à 4, avertissement au-dessus de 2048 px.
+
 Kane App / Kanevas 1.12.9 — Taille de l'image source plus juste
 
 - Transformer : la taille automatique garde les proportions exactes de l'image donnée (5568 x 3072 donne 1856 x 1024 au lieu de 2048 x 1128, qui recadrait). La zone Taille affiche source et taille utilisée.

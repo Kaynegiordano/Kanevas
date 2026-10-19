@@ -758,7 +758,7 @@
   };
   function i2iParams(st) {
     const step = cat.resStep || 16, d = i2iDoc, inpaint = INPAINT_MODES.includes(FX.i2iMode);
-    if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; }
+    if (st.autoSize && d) { const f = fitDoc(d); st.width = f.w; st.height = f.h; st.scale_by = Math.round(f.w / d.width * 1000) / 1000; }
     const out = [radio('Resize mode', [[0, 'Just Resize'], [1, 'Crop and Resize'], [2, 'Resize and Fill'], [3, 'Just Resize (latent upscale)']], st, 'resize_mode')];
     if (inpaint) out.push(
       slider('Mask blur', st, 'mask_blur', 0, 64, 1),
@@ -772,11 +772,13 @@
         row2(slider('Difference threshold', st.soft, 'diffThr', 0, 8, 0.25), slider('Difference contrast', st.soft, 'diffContrast', 0, 8, 0.25))], { on: [st.soft, 'enabled'] }));
     const manual = () => { st.autoSize = false; save(); };
     const swap = ebtn('⇅', 'Inverser largeur et hauteur', () => { [st.width, st.height] = [st.height, st.width]; st.autoSize = false; save(); rp(); });
-    const auto = ebtn('📐', 'Taille de l’image source', () => { st.autoSize = true; st.sizeTab = 'to'; save(); rp(); }, st.autoSize ? '.on' : '');
+    const auto = ebtn('📐', 'Taille de l’image source (proportions exactes, côté long <= 2048)', () => { st.autoSize = true; save(); rp(); }, st.autoSize ? '.on' : '');
     const src = d ? { w: d.width, h: d.height } : null;
-    const byInfo = h('div.fx-info', { text: src ? `Resize: from ${src.w}x${src.h} to ${r8(src.w * st.scale_by)}x${r8(src.h * st.scale_by)}` : 'Aucune image' });
+    const byText = v => { const w = r8(src.w * v), hh = r8(src.h * v); return `Resize: from ${src.w}x${src.h} to ${w}x${hh}` + (Math.max(w, hh) > 2048 ? ' — très grand pour la génération (mémoire, lenteur) : réduisez l’échelle ou cliquez 📐' : ''); };
+    const byInfo = h('div.fx-info', { text: src ? byText(st.scale_by) : 'Aucune image' });
     const sizeBody = st.sizeTab === 'by'
-      ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.5, 4, 0.05, '', v => { if (src) byInfo.textContent = `Resize: from ${src.w}x${src.h} to ${r8(src.w * v)}x${r8(src.h * v)}`; }), byInfo)
+      ? h('div.fx-col', slider('Scale', st, 'scale_by', 0.1, 4, 0.01, '', v => { st.autoSize = false; if (src) byInfo.textContent = byText(v); }), byInfo,
+        st.autoSize && src ? h('div.fx-info', { text: 'Échelle ajustée à la taille de l’image source (📐) : mêmes proportions, côté long <= 2048' }) : null)
       : h('div.fx-col', slider('Width', st, 'width', 64, 2048, step, '', manual), slider('Height', st, 'height', 64, 2048, step, '', manual),
         st.autoSize ? h('div.fx-info', { text: d ? `Taille de l’image source (📐) : ${d.width} × ${d.height} → ${st.width} × ${st.height}, mêmes proportions` : 'Taille de l’image source (📐)' }) : null);
     out.push(samplingRow(st), presetRow(st),
@@ -1334,7 +1336,7 @@
     x.globalCompositeOperation = 'destination-over'; x.fillStyle = '#000'; x.fillRect(0, 0, m.width, m.height);
     return m;
   };
-  const i2iSize = (st, w, hh) => st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : st.autoSize ? fitDoc({ width: w, height: hh }) : { w: +st.width, h: +st.height };
+  const i2iSize = (st, w, hh) => st.autoSize ? fitDoc({ width: w, height: hh }) : st.sizeTab === 'by' ? { w: r8(w * st.scale_by), h: r8(hh * st.scale_by) } : { w: +st.width, h: +st.height };
   async function runI2I(p, st) {
     const mode = FX.i2iMode;
     Object.assign(p, { resize_mode: +st.resize_mode, denoising_strength: +st.denoising_strength });

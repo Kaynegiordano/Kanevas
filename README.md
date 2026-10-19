@@ -20,6 +20,10 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### « Resize by » fidèle à la source (1.12.10)
+
+- Transformer : avec 📐 actif, l'onglet « Resize by » prend lui aussi la taille ajustée à la source (5568 x 3072 donne une échelle de 0,333, soit 1856 x 1024) au lieu de 1,0 (5568 x 3072, bien trop lourd). L'échelle descend maintenant jusqu'à 0,1 et un avertissement apparaît au-dessus de 2048 px.
+
 ### Taille de l'image source plus juste (1.12.9)
 
 - Transformer (img2img, inpaint) : la taille automatique (📐) garde maintenant exactement les proportions de la source. Avant, 5568 x 3072 devenait 2048 x 1128 (proportions faussées, donc image recadrée) ; maintenant 1856 x 1024. Le côté long reste limité à 2048, par multiples de 8, et la zone indique « source -> taille utilisée ».
