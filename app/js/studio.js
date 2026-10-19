@@ -29,7 +29,7 @@
     noom: { unet: false, vae: false }, script: 'None', scriptArgs: {}, open: {},
   });
   const DEF = {
-    v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, seeded: false, presetName: '',
+    v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, previewMode: 'net', seeded: false, presetName: '',
     lora: { q: '', sort: 'new' },
     painter: { size: 40, color: '#ff7a30', erase: false },
     editor: { target: 'selection', prompt: '', strength: 0.5, variants: 1, fillVersion: 1 },
@@ -69,14 +69,29 @@
   /* ---------------------------------------------------------------- catalogue de Forge */
   let cat = null, catErr = '', loading = false;
   const blobUrl = u8 => URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
+  const decorate = r => {
+    for (const l of r.loras) if (l.preview) l.url = blobUrl(l.preview);
+    for (const m of r.models) if (m.preview) m.url = blobUrl(m.preview);
+    return r;
+  };
+  // Dernier catalogue connu : la page est utilisable tout de suite, pendant que le moteur démarre (une dizaine de secondes)
+  async function loadCached() {
+    if (cat || !N || !N.forgeCatalogCache) return;
+    try {
+      const r = await N.forgeCatalogCache();
+      if (!r || !r.ok || cat) return;
+      cat = decorate(r); cat.stale = true;
+      if (SD.on) render();
+      renderEditorDraw();
+    } catch { /* pas de cache */ }
+  }
   async function loadCat() {
     if (!N || !N.forgeCatalog || loading) return cat;
     loading = true; renderTop();
     try {
       const r = await N.forgeCatalog(url());
       if (r.ok) {
-        for (const l of r.loras) if (l.preview) l.url = blobUrl(l.preview);
-        for (const m of r.models) if (m.preview) m.url = blobUrl(m.preview);
+        decorate(r);
         if (cat) for (const x of [...cat.loras, ...cat.models]) if (x.url) URL.revokeObjectURL(x.url);
         cat = r; catErr = '';
         if (!FX.seeded && r.defaults && r.defaults.t2i) {   // première fois : les valeurs par défaut de l'interface de Forge
@@ -96,7 +111,16 @@
   }
   async function ensureCat() {
     if (!(await G.forge(true))) { KS.toast(G.forgeError(), 'err', 5000); return null; }
-    return cat || await loadCat();
+    return cat && !cat.stale ? cat : await loadCat();
+  }
+  // Charge le modèle en avance (première génération : 15 à 20 s de chargement des poids sinon)
+  let warmed = false, warming = false;
+  async function warm() {
+    if (warmed || warming || !N || !N.forgeWarm || BUSY || PREPARING || KS.animationBusy || !KS.engine || !KS.engine.ready()) return;
+    if (KS.trainTab && KS.trainTab.running && await KS.trainTab.running()) return;
+    warming = true; renderTop();
+    try { const r = await N.forgeWarm(url()); warmed = !!(r && r.ok); } catch { /* sera chargé à la première génération */ }
+    warming = false; renderTop();
   }
 
   /* ---------------------------------------------------------------- petits composants façon Forge */
@@ -237,7 +261,7 @@
   function renderRail() {
     els.rail.replaceChildren();
     for (const [id, label, icon] of RAIL) {
-      const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label + ' · ' + id }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
+      const b = h('button' + (FX.tab === id ? '.on' : ''), { title: label + ' · ' + id + (id === 'train' ? ' — clic droit : arrêter / relancer l\'entraînement' : '') }, h('span', { html: KS.icon(icon) }), h('span', { text: label }));
       b.addEventListener('click', () => {
         if (id === 'imgcut') {
           const it = FX.tab === 'img2img' ? selItem('i2i') || (i2iDoc && { canvas: sourceFor(i2iDoc, true), name: i2iDoc.name }) : FX.tab === 'extras' ? selItem('ex') || OUT.exSrc : FX.tab === 'pnginfo' ? OUT.png : selItem('t2i');
@@ -245,6 +269,7 @@
         }
         FX.tab = id; save(); render();
       });
+      if (id === 'train') b.addEventListener('contextmenu', e => { e.preventDefault(); if (KS.trainTab && KS.trainTab.contextMenu) KS.trainTab.contextMenu(e.clientX, e.clientY); });
       els.rail.appendChild(b);
     }
     els.rail.appendChild(h('div.spacer'));
@@ -254,6 +279,7 @@
   }
   const DTYPES = ['Automatic', 'Automatic (fp16 LoRA)', 'float8-e4m3fn', 'float8-e4m3fn (fp16 LoRA)', 'float8-e5m2', 'float8-e5m2 (fp16 LoRA)'];
   async function setOptions(o, msg) {
+    if (!KS.engine || !KS.engine.ready()) return KS.toast('Le moteur IA démarre : réessayez dans quelques secondes', 'info', 3000);
     const r = await N.forgeSetOptions(url(), o);
     if (!r.ok) return KS.toast('Forge : ' + r.error, 'err', 6000);
     if (cat) {
@@ -262,6 +288,7 @@
       if (o.forge_unet_storage_dtype) cat.dtype = o.forge_unet_storage_dtype;
     }
     if (msg) KS.toast(msg, 'ok', 2600);
+    warmed = false; setTimeout(warm, 400);
     renderTop(); renderParams();
   }
   // Liste à puces (VAE / Text Encoder) : comme le multi-sélecteur de Forge
@@ -283,7 +310,7 @@
   function engineBadge() {
     const E = KS.engine, st = E ? E.state : 'off';
     return h('div.fx-eng', h('span.fx-dot' + (E && E.ready() ? '.ok' : st === 'starting' ? '.busy' : '')),
-      h('span', { text: !E ? 'Moteur indisponible' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS' : 'Moteur IA prêt') : st === 'starting' ? 'Démarrage du moteur…' : st === 'error' ? 'Moteur : erreur' : 'Moteur IA arrêté' }),
+      h('span', { text: !E ? 'Moteur indisponible' : E.ready() ? (warming ? 'Chargement du modèle…' : E.state === 'external' ? 'Forge de Kane OS' : 'Moteur IA prêt') : st === 'starting' ? 'Démarrage du moteur…' : st === 'error' ? 'Moteur : erreur' : 'Moteur IA arrêté' }),
       E && !E.ready() && st !== 'starting' ? tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary.sm') : null);
   }
   function renderTop() {
@@ -576,7 +603,8 @@
     else if (sub === 'lora') content = loraTab(c);
     else if (sub === 'checkpoints') content = ckptTab();
     else content = c.k === 't2i' ? t2iParams(st) : i2iParams(st);
-    left.replaceChildren(bar, content);
+    const stale = cat && cat.stale && !(KS.engine && KS.engine.ready()) ? h('div.fx-info.fx-stale', { text: 'Le moteur IA démarre (environ 10 s) : vous pouvez déjà régler et écrire, la génération partira dès qu\'il est prêt.' }) : null;
+    fillEl(left, bar, stale, content);
     if (scroller) scroller.scrollTop = sc;
   }
   const rp = () => renderParams();
@@ -1126,7 +1154,7 @@
     const box = key === 'i2i' ? els.i2iOut : els.out; if (!box) return;
     const o = OUT[key], it = o.items[o.sel];
     const view = h('div.fx-view');
-    if (BUSY && BUSY.k === key) { const p = progressBox(); view.append(p.box, p.img); }
+    if (BUSY && BUSY.k === key) { const p = progressBox(); view.classList.add('live'); els.progView = view; view.append(p.box, p.img); }
     else if (it) { const im = h('img', { src: it.url, alt: '' }); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height }); }
     else view.append(h('div.fx-ph', key === 'i2i' ? { text: 'Les résultats apparaîtront ici' } : { html: KS.icon('image') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(key); }); return t; })) : null;
@@ -1146,8 +1174,13 @@
       if (r && r.ok && BUSY && els.progTxt) {
         const p = Math.max(0, Math.min(1, r.progress || 0));
         els.progBar.style.width = Math.round(p * 100) + '%';
-        els.progTxt.textContent = (BUSY.label ? BUSY.label + ' · ' : '') + Math.round(p * 100) + '%' + (r.eta > 0 ? ` ETA: ${Math.round(r.eta)}s` : '') + (r.steps ? ` · step ${r.step || 0}/${r.steps}` : '');
-        if (r.image) { if (els.progImg._u) URL.revokeObjectURL(els.progImg._u); els.progImg._u = URL.createObjectURL(new Blob([r.image], { type: 'image/png' })); els.progImg.src = els.progImg._u; els.progImg.hidden = false; }
+        els.progTxt.textContent = (BUSY.label ? BUSY.label + ' · ' : '') + Math.round(p * 100) + '%' + (r.eta > 0 ? ` · ${Math.round(r.eta)} s restantes` : '') + (r.steps ? ` · étape ${r.step || 0} / ${r.steps}` : '') + (p === 0 && !r.image ? ' · préparation (chargement du modèle…)' : '');
+        if (r.image) {
+          if (els.progImg._u) URL.revokeObjectURL(els.progImg._u);
+          els.progImg._u = URL.createObjectURL(new Blob([r.image], { type: 'image/jpeg' }));
+          els.progImg.onload = () => { const v = els.progView; if (v && els.progImg.naturalWidth) v.style.aspectRatio = els.progImg.naturalWidth + ' / ' + els.progImg.naturalHeight; };
+          els.progImg.src = els.progImg._u; els.progImg.hidden = false;
+        }
       }
     } catch { /* rien */ } finally { tickBusy = false; }
   }
@@ -1228,6 +1261,10 @@
         return v == null ? '' : v;
       });
     }
+    // aperçu : « net » = le latent décodé par le VAE (même taille que le résultat), « rapide » = approximation 8 fois plus petite
+    const net = FX.livePreview !== false && FX.previewMode !== 'fast';
+    p.override_settings = { ...(p.override_settings || {}), live_previews_enable: FX.livePreview !== false, show_progress_type: net ? 'Full' : 'RGB', show_progress_every_n_steps: net ? Math.max(2, Math.round((+st.steps || 20) / 8)) : 1 };
+    p.override_settings_restore_afterwards = p.override_settings_restore_afterwards !== false;
     return p;
   }
   // Un entraînement LoRA garde la carte graphique : comme dans Forge, les générations attendent sa fin
@@ -1466,7 +1503,9 @@
       pane('Génération',
         check('Traduire en anglais les invites écrites en français (modèle local Opus-MT)', FX, 'translate', 'Forge et anima ne comprennent que l\'anglais'),
         check('Enregistrer les images comme Forge (dossiers output\\txt2img-images, img2img-images…)', FX, 'saveImages', 'Avec leurs paramètres (PNG Info), comme l\'interface de Forge'),
-        check('Aperçu en direct pendant la génération', FX, 'livePreview'),
+        select('Aperçu en direct pendant la génération', [['net', 'Net : décodé par le VAE, même taille que le résultat'], ['fast', 'Rapide : petite image approximative'], ['off', 'Désactivé']],
+          { get v() { return FX.livePreview === false ? 'off' : FX.previewMode === 'fast' ? 'fast' : 'net'; }, set v(x) { FX.livePreview = x !== 'off'; FX.previewMode = x === 'fast' ? 'fast' : 'net'; save(); } }, 'v',
+          'Net coûte environ 10 % de temps en plus (un décodage toutes les quelques étapes)'),
         check('Masquer le calque Zone IA / Croquis IA après une génération', { v: KS.prefs.hideAfterGen !== false }, 'v', '', v => { KS.prefs.hideAfterGen = v; KS.prefs.save(); })),
       pane('Dossiers',
         h('div.fx-outbtns', tbtn('Images de Forge (output)', () => N.openForgeOutput('')), tbtn('Images d\'Extras (output\\kanevas)', () => N.openOutputs())),
@@ -1667,7 +1706,8 @@
     document.body.classList.toggle('studio', on);
     if (on) {
       mountPage(); render();
-      if (KS.engine && !KS.animationBusy) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && !cat) loadCat(); else if (ok) renderTop(); });
+      loadCached();
+      if (KS.engine && !KS.animationBusy) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && (!cat || cat.stale)) loadCat().then(warm); else if (ok) { renderTop(); warm(); } });
       else loadCat();
     } else {
       CTX.i2i.finishStroke && CTX.i2i.finishStroke();
@@ -1700,7 +1740,8 @@
   KS.on('engine', E => {
     if (SD.on) renderTop();
     refreshEditorDraw();
-    if (E.ready() && !cat && !loading && SD.on) loadCat(); else if (!cat) renderCtx(CTX.i2i);
+    if (!E.ready()) warmed = false;
+    if (E.ready() && (!cat || cat.stale) && !loading && SD.on) loadCat().then(warm); else if (E.ready() && SD.on) warm(); else if (!cat) renderCtx(CTX.i2i);
   });
   const onDoc = U.debounce(() => { if (SD.on && FX.tab === 'img2img') { renderModeTools(); if (FX.i2i.autoSize) renderCtx(CTX.i2i); } }, 150);
   for (const ev of ['doc', 'selection']) KS.on(ev, onDoc);

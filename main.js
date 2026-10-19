@@ -405,7 +405,7 @@ function sidecar(file, exts) {
   for (const e of exts) { const q = stem + e; if (fs.existsSync(q)) return q; }
   return null;
 }
-ipcMain.handle('forge-catalog', forgeHandler(async base => {
+const catalogHandler = forgeHandler(async base => {
   const [models, modules, samplers, schedulers, loras, opt, flags] = await Promise.all([
     forgeCall(base, '/sdapi/v1/sd-models', null, 8000), forgeCall(base, '/sdapi/v1/sd-modules', null, 8000).catch(() => []),
     forgeCall(base, '/sdapi/v1/samplers', null, 8000), forgeCall(base, '/sdapi/v1/schedulers', null, 8000).catch(() => []),
@@ -493,6 +493,33 @@ ipcMain.handle('forge-catalog', forgeHandler(async base => {
     loras: outLoras, presets,
     current: { model: opt.sd_model_checkpoint, modules: opt.forge_additional_modules || [] },
   };
+});
+// Dernier catalogue lu : rendu immédiat du Studio pendant que le moteur démarre (il est relu dès que Forge répond)
+const catalogCacheFile = () => path.join(app.getPath('userData'), 'forge-catalog-cache.json');
+ipcMain.handle('forge-catalog', async (e, base) => {
+  const r = await catalogHandler(e, base);
+  if (r && r.ok) {
+    try {
+      const copy = { ...r, loras: r.loras.map(l => ({ ...l, preview: l.preview ? Buffer.from(l.preview).toString('base64') : null })), models: r.models.map(m => ({ ...m, preview: m.preview ? Buffer.from(m.preview).toString('base64') : null })) };
+      delete copy.ok;
+      fs.promises.writeFile(catalogCacheFile(), JSON.stringify({ v: 1, t: Date.now(), catalog: copy })).catch(() => {});
+    } catch { /* cache facultatif */ }
+  }
+  return r;
+});
+ipcMain.handle('forge-catalog-cache', () => {
+  try {
+    const j = JSON.parse(fs.readFileSync(catalogCacheFile(), 'utf8'));
+    if (j.v !== 1 || !j.catalog) return { ok: false };
+    const c = j.catalog, dec = x => ({ ...x, preview: x.preview ? new Uint8Array(Buffer.from(x.preview, 'base64')) : null });
+    return { ok: true, t: j.t, ...c, loras: c.loras.map(dec), models: c.models.map(dec) };
+  } catch { return { ok: false }; }
+});
+// Chargement du modèle en avance : une image de 64 px, sans rien enregistrer. La première vraie génération n'attend plus
+// les 15 à 20 s de chargement des poids.
+ipcMain.handle('forge-warm', forgeHandler(async base => {
+  await forgeCall(base, '/sdapi/v1/txt2img', { prompt: 'a', steps: 1, width: 64, height: 64, batch_size: 1, n_iter: 1, save_images: false, send_images: false, do_not_save_samples: true, do_not_save_grid: true }, 240000);
+  return {};
 }));
 /* ------------------------------------------------------------------ atelier LoRA */
 // Les dossiers de Forge viennent de son API (cmd-flags) ; la passerelle tourne avec le Python du venv de Forge
@@ -668,6 +695,17 @@ const studioRuntime = require('./studio-runtime.cjs')(app.getPath('userData'));
 const managedRuntime = require('./managed-runtimes.cjs')(app.getPath('userData'));
 let integrationRoot = '';
 const engine = { state: 'off', url: '', pid: null, ours: false, log: [], error: '', profile: '', startedAt: 0 };
+// Aperçu en direct net : le moteur ne proposait que l'approximation « RGB » (image 8 fois plus petite que le résultat). La méthode
+// « Full » décode le latent avec le VAE ; Kanevas la demande par génération (override_settings), le réglage de Forge ne change pas.
+function ensureEnginePatches(dir) {
+  try {
+    const f = path.join(dir, 'modules', 'sd_samplers_common.py');
+    const src = fs.readFileSync(f, 'utf8');
+    if (src.includes('show_progress_type != "Full"')) return;
+    const out = src.replace(/(approximation = approximation_indexes\.get\(opts\.show_progress_type, 0\)(\r?\n)\s+)if approximation == 0:/, '$1if approximation == 0 and opts.show_progress_type != "Full":');
+    if (out !== src) { fs.writeFileSync(f, out); engineLog('Aperçu net (VAE complet) activé dans le moteur'); }
+  } catch (e) { engineLog('Aperçu net : patch impossible (' + e.message + ')'); }
+}
 const engineLog = line => { engine.log.push(line); if (engine.log.length > 400) engine.log.splice(0, engine.log.length - 400); };
 const engineEmit = () => { if (win) win.webContents.send('engine-status', engineStatus()); };
 const engineStatus = () => ({ state: engine.state, url: engine.url, ours: engine.ours, pid: engine.pid, error: engine.error, profile: engine.profile, tail: engine.log.slice(-12), uptime: engine.startedAt ? Date.now() - engine.startedAt : 0 });
@@ -729,6 +767,7 @@ async function engineStart(profileId) {
   engine.profile = prof ? prof.name : 'par défaut';
   engine.log = []; engine.error = ''; engine.state = 'starting'; engine.ours = true; engine.startedAt = Date.now();
   engine.url = 'http://127.0.0.1:' + ENGINE_PORT;
+  ensureEnginePatches(d.runtime);
   engineLog('> ' + args);
   const child = require('child_process').spawn(py, ['launch.py'], {
     cwd: d.runtime, windowsHide: true,
@@ -750,8 +789,8 @@ async function engineStart(profileId) {
     while (engine.pid === child.pid && engine.state === 'starting') {
       if (await ping(engine.url, 1500)) { engine.state = 'ready'; engineLog('Moteur prêt en ' + Math.round((Date.now() - t0) / 1000) + ' s'); engineEmit(); return; }
       if (Date.now() - t0 > 6 * 60 * 1000) { engine.state = 'error'; engine.error = 'Le moteur ne répond pas après 6 minutes'; engineEmit(); return; }
-      await new Promise(r => setTimeout(r, 1000));
-      if ((Date.now() - t0) % 5000 < 1000) engineEmit();
+      await new Promise(r => setTimeout(r, 500));
+      if ((Date.now() - t0) % 5000 < 500) engineEmit();
     }
   })();
   return engineStatus();

@@ -20,6 +20,21 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Aperçu net, Studio plus rapide, clic droit sur Lora (1.12.7)
+
+- **Aperçu en direct net** : pendant la génération, l'aperçu est le latent décodé par le VAE, à la taille du résultat
+  (avant : une petite image approximative, 8 fois plus petite, au milieu d'un grand cadre). La zone prend la forme de
+  l'image et l'aperçu la remplit ; texte d'avancement en français (secondes restantes, étape). Coût : environ 6 % de temps.
+  Réglage dans Réglages > Génération : Net / Rapide / Désactivé. Le moteur du Studio ne proposait pas la méthode « Full » :
+  Kanevas corrige à chaque démarrage une ligne de `modules/sd_samplers_common.py` de son propre moteur (idempotent) et
+  demande la méthode par génération (`override_settings`), sans changer le réglage de Forge.
+- **Studio plus rapide** : le dernier catalogue (modèles, LoRA et leurs aperçus, échantillonneurs…) est gardé sur disque
+  et la page est utilisable tout de suite, pendant que le moteur démarre (environ 10 s) ; le modèle est chargé en avance
+  dès que le moteur répond (la première génération prenait plus de 20 s de plus). Détection du moteur toutes les 0,5 s.
+- **Clic droit sur « Lora »** (bouton du Studio, ou carte d'entraînement) : Arrêter l'entraînement, Arrêter et relancer
+  (mêmes réglages, repart de zéro), Actualiser, Ouvrir l'atelier. Fonctionne aussi si l'atelier n'a pas été ouvert.
+- `tools/test-studio.cjs` remis à jour (l'espace s'appelle Retouche) : 110 vérifications.
+
 ### Actualiser dans l’atelier LoRA, ComfyUI à jour (1.12.6)
 
 Le bouton Actualiser de Studio IA > LoRA libère un entraînement bloqué et relit les projets. ComfyUI se met à jour (git + paquets) à chaque démarrage depuis Kanevas.

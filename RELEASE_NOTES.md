@@ -1,3 +1,9 @@
+Kane App / Kanevas 1.12.7 — Aperçu net, Studio plus rapide, clic droit sur Lora
+
+- Aperçu en direct net : le latent est décodé par le VAE, à la taille du résultat, et remplit la zone (avant : petite image approximative au milieu d'un grand cadre). Réglage Net / Rapide / Désactivé dans Réglages. Environ 6 % de temps en plus.
+- Studio plus rapide : le dernier catalogue (modèles, LoRA, échantillonneurs) s'affiche tout de suite pendant que le moteur démarre, et le modèle est chargé en avance : la première génération n'attend plus 20 s de plus.
+- Clic droit sur le bouton Lora du Studio (ou sur la carte d'entraînement) : Arrêter l'entraînement, Arrêter et relancer, Actualiser.
+
 Kane App / Kanevas 1.12.6 — Actualiser dans l'atelier LoRA, ComfyUI à jour
 
 - Studio IA > LoRA : le bouton Actualiser relit les projets et l'état de l'entraînement, et libère un entraînement bloqué (processus disparu ou numéro réutilisé par Windows) qui empêchait de relancer.

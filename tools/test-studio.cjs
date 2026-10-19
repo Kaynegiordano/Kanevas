@@ -187,7 +187,7 @@ async function scenario() {
   await click('Ajouter en calque');
   assert(!KS.studio.on && b.layers.length === 2, 'Ajouter en calque revient volontairement au document actif dans l’Édition');
   await KS.cmd.sendToStudio('img2img');
-  await click('Ouvrir le résultat dans l’Édition');
+  await click('Ouvrir le résultat dans Retouche');
   assert(!KS.studio.on && KS.state.doc !== b, 'Ouvrir un résultat crée un nouveau document dans l’Édition');
   await KS.cmd.sendToStudio('extras');
   assert(KS.prefs.fx.tab === 'extras' && !!document.querySelector('.fx-dropzone img'), 'L’Édition envoie aussi vers Extras');
@@ -211,7 +211,7 @@ async function scenario() {
   const docsBefore = KS.state.docs.length;
   await click('Envoyer vers Img2Img');
   assert(KS.prefs.fx.i2i.seed === -1 && KS.state.docs.length === docsBefore, 'txt2img envoie vers Img2Img avec une nouvelle graine aléatoire');
-  await click('Ouvrir la source dans l’Édition', document.querySelector('.fx-source'));
+  await click('Ouvrir la source dans Retouche', document.querySelector('.fx-source'));
   await KS.cmd.sendToStudio('img2img');
   assert(KS.prefs.fx.i2i.seed === -1, 'Un aller-retour dans l’Édition conserve le mode aléatoire');
   await click('img2img', document.querySelector('.fx-modes'));
@@ -221,6 +221,7 @@ async function scenario() {
   document.querySelector('button[title^="Agrandir cette image avec le hires fix"]').click();
   await wait(() => window.txtCalls.length === 2 && !!document.querySelector('.fx-generate'));
   assert(window.txtCalls.at(-1).seed === -1, 'Hires demande aussi une graine aléatoire');
+  assert(window.txtCalls.at(-1).override_settings.show_progress_type === 'Full' && window.txtCalls.at(-1).override_settings.show_progress_every_n_steps >= 2, 'L’aperçu en direct demande le décodage complet (net) à chaque génération');
   await click('Transformer', document.querySelector('.fx-rail'));
   assert(document.querySelector('.fx-source img').alt.startsWith('new image'), 'La source survit au changement d’onglet');
   await click('Inpaint sketch');

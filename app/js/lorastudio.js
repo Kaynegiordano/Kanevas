@@ -3,7 +3,7 @@
 // lora_training de Forge. La passerelle lora_bridge.py fait tourner la bibliothèque de l'extension avec le Python de Forge.
 'use strict';
 (() => {
-  const h = KS.h, N = KS.native, U = KS.util;
+  const h = KS.h, N = KS.native, U = KS.util, ui = KS.ui;
   const S = { info: null, projects: [], cur: '', data: null, form: null, caps: {}, msgs: {}, run: null, power: false, poll: null, thumbs: new Map(), loading: '' };
   let root = null;
   const F = () => KS.fxui;
@@ -208,6 +208,69 @@
     finally { refreshing = false; }
   }
 
+  /* ---------------------------------------------------------------- clic droit : arrêter / relancer l'entraînement */
+  // Fonctionne depuis le bouton « Lora » du Studio comme depuis la carte d'entraînement, même si l'atelier n'a pas été ouvert.
+  const ensureInfo = async () => {
+    if (!S.info) { const cat = KS.studioApi && KS.studioApi.cat(); S.info = await call('info', { modules: (cat && cat.current.modules) || [] }); }
+    return S.info;
+  };
+  const currentRun = async () => { try { return (await call('status')).status || null; } catch { return null; } };
+  async function waitStopped(runDir, ms = 30000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      try { if (!(await call('status', { run: runDir })).status.running) return true; } catch { return true; }
+      await new Promise(r => setTimeout(r, 800));
+    }
+    return false;
+  }
+  async function stopAny({ quiet = false } = {}) {
+    const st = await currentRun();
+    if (!st || !st.running) { if (!quiet) KS.toast('Aucun entraînement en cours', 'info', 2200); return null; }
+    await call('stop', { run: st.run });
+    stopPoll();
+    S.run = { ...st, running: false, stopped: true, state: 'stopped', text: 'Entraînement arrêté. Les checkpoints déjà sauvegardés sont conservés.' };
+    S.msgs.train = S.run.text;
+    const ok = await waitStopped(st.run);
+    if (!quiet) KS.toast(ok ? 'Entraînement arrêté' : 'Arrêt demandé : le processus se ferme encore', ok ? 'ok' : 'info', 3000);
+    if (root && root.isConnected) { if (S.cur) S.data = await call('load', { name: S.cur }).catch(() => S.data); render(); }
+    return st;
+  }
+  async function restartRun() {
+    try {
+      const st = await currentRun(), running = !!(st && st.running);
+      const project = (st && st.project) || S.cur || KS.prefs.loraProject;
+      if (!project) return KS.toast('Ouvrez d\'abord un projet dans l\'atelier Lora', 'info', 3500);
+      const name = label(S.projects.find(p => p.name === project) || { name: project });
+      if (running && !(await KS.confirm('Arrêter l\'entraînement de « ' + name + ' » (' + Math.round(st.pct || 0) + ' % fait) et le relancer de zéro avec les mêmes réglages ?', { title: 'Relancer l\'entraînement', ok: 'Arrêter et relancer' }))) return;
+      if (running) { await stopAny({ quiet: true }); }
+      if (await forgeBusy()) return KS.toast('Forge génère en ce moment : attendez la fin de la génération.', 'info', 4000);
+      const info = await ensureInfo();
+      const m = (await call('load', { name: project })).manifest || {};
+      if (!String(m.trigger || '').trim()) return KS.toast('Ce projet n\'a pas de mot déclencheur : ouvrez-le dans l\'atelier Lora', 'info', 4500);
+      const dit = m.base_model && info.dits.some(d => d.path === m.base_model) ? m.base_model : info.dit;
+      if (S.freeFirst !== false && KS.engine && KS.engine.ready()) { try { await freeVram(); } catch { /* génération en cours : on continue */ } }
+      const r = await call('start', { name: project, dit, qwen3: S.qwen3 || info.qwen3, vae: S.vae || info.vae, sample_every: m.sample_every ?? 250, sample_prompt: m.sample_prompt || '' });
+      S.run = { run: r.run, project, running: true, state: 'running', pct: 0, text: 'Entraînement relancé (pid ' + r.pid + ').', checkpoints: [], samples: [] };
+      S.msgs.train = S.run.text; S.checked = 0;
+      startPoll();
+      KS.toast('Entraînement de « ' + name + ' » relancé', 'ok', 3500);
+      if (root && root.isConnected) { if (S.cur === project) await openProject(project); else render(); }
+    } catch (e) { KS.toast('Relance impossible : ' + e.message, 'err', 6000); }
+  }
+  async function contextMenu(x, y) {
+    let st = null;
+    try { st = await Promise.race([currentRun(), new Promise(r => setTimeout(() => r(null), 2500))]); } catch { /* menu sans état */ }
+    const running = !!(st && st.running);
+    ui.menu([
+      { head: running ? 'Entraînement en cours : ' + label({ name: st.project || '?' }) + ' (' + Math.round(st.pct || 0) + ' %)' : 'Aucun entraînement en cours' },
+      { label: 'Arrêter l\'entraînement', icon: 'close', disabled: !running, action: () => stopAny().catch(e => KS.toast('Arrêt impossible : ' + e.message, 'err', 5000)) },
+      { label: running ? 'Arrêter et relancer' : 'Relancer l\'entraînement', icon: 'history', action: restartRun },
+      { sep: true },
+      { label: 'Actualiser (libérer un entraînement bloqué)', icon: 'history', action: () => (S.info ? refreshAll() : KS.trainTab.open().then(() => refreshAll())) },
+      { label: 'Ouvrir l\'atelier Lora', icon: 'layers', action: () => KS.trainTab.open() },
+    ], x, y);
+  }
+
   /* ---------------------------------------------------------------- rendu */
   function render() {
     if (!root || !root.isConnected) return;
@@ -321,6 +384,8 @@
       msgBox('train'),
       run && run.tail ? h('pre.lt-log', { text: run.tail }) : null,
       samples, results);
+    train.addEventListener('contextmenu', e => { if (e.target.closest('input, textarea, select')) return; e.preventDefault(); contextMenu(e.clientX, e.clientY); });
+    train.title = 'Clic droit : arrêter / relancer l\'entraînement';
     const intro = h('div.fx-panel.lt-intro', { html: '<b>Train an ANIMA LoRA</b> with kohya-ss/sd-scripts, on the recipe read from a working reference LoRA, resized for the type you pick and for how many images you gave it.<br>Import images → caption them → pick a preset or set your own numbers → train. The result is loaded like any other LoRA in txt2img / img2img.' + (I.sd_scripts ? '' : '<br><b>sd-scripts (avec ANIMA) est introuvable à côté du dossier de Forge.</b>') + (I.tagger ? '' : '<br>Légendes automatiques indisponibles : ' + (I.tagger_error || '')) });
     intro.append(h('div.lt-row', tbtn('Actualiser', () => refreshAll()), h('span.fx-note', { text: 'Recharge les projets et l’état de l’entraînement, et libère un entraînement bloqué : à utiliser si « Start training » ne repart pas.' })));
     root.replaceChildren(intro, project, on ? preset : null, on ? captions : null, on ? settings : null, on ? train : null);
@@ -328,6 +393,8 @@
   }
 
   KS.trainTab = {
+    contextMenu,
+    open: async () => { if (KS.cmd.loraStudio) await KS.cmd.loraStudio(); },
     invalidate() { stopPoll(); S.info = null; S.data = null; S.projects = []; S.run = null; S.checked = 0; if (root?.isConnected) KS.trainTab.render(root); },
     async render(el) {
       root = el;

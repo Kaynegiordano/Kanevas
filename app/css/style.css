@@ -1092,3 +1092,10 @@ html.kn-pinned #app > :not(#titlebar) { margin-left: 236px; }
 .kn-actions { display: flex; flex-direction: column; gap: 4px; }
 .kn-actions .btn, .kn-foot .btn { width: 100%; justify-content: flex-start; }
 .kn-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* Aperçu en direct : la zone prend la forme de l'image et l'aperçu la remplit (avant : petite image au milieu d'un grand cadre) */
+.fx-view.live { width: 100%; box-sizing: border-box; min-height: 340px; max-height: calc(100vh - 260px); background: #101216; }
+.fx-view.live > img.fx-live { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+.fx-view.live > img.fx-live[hidden] { display: none; }
+.fx-view.live .fx-prog { background: linear-gradient(rgba(0, 0, 0, .72), transparent); font-size: 12.5px; }
+.fx-stale { padding: 6px 10px; border-left: 3px solid var(--fx-accent); background: var(--fx-accent-soft); border-radius: 6px; margin: 0 0 8px; }
