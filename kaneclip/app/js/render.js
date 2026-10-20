@@ -189,7 +189,7 @@
       // agrandissement prévu pour cette source (pour le débruitage préalable)
       if (!ev.gen) {
         const maxZ = Math.max(...((ev.pc && ev.pc.kf) || [{ zoom: 1 }]).map(k => k.zoom || 1));
-        const factor = Math.min(W / sw, H / sh) * maxZ;
+        const factor = Math.min(W / sw, H / sh) * maxZ * FX.tmOf(tr).zoom;
         R.stats.maxUp = Math.max(R.stats.maxUp, factor);
         if (up.denoise && factor > 1.05) push('hqdn3d=1.5:1.5:6:6');
       }
@@ -225,6 +225,7 @@
       // 3. géométrie (panoramique/recadrage + transitions)
       const tau0 = lt0;
       const trn = ev.fadeIn > 0 ? (ev.transition || 'dissolve') : null;
+      const tm = FX.tmOf(tr);
       const animated = FX.pcAnimated(ev.pc) || (trn === 'zoom');
       const fit = Math.min(W / sw, H / sh);
       let xExpr, yExpr;
@@ -243,16 +244,18 @@
         const pe = `clip((t-${f4(inc.start - R0)})/${f4(inc.fadeIn)}\\,0\\,1)`;
         dx.push(inc.transition === 'push-l' ? `-W*${pe}` : `W*${pe}`);
       }
-      const dxs = dx.length ? '+' + dx.join('+') : '', dys = dy.length ? '+' + dy.join('+') : '';
+      const tmz = f4(tm.zoom);
+      const dxs = dx.length ? '+' + dx.map(e => `${tmz}*(${e})`).join('+') : '', dys = dy.length ? '+' + dy.map(e => `${tmz}*(${e})`).join('+') : '';
       if (!animated) {
         const k0 = FX.pcAt(ev.pc, 0);
-        const s = fit * k0.zoom;
+        const s = fit * k0.zoom * tm.zoom;
         let dw = Math.max(2, Math.round(sw * s / 2) * 2), dh = Math.max(2, Math.round(sh * s / 2) * 2);
         if (dw !== sw || dh !== sh) push(ev.gen ? `scale=${dw}:${dh}:flags=lanczos` : resize(dw, dh, sw));
         // point source (cx, cy) au centre de la sortie, rotation autour de ce point
-        const a = k0.rot * Math.PI / 180;
+        const rot0 = k0.rot + tm.rot;
+        const a = rot0 * Math.PI / 180;
         let px = k0.cx * dw, py = k0.cy * dh, ow = dw, oh = dh;
-        if (Math.abs(k0.rot) > 1e-6) {
+        if (Math.abs(rot0) > 1e-6) {
           ow = Math.ceil((Math.abs(dw * Math.cos(a)) + Math.abs(dh * Math.sin(a))) / 2) * 2;
           oh = Math.ceil((Math.abs(dw * Math.sin(a)) + Math.abs(dh * Math.cos(a))) / 2) * 2;
           push(`rotate=a=${f4(a)}:ow=${ow}:oh=${oh}:c=none:bilinear=1`);
@@ -260,20 +263,20 @@
           px = ow / 2 + Math.cos(a) * vx - Math.sin(a) * vy;
           py = oh / 2 + Math.sin(a) * vx + Math.cos(a) * vy;
         }
-        xExpr = `${f4(W / 2 - px)}${dxs}`; yExpr = `${f4(H / 2 - py)}${dys}`;
+        xExpr = `${f4(W / 2 + tm.x * W - px)}${dxs}`; yExpr = `${f4(H / 2 + tm.y * H - py)}${dys}`;
       } else {
         const fitU = Math.min((W - 4) / sw, (H - 4) / sh);
         const fw = Math.max(2, Math.round(sw * fitU)), fh = Math.max(2, Math.round(sh * fitU));
         push((ev.gen ? `scale=${fw}:${fh}:flags=lanczos` : resize(fw, fh, sw)) + `,pad=${W}:${H}:2:2:color=black@0`);
         const tl = `(${f4(tau0)}+in/${FPS})`;
-        const cx = FX.pcExpr(ev.pc, 'cx', tl), cy = FX.pcExpr(ev.pc, 'cy', tl), z = FX.pcExpr(ev.pc, 'zoom', tl), r = FX.pcExpr(ev.pc, 'rot', tl);
+        const cx = FX.pcExpr(ev.pc, 'cx', tl), cy = FX.pcExpr(ev.pc, 'cy', tl), z = FX.pcExpr(ev.pc, 'zoom', tl), r0 = FX.pcExpr(ev.pc, 'rot', tl), r = `(${r0}+${f4(tm.rot)})`;
         const zt = trn === 'zoom' ? `*clip(${tl}/${f4(ev.fadeIn)}\\,0.001\\,1)` : '';
-        const k = `((${z})*${f4(fit / ((fw) / sw))}${zt})`;
+        const k = `((${z})*${f4(tm.zoom * fit / ((fw) / sw))}${zt})`;
         const ox = `(2+(${cx})*${fw})`, oy = `(2+(${cy})*${fh})`;
         const co = `cos((${r})*PI/180)`, si = `sin((${r})*PI/180)`;
         const corner = (qx, qy) => [
-          `${W / 2}+${k}*(${co}*(${qx}-${ox})-${si}*(${qy}-${oy}))`,
-          `${H / 2}+${k}*(${si}*(${qx}-${ox})+${co}*(${qy}-${oy}))`,
+          `${f4(W / 2 + tm.x * W)}+${k}*(${co}*(${qx}-${ox})-${si}*(${qy}-${oy}))`,
+          `${f4(H / 2 + tm.y * H)}+${k}*(${si}*(${qx}-${ox})+${co}*(${qy}-${oy}))`,
         ];
         const c0 = corner(0, 0), c1 = corner(W, 0), c2 = corner(0, H), c3 = corner(W, H);
         push(`perspective=x0='${c0[0]}':y0='${c0[1]}':x1='${c1[0]}':y1='${c1[1]}':x2='${c2[0]}':y2='${c2[1]}':x3='${c3[0]}':y3='${c3[1]}':interpolation=linear:sense=destination:eval=frame`);
@@ -474,7 +477,7 @@
               const m = e.media && P.media(e.media);
               if (!m || !m.hasVideo || !m.width || P.kindOf(e) !== 'video') continue;
               const z = Math.max(...((e.pc && e.pc.kf) || [{ zoom: 1 }]).map(k => k.zoom || 1));
-              const fct = Math.min(OW / m.width, OH / m.height) * z;
+              const fct = Math.min(OW / m.width, OH / m.height) * z * FX.tmOf(P.track(e.track)).zoom;
               if (!best || fct > best.f) best = { f: fct, m };
             }
             const sharpRow = ctl.up.value !== 'lanczos';

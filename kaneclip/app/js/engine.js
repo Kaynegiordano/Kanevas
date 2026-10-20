@@ -225,6 +225,7 @@
   }
   KC.on('fonts-loaded', () => { genCache.clear(); E.needsDraw = true; });
   const work = document.createElement('canvas');
+  let tmZoom = 1;
 
   // Dessine l'image du temps t sur cv (taille déjà fixée). opts.best = lissage haute qualité.
   E.compose = (t, cv, opts = {}) => {
@@ -243,7 +244,11 @@
       if (tr.mute || (anySolo && !tr.solo)) continue;
       const evs = p.events.filter(e => e.track === tr.id && active(e, t) && !e.mute).sort((a, b) => a.start - b.start);
       let flash = 0;
+      const tm = FX.tmOf(tr), moved = !FX.tmIsIdentity(tr);
+      tmZoom = tm.zoom;
       for (const ev of evs) {
+        x.setTransform(1, 0, 0, 1, 0, 0);
+        if (moved) { x.translate(W / 2 + tm.x * W, H / 2 + tm.y * H); x.rotate(tm.rot * Math.PI / 180); x.scale(tm.zoom, tm.zoom); x.translate(-W / 2, -H / 2); }
         drawEvent(x, ev, t, W, H, tr, opts);
         if (ev.transition === 'flash' && ev.fadeIn > 0 && t - ev.start < ev.fadeIn) flash = Math.max(flash, FX.flashAlpha((t - ev.start) / ev.fadeIn));
       }
@@ -299,10 +304,11 @@
     const pc = FX.pcAt(ev.pc, vs.tau);
     const fit = Math.min(W / sw, H / sh);
     const s = fit * pc.zoom * vs.scale;
+    const sEff = s * tmZoom;
     let img = src, iw = sw, ih = sh;
     if (ev.fx && ev.fx.some(f => f.on !== false)) {
       // Effets appliqués à la source, à la taille où elle sera affichée (au plus sa taille réelle)
-      const k = Math.min(1, s * (opts.best ? 1 : 1));
+      const k = Math.min(1, sEff);
       const ww = Math.max(2, Math.round(sw * k)), hh = Math.max(2, Math.round(sh * k));
       if (work.width !== ww || work.height !== hh) { work.width = ww; work.height = hh; }
       const wx = work.getContext('2d');

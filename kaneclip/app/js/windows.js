@@ -164,6 +164,54 @@
     render();
     return w;
   }
+  /* ------------------------------------------------------------ mouvement de piste (zoom / position / rotation de toute la piste) */
+  Wn.trackMotion = (tr) => {
+    const w = Wn.float({ key: 'tm:' + tr.id, title: 'Mouvement de la piste', sub: P.trackLabel(tr), width: 460, height: 340 });
+    const getTr = () => P.track(tr.id);
+    const body = h('div.form', { style: { padding: '14px', gap: '10px', display: 'flex', flexDirection: 'column' } });
+    const rows = {};
+    const FIELDS = [
+      ['zoom', 'Zoom (%)', 10, 400, 1, v => v * 100, v => v / 100, 1],
+      ['x', 'Position X (%)', -100, 100, 0.5, v => v * 100, v => v / 100, 0],
+      ['y', 'Position Y (%)', -100, 100, 0.5, v => v * 100, v => v / 100, 0],
+      ['rot', 'Rotation (°)', -180, 180, 0.5, v => v, v => v, 0],
+    ];
+    const live = () => E.redraw();
+    for (const [k, label, min, max, step, toUi, fromUi, def] of FIELDS) {
+      const rng = h('input', { type: 'range', min, max, step, style: { flex: 1 } });
+      const num = h('input.field', { type: 'number', step, style: { width: '76px' } });
+      const rst = h('button.tb', { title: 'Valeur par défaut', html: KC.icon('x') });
+      const put = () => { const v = FX.tmOf(getTr())[k]; const u = Math.round(toUi(v) * 10) / 10; rng.value = u; num.value = u; };
+      rng.addEventListener('pointerdown', () => KC.begin());
+      rng.addEventListener('input', () => { const t = getTr(); t.tm = { ...FX.tmOf(t), [k]: fromUi(parseFloat(rng.value)) }; num.value = rng.value; live(); });
+      rng.addEventListener('change', () => KC.commit('Mouvement de la piste'));
+      num.addEventListener('change', () => {
+        if (num.value === '') return;
+        let u = parseFloat(num.value); if (!isFinite(u)) return;
+        if (k === 'zoom') u = U.clamp(u, 5, 2000);
+        KC.edit('Mouvement de la piste', () => { const t = getTr(); t.tm = { ...FX.tmOf(t), [k]: fromUi(u) }; });
+        put(); live();
+      });
+      rst.addEventListener('click', () => { KC.edit('Mouvement de la piste', () => { const t = getTr(); t.tm = { ...FX.tmOf(t), [k]: def }; }); put(); live(); });
+      rows[k] = put; put();
+      body.append(h('div.row', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, h('span', { text: label, style: { width: '110px' } }), rng, num, rst));
+    }
+    const setAll = (label, tm) => { KC.edit(label, () => { getTr().tm = tm; }); Object.values(rows).forEach(f => f()); live(); };
+    const preset = (label, z) => { const b = h('button.btn.small', { text: label }); b.addEventListener('click', () => setAll('Zoom de la piste', { ...FX.tmOf(getTr()), zoom: z })); return b; };
+    const fillB = h('button.btn.small', { html: KC.icon('fit') + 'Remplir le cadre' });
+    fillB.addEventListener('click', () => KC.dialogs.fillTrack(getTr()));
+    const resetB = h('button.btn.small', { text: 'Tout réinitialiser' });
+    resetB.addEventListener('click', () => setAll('Réinitialiser le mouvement de la piste', { zoom: 1, x: 0, y: 0, rot: 0 }));
+    const evB = h('button.btn.small', { text: 'Transformer les événements…' });
+    evB.addEventListener('click', () => { KC.sel.set(KC.project.events.filter(e => e.track === tr.id).map(e => e.id)); KC.dialogs.batchTransform(); });
+    body.append(h('div.row', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, preset('110 %', 1.1), preset('125 %', 1.25), preset('150 %', 1.5), preset('200 %', 2), fillB),
+      h('div.row', { style: { display: 'flex', gap: '6px' } }, resetB, evB),
+      h('div.note', { text: 'Le mouvement s\'applique à tous les événements de la piste, en plus de leur propre panoramique. Double-clic sur le curseur « Zoom » de l\'en-tête de piste pour revenir à 100 %.' }));
+    w.content.append(body);
+    w._onChange = () => Object.values(rows).forEach(f => f());
+    KC.on('change', w._onChange);
+    return w;
+  };
   Wn.eventFx = (ev) => fxWindow({ key: 'efx:' + ev.id, title: 'Effets d\'événement vidéo', sub: P.eventName(ev), owner: ev, audio: false });
   Wn.trackFx = (tr) => fxWindow({ key: 'tfx:' + tr.id, title: 'Effets de piste audio', sub: P.trackLabel(tr), owner: tr, audio: true });
 

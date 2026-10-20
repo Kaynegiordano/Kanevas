@@ -1041,6 +1041,7 @@
     const row1 = h('div.row1',
       h('span.tkind', { html: KC.icon(isV ? 'video' : 'audio') }), name,
       !isV ? btn(KC.icon('fx'), 'on-fx', 'Effets de piste…', tr.fx && tr.fx.length, () => KC.windows.trackFx(tr)) : null,
+      isV ? btn(KC.icon('pancrop'), 'on-fx', 'Mouvement de la piste (zoom, position, rotation)…', !FX.tmIsIdentity(tr), () => KC.windows.trackMotion(tr)) : null,
       btn('M', 'on-m', 'Muet', tr.mute, () => { KC.edit('Muet', () => { tr.mute = !tr.mute; }); }),
       btn('S', 'on-s', 'Solo', tr.solo, () => { KC.edit('Solo', () => { tr.solo = !tr.solo; }); }),
     );
@@ -1050,6 +1051,12 @@
       const val = h('span.val', { text: Math.round(tr.level * 100) + ' %' });
       const sl = KC.ui.hslider({ value: tr.level, def: 1, onStart: () => KC.begin(), onInput: v => { tr.level = Math.round(v * 100) / 100; val.textContent = Math.round(tr.level * 100) + ' %'; E.redraw(); }, onEnd: () => KC.commit('Niveau de la piste') });
       body.append(h('div.row2', h('span.lbl', { text: 'Niveau' }), sl, val));
+      if (tr.height >= 64) {
+        const zv = h('span.val', { text: Math.round(FX.tmOf(tr).zoom * 100) + ' %', title: 'Double-clic sur le curseur : 100 %' });
+        const zs = KC.ui.hslider({ value: FX.tmOf(tr).zoom, def: 1, map: z => (Math.log2(U.clamp(z, 0.25, 4)) + 2) / 4, unmap: p => { const z = Math.pow(2, p * 4 - 2); return Math.abs(z - 1) < 0.03 ? 1 : Math.round(z * 100) / 100; },
+          onStart: () => KC.begin(), onInput: v => { tr.tm = { ...FX.tmOf(tr), zoom: v }; zv.textContent = Math.round(v * 100) + ' %'; E.redraw(); }, onEnd: () => KC.commit('Zoom de la piste') });
+        body.append(h('div.row2', h('span.lbl', { text: 'Zoom' }), zs, zv));
+      }
     } else {
       const val = h('span.val', { text: U.fmtDb(tr.volume) });
       const sl = KC.ui.hslider({ value: tr.volume, def: 0, map: db => KC.ui.dbToFader(db), unmap: p => { const d = KC.ui.faderToDb(p); return isFinite(d) ? Math.round(d * 10) / 10 : -Infinity; }, onStart: () => KC.begin(), onInput: v => { tr.volume = isFinite(v) ? v : -80; val.textContent = U.fmtDb(tr.volume); }, onEnd: () => KC.commit('Volume de la piste') });
@@ -1117,6 +1124,10 @@
       '-',
       { label: 'Sélectionner tous les événements', action: () => { KC.sel.set(KC.project.events.filter(e => e.track === tr.id).map(e => e.id)); T.redraw(); } },
       !isV ? { label: 'Effets de piste…', icon: 'fx', action: () => KC.windows.trackFx(tr) } : null,
+      isV ? { label: 'Mouvement de la piste (zoom, position, rotation)…', icon: 'pancrop', action: () => KC.windows.trackMotion(tr) } : null,
+      isV ? { label: 'Remplir le cadre (toute la piste)', icon: 'fit', action: () => KC.dialogs.fillTrack(tr) } : null,
+      isV ? { label: 'Réinitialiser le mouvement de la piste', icon: 'x', disabled: FX.tmIsIdentity(tr), action: () => KC.edit('Réinitialiser le mouvement de la piste', () => { delete tr.tm; }) } : null,
+      isV ? { label: 'Transformer les événements de la piste…', icon: 'pancrop', action: () => { KC.sel.set(KC.project.events.filter(e => e.track === tr.id).map(e => e.id)); KC.dialogs.batchTransform(); } } : null,
       { label: 'Couleur de la piste', icon: 'color', sub: P.TRACK_COLORS.map((c, i) => ({ label: ['Rouge', 'Orange', 'Jaune', 'Vert', 'Cyan', 'Bleu', 'Violet', 'Rose', 'Gris'][i], checked: tr.color === i, action: () => KC.edit('Couleur de la piste', () => { tr.color = i; }) })) },
       { label: 'Hauteur', sub: [
         { label: 'Réduite', action: () => { tr.height = 40; buildHeaders(); T.redraw(); } },

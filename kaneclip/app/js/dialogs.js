@@ -5,6 +5,20 @@
   const Dg = KC.dialogs = {};
 
   /* ------------------------------------------------------------ transformation globale (plusieurs événements) */
+  // Remplit le cadre pour toute une piste : zoom de piste = le plus grand rapport « remplir / ajuster » de ses événements
+  Dg.fillTrack = (tr) => {
+    const s = KC.project.settings; let z = 1, n = 0;
+    for (const e of KC.project.events) {
+      if (e.track !== tr.id || e.gen) continue;
+      const m = P.media(e.media); if (!m || !m.width || !m.height) continue;
+      n++;
+      z = Math.max(z, Math.max(s.width / m.width, s.height / m.height) / Math.min(s.width / m.width, s.height / m.height));
+    }
+    KC.edit('Remplir le cadre (piste)', () => { tr.tm = { ...FX.tmOf(tr), zoom: z, x: 0, y: 0 }; });
+    KC.engine.redraw();
+    KC.toast(n ? 'Piste agrandie à ' + Math.round(z * 100) + ' %' : 'Aucun média sur cette piste', n ? 'ok' : 'info');
+  };
+
   Dg.batchTransform = () => {
     const vids = evs => evs.filter(e => P.kindOf(e) === 'video');
     const scopes = {

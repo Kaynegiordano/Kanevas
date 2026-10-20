@@ -701,6 +701,9 @@
 
   /* ============================================================ panoramique / recadrage */
   // Image-clé : cx, cy = point de la source (0-1) placé au centre de la sortie ; zoom (1 = ajusté) ; rot (degrés)
+  // Mouvement de piste (Vegas « Track Motion ») : zoom / décalage (fraction de l'image) / rotation de toute la piste
+  FX.tmOf = tr => { const m = (tr && tr.tm) || {}; return { zoom: m.zoom > 0 ? m.zoom : 1, x: m.x || 0, y: m.y || 0, rot: m.rot || 0 }; };
+  FX.tmIsIdentity = tr => { const m = FX.tmOf(tr); return Math.abs(m.zoom - 1) < 1e-6 && Math.abs(m.x) < 1e-6 && Math.abs(m.y) < 1e-6 && Math.abs(m.rot) < 1e-6; };
   FX.pcDefault = () => ({ t: 0, cx: 0.5, cy: 0.5, zoom: 1, rot: 0, ease: 'linear' });
   FX.EASES = { linear: 'Linéaire', smooth: 'Lisse', fast: 'Rapide', slow: 'Lent', hold: 'Maintien' };
   const ease = (e, p) => {

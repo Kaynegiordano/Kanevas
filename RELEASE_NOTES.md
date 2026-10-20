@@ -1,3 +1,7 @@
+Kane App / Kanevas 1.12.14 — Montage : mouvement de piste
+
+- Montage (KaneClip 1.2.0) : curseur « Zoom » dans l'en-tête de chaque piste vidéo (double-clic = 100 %) et bouton de mouvement de piste (zoom, position, rotation, remplir le cadre) ; clic droit sur une piste : remplir, réinitialiser, transformer ses événements.
+
 Kane App / Kanevas 1.12.13 — Montage : transformer plusieurs vidéos
 
 - Montage (KaneClip 1.1.0) : « Transformer plusieurs événements… » (Ctrl+Maj+G, menu Outils, clic droit, Propriétés) remplit ou ajuste au cadre, zoome, tourne et recentre toute la sélection, les pistes concernées ou tout le projet en une fois, annulable.

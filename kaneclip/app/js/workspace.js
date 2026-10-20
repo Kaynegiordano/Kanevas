@@ -139,6 +139,7 @@
         const tr = section('Piste sélectionnée');
         tr.append(row('Nom', P.trackLabel(track)), row('Type', track.kind === 'video' ? 'Vidéo' : 'Audio'));
         if (track.kind === 'audio') tr.append(button('fx', 'Effets de piste…', () => KC.windows.trackFx(track)));
+        else tr.append(row('Zoom de la piste', Math.round(KC.FX.tmOf(track).zoom * 100) + ' %'), button('pancrop', 'Mouvement de la piste…', () => KC.windows.trackMotion(track)), button('fit', 'Remplir le cadre (piste)', () => KC.dialogs.fillTrack(track)));
         content.append(tr);
       }
       content.append(project, h('div.inspector-hint', { html: KC.icon('cursor') }, h('span', { text: 'Sélectionnez un événement pour accéder à ses réglages, son recadrage et ses effets.' })));
