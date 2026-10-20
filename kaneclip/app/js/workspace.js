@@ -118,6 +118,7 @@
         tools.append(button('pancrop', 'Panoramique / recadrage', () => KC.windows.panCrop(ev)), button('fx', 'Chaîne d’effets vidéo', () => KC.windows.eventFx(ev)));
         if (ev.gen) tools.append(button('text', 'Modifier le générateur', () => KC.windows.generator(ev)));
       } else tools.append(button('fx', 'Effets de la piste audio', () => KC.windows.trackFx(P.track(ev.track))), button('normalize', 'Normaliser l’audio', KC.cmd.normalize));
+      if (video) tools.append(button('pancrop', 'Transformer plusieurs événements…', () => KC.dialogs.batchTransform()));
       tools.append(button('props', 'Toutes les propriétés…', () => KC.dialogs.eventProps(ev)));
       content.append(tools);
       if (media) {
@@ -128,7 +129,7 @@
       }
     } else if (selected.length > 1) {
       content.append(h('div.inspector-object', h('span.object-kind', { text: 'SÉLECTION MULTIPLE' }), h('strong', { text: selected.length + ' événements' })),
-        h('div.inspector-section', button('group', 'Grouper les événements', KC.cmd.group), button('ungroup', 'Dissocier les événements', KC.cmd.ungroup), button('mute', 'Muet / audible', KC.cmd.toggleMuteSel)));
+        h('div.inspector-section', button('pancrop', 'Transformer la sélection…', () => KC.dialogs.batchTransform()), button('group', 'Grouper les événements', KC.cmd.group), button('ungroup', 'Dissocier les événements', KC.cmd.ungroup), button('mute', 'Muet / audible', KC.cmd.toggleMuteSel)));
     } else {
       content.append(h('div.inspector-object', h('span.object-kind', { text: 'PROJET' }), h('strong', { text: KC.project.path ? U.stripExt(U.base(KC.project.path)) : 'Sans titre' })));
       const project = section('Format du projet');

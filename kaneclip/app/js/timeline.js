@@ -874,6 +874,7 @@
       { label: 'Diviser', icon: 'split', key: 'S', action: KC.cmd.split },
       '-',
       isV ? { label: 'Panoramique/Recadrage de l\'événement…', icon: 'pancrop', action: () => KC.windows.panCrop(ev) } : null,
+      isV ? { label: 'Transformer la sélection / tout le projet…', icon: 'pancrop', action: () => KC.dialogs.batchTransform() } : null,
       isV ? { label: 'Effets d\'événement vidéo…', icon: 'fx', action: () => KC.windows.eventFx(ev) } : null,
       ev.gen ? { label: ev.gen.type === 'text' ? 'Modifier le texte…' : 'Modifier le générateur…', icon: 'text', action: () => KC.windows.generator(ev) } : null,
       isV && ev.fadeIn > 0 ? { label: 'Durée de la transition…', icon: 'transition', action: () => KC.cmd.transitionDuration(ev) } : null,

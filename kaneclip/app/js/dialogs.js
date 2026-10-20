@@ -4,6 +4,68 @@
   const h = KC.h, U = KC.util, P = KC.P, FX = KC.FX, M = KC.media;
   const Dg = KC.dialogs = {};
 
+  /* ------------------------------------------------------------ transformation globale (plusieurs événements) */
+  Dg.batchTransform = () => {
+    const vids = evs => evs.filter(e => P.kindOf(e) === 'video');
+    const scopes = {
+      sel: () => vids(KC.sel.list()),
+      track: () => { const ids = new Set(vids(KC.sel.list()).map(e => e.track)); if (KC.sel.track) ids.add(KC.sel.track); return vids(KC.project.events).filter(e => ids.has(e.track)); },
+      all: () => vids(KC.project.events),
+    };
+    const hasSel = scopes.sel().length > 0;
+    const scope = KC.ui.select([['sel', 'Événements vidéo sélectionnés'], ['track', 'Toutes les pistes des événements sélectionnés'], ['all', 'Tous les événements vidéo du projet']], hasSel ? 'sel' : 'all');
+    const action = KC.ui.select([['fill', 'Remplir le cadre (supprime les bandes noires)'], ['fit', 'Ajuster au cadre (image entière)'], ['mul', 'Agrandir / réduire de…'], ['set', 'Définir le zoom à…'], ['reset', 'Réinitialiser le panoramique']], 'fill');
+    const zoom = h('input.field', { type: 'number', value: 110, min: 10, max: 1000, step: 5, style: { width: '90px' } });
+    const rot = h('input.field', { type: 'number', value: 0, min: -360, max: 360, step: 1, style: { width: '90px' } });
+    const center = KC.ui.check("Recentrer l'image", false);
+    const note = h('div.hint', { style: { marginTop: '6px' } });
+    const refresh = () => {
+      const a = action.value;
+      zoom.disabled = !(a === 'mul' || a === 'set');
+      const n = scopes[scope.value]().length;
+      note.textContent = n + ' événement' + (n > 1 ? 's' : '') + ' concerné' + (n > 1 ? 's' : '') + '. Les images-clés existantes sont conservées.';
+    };
+    action.addEventListener('change', refresh); scope.addEventListener('change', refresh); refresh();
+    const body = h('div.form', { style: { width: '520px' } },
+      h('label', { text: 'Appliquer à' }), scope,
+      h('label', { text: 'Action' }), action,
+      h('label', { text: 'Zoom (%)' }), zoom,
+      h('label', { text: 'Rotation en plus (°)' }), rot,
+      h('div.full', center),
+      h('div.full', note));
+    KC.modal({
+      title: 'Transformer plusieurs événements', body,
+      buttons: [{ label: 'Annuler' }, {
+        label: 'Appliquer', primary: true, action: () => {
+          const list = scopes[scope.value]();
+          if (!list.length) { KC.toast('Aucun événement vidéo à transformer', 'err'); return false; }
+          const a = action.value, z = (parseFloat(zoom.value) || 100) / 100, r = parseFloat(rot.value) || 0, s = KC.project.settings;
+          KC.edit('Transformer ' + list.length + ' événement(s)', () => {
+            for (const e of list) {
+              if (!e.pc || !e.pc.kf || !e.pc.kf.length) e.pc = { kf: [FX.pcDefault()] };
+              let fill = 1;
+              if (a === 'fill' && !e.gen) {
+                const m = P.media(e.media);
+                if (m && m.width && m.height) fill = Math.max(s.width / m.width, s.height / m.height) / Math.min(s.width / m.width, s.height / m.height);
+              }
+              for (const k of e.pc.kf) {
+                const cur = k.zoom || 1;
+                if (a === 'reset') { k.zoom = 1; k.cx = 0.5; k.cy = 0.5; k.rot = 0; }
+                else {
+                  k.zoom = a === 'fill' ? fill : a === 'fit' ? 1 : a === 'mul' ? U.clamp(cur * z, 0.05, 50) : U.clamp(z, 0.05, 50);
+                  k.rot = (k.rot || 0) + r;
+                  if (center.input.checked || a === 'fill' || a === 'fit') { k.cx = 0.5; k.cy = 0.5; }
+                }
+              }
+            }
+          });
+          KC.engine.redraw();
+          KC.toast(list.length + ' événement' + (list.length > 1 ? 's' : '') + ' transformé' + (list.length > 1 ? 's' : ''), 'ok');
+        },
+      }],
+    });
+  };
+
   /* ------------------------------------------------------------ propriétés du projet */
   Dg.projectProps = () => {
     const s = { ...KC.project.settings };
@@ -206,7 +268,7 @@
   Dg.shortcuts = () => {
     const groups = [
       ['Lecture', [['Lire / arrêter (retour au départ)', 'Espace'], ['Lire / pause', 'Entrée'], ['Arrêt', 'Échap'], ['Navette arrière / pause / avant', 'J  K  L'], ['Image précédente / suivante', '← →'], ['Bord d\'événement précédent / suivant', 'Ctrl+← Ctrl+→'], ['Début / fin du projet', 'Ctrl+Origine  Ctrl+Fin'], ['Lecture en boucle', 'Q'], ['Aller au marqueur 1 à 9', '1 … 9']]],
-      ['Édition', [['Diviser au curseur', 'S'], ['Supprimer', 'Suppr'], ['Couper / copier / coller', 'Ctrl+X / C / V'], ['Annuler / rétablir', 'Ctrl+Z / Ctrl+Y'], ['Tout sélectionner', 'Ctrl+A'], ['Grouper / dissocier', 'G / U'], ['Déplacer d\'une image', 'Pavé num. 4 / 6'], ['Découper à la sélection', 'Ctrl+T'], ['Ajouter un marqueur', 'M'], ['Point d\'entrée / sortie de la sélection', 'I / O'], ['Magnétisme', 'F8'], ['Ignorer le groupement', 'Ctrl+Maj+U'], ['Ondulation automatique', 'Ctrl+L']]],
+      ['Édition', [['Diviser au curseur', 'S'], ['Supprimer', 'Suppr'], ['Couper / copier / coller', 'Ctrl+X / C / V'], ['Annuler / rétablir', 'Ctrl+Z / Ctrl+Y'], ['Tout sélectionner', 'Ctrl+A'], ['Grouper / dissocier', 'G / U'], ['Déplacer d\'une image', 'Pavé num. 4 / 6'], ['Découper à la sélection', 'Ctrl+T'], ['Transformer plusieurs événements', 'Ctrl+Maj+G'], ['Ajouter un marqueur', 'M'], ['Point d\'entrée / sortie de la sélection', 'I / O'], ['Magnétisme', 'F8'], ['Ignorer le groupement', 'Ctrl+Maj+U'], ['Ondulation automatique', 'Ctrl+L']]],
       ['Souris sur la timeline', [['Zoom', 'Molette'], ['Défiler horizontalement', 'Ctrl+molette'], ['Défiler les pistes', 'Maj+molette'], ['Sélection temporelle', 'Glisser dans le vide'], ['Copier un événement', 'Ctrl+glisser'], ['Glisser le contenu (slip)', 'Alt+glisser'], ['Changer la vitesse', 'Ctrl+glisser un bord'], ['Sans magnétisme', 'Maj pendant le glisser']]],
       ['Projet', [['Nouveau / ouvrir / enregistrer', 'Ctrl+N / O / S'], ['Importer des médias', 'Ctrl+I'], ['Rendre en tant que…', 'Ctrl+M'], ['Propriétés du projet', 'Alt+Entrée'], ['Insérer piste audio / vidéo', 'Ctrl+Q / Ctrl+Maj+Q'], ['Insérer un texte', 'Ctrl+Maj+T']]],
     ];

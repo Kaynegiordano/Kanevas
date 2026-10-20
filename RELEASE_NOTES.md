@@ -1,3 +1,8 @@
+Kane App / Kanevas 1.12.13 — Montage : transformer plusieurs vidéos
+
+- Montage (KaneClip 1.1.0) : « Transformer plusieurs événements… » (Ctrl+Maj+G, menu Outils, clic droit, Propriétés) remplit ou ajuste au cadre, zoome, tourne et recentre toute la sélection, les pistes concernées ou tout le projet en une fois, annulable.
+- Espace de montage façon VEGAS Pro : dispositions, panneau Propriétés, médias classés par type.
+
 Kane App / Kanevas 1.12.12 — Respiration douce
 
 - Animation : case « Respiration douce de tout le personnage » (par défaut, sans zone à peindre) avec réglage d'amplitude ; le corps et les calques suivent, boucle sans à-coup, curseur Wallpaper Engine. Cliquez « Appliquer au Web ».

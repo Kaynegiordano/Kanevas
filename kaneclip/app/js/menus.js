@@ -82,6 +82,7 @@
     ]],
     ['Outils', [
       { label: 'Panoramique/Recadrage de l\'événement…', icon: 'pancrop', action: () => { const e = sel1('video'); if (e) KC.windows.panCrop(e); } },
+      { label: 'Transformer plusieurs événements…', icon: 'pancrop', key: 'Ctrl+Maj+G', action: () => KC.dialogs.batchTransform() },
       { label: 'Effets d\'événement vidéo…', icon: 'fx', action: () => { const e = sel1('video'); if (e) KC.windows.eventFx(e); } },
       { label: 'Effets de piste audio…', icon: 'fx', action: () => { const t = KC.sel.track && P.track(KC.sel.track); if (t && t.kind === 'audio') KC.windows.trackFx(t); else KC.toast('Sélectionnez une piste audio', 'info'); } },
       { label: 'Propriétés de l\'événement…', icon: 'props', action: () => { const e = sel1(); if (e) KC.dialogs.eventProps(e); } },
@@ -225,7 +226,7 @@
         case 'm': return run(C.render);
         case 'q': return run(shift ? C.addVideoTrack : C.addAudioTrack);
         case 't': return run(shift ? () => C.insertGenerator('text') : C.trimToSelection);
-        case 'g': return run(C.goTo);
+        case 'g': return run(shift ? () => KC.dialogs.batchTransform() : C.goTo);
         case 'l': return run(C.toggleRipple);
         case 'u': if (shift) return run(C.toggleGroups); break;
         case 'f': if (shift) return run(() => KC.timeline.fit()); break;
