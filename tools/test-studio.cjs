@@ -406,6 +406,45 @@ async function scenario() {
   await new Promise(r => setTimeout(r,100));
   assert(KS.state.docs.length === beforeLoraDocs, 'Un dépôt ailleurs dans le Studio ne passe pas implicitement dans Edition');
   await KS.cmd.openStudioTab('txt2img');
+  // Chercher / remplacer, nettoyer et historique des invites
+  const pta = document.querySelector('.fx-prompts textarea.fx-prompt'), fbar = document.querySelector('.fx-prompts .kf-bar');
+  const type = (el, v) => { el.value = v; el.dispatchEvent(new Event('input')); };
+  type(pta, 'red hair, blue eyes, Red hair, smile');
+  pta.focus(); pta.setSelectionRange(0, 8);
+  pta.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }));
+  await new Promise(r => setTimeout(r, 150));
+  const finput = fbar.querySelector('.kf-input'), fcount = fbar.querySelector('.kf-count');
+  assert(!fbar.hidden && finput.value === 'red hair' && fcount.textContent === '1/2', 'Ctrl+F dans l’invite ouvre la recherche avec le mot sélectionné (2 occurrences, casse ignorée)');
+  assert(pta.parentElement.querySelectorAll('.kf-mirror mark').length === 2, 'Les occurrences sont surlignées dans l’invite');
+  finput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  assert(fcount.textContent === '2/2', 'Entrée passe à l’occurrence suivante');
+  await click('Aa', fbar); await new Promise(r => setTimeout(r, 30));
+  assert(fcount.textContent === '1/1', 'Respecter la casse réduit les occurrences');
+  await click('Aa', fbar);
+  await click('⇄', fbar);
+  fbar.querySelector('.kf-rinput').value = 'blonde hair';
+  await click('Tout remplacer', fbar);
+  assert(KS.prefs.fx.t2i.prompt === 'blonde hair, blue eyes, blonde hair, smile' && fcount.textContent === '0', 'Tout remplacer met à jour l’invite enregistrée');
+  const interruptsBefore = window.interrupts;
+  fbar.querySelector('.kf-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  assert(fbar.hidden && !pta.parentElement.querySelector('.kf-mirror mark') && window.interrupts === interruptsBefore, 'Échap range la recherche sans interrompre la génération');
+  await click('🧹', document.querySelector('.fx-ptools'));
+  assert(KS.prefs.fx.t2i.prompt === 'blonde hair, blue eyes, smile', 'Nettoyer retire les doublons');
+  type(pta, '  (red hair, blue eyes:1.2),, smile ,smile, <lora:test:0.7>  painted\nBREAK , smile');
+  await click('🧹', document.querySelector('.fx-ptools'));
+  assert(KS.prefs.fx.t2i.prompt === '(red hair, blue eyes:1.2), smile, <lora:test:0.7> painted\nBREAK, smile', 'Nettoyer garde les groupes entre parenthèses, les LoRA et les lignes');
+  KS.prefs.fx.promptHistory = [];
+  type(pta, 'history one'); await KS.cmd.studioGenerate();
+  type(pta, 'history two'); await KS.cmd.studioGenerate();
+  type(pta, 'history one'); await KS.cmd.studioGenerate();
+  assert(KS.prefs.fx.promptHistory.map(e => e.p).join('|') === 'history one|history two', 'L’historique garde chaque invite générée une fois, la plus récente en tête');
+  await click('🕘', document.querySelector('.fx-ptools'));
+  const hmodal = document.querySelector('.modal'), hq = hmodal.querySelector('input[type=search]');
+  type(hq, 'two');
+  assert(hmodal.querySelectorAll('.kf-hrow').length === 1, 'La recherche filtre l’historique');
+  hmodal.querySelector('.kf-hrow').click();
+  await new Promise(r => setTimeout(r, 30));
+  assert(!document.querySelector('.modal') && KS.prefs.fx.t2i.prompt === 'history two' && document.querySelector('.fx-prompts textarea.fx-prompt').value === 'history two', 'Cliquer une entrée reprend l’invite');
   return results;
 }
 

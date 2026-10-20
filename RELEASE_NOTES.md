@@ -1,3 +1,9 @@
+Kane App / Kanevas 1.12.15 — Chercher dans l'invite
+
+- Studio IA : 🔍 (ou Ctrl+F dans l'invite) surligne, parcourt et remplace un mot dans l'invite et l'invite négative, comme l'extension Forge « Chercher dans le prompt ».
+- 🕘 Historique des 60 dernières invites générées, avec recherche ; un clic les reprend.
+- 🧹 Nettoyer : retire les tags en double, virgules et espaces en trop (Ctrl+Z annule).
+
 Kane App / Kanevas 1.12.14 — Montage : mouvement de piste
 
 - Montage (KaneClip 1.2.0) : curseur « Zoom » dans l'en-tête de chaque piste vidéo (double-clic = 100 %) et bouton de mouvement de piste (zoom, position, rotation, remplir le cadre) ; clic droit sur une piste : remplir, réinitialiser, transformer ses événements.

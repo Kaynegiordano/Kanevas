@@ -29,7 +29,7 @@
     noom: { unet: false, vae: false }, script: 'None', scriptArgs: {}, open: {},
   });
   const DEF = {
-    v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, previewMode: 'net', seeded: false, presetName: '',
+    v: 1, tab: 'txt2img', i2iMode: 'img2img', scale: 'anima', translate: true, saveImages: true, livePreview: true, previewMode: 'net', seeded: false, presetName: '', promptHistory: [],
     lora: { q: '', sort: 'new' },
     painter: { size: 40, color: '#ff7a30', erase: false },
     editor: { target: 'selection', prompt: '', strength: 0.5, variants: 1, fillVersion: 1 },
@@ -466,10 +466,15 @@
         st[key] = ta.value; upd(); save();
         if (key === 'prompt') { trNote(c); markLoras(c); renderChips(c); }
         for (const peer of [CTX.t2i, EDIT]) if (peer !== c && peer.k === c.k && peer.syncPrompt) peer.syncPrompt();
+        if (c.find) c.find.refresh();
         renderGenButtons();
       });
       ta.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+          e.preventDefault(); e.stopPropagation();
+          const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd).trim();
+          if (c.find.open && !sel) c.find.hide(); else c.find.show(sel.length < 80 && !sel.includes('\n') ? sel : '');
+        } else if (e.key === 'Enter' && e.altKey) { e.preventDefault(); skip(); }
         else if (e.key === 'Escape') interrupt();
         else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); editWeight(ta, e.key === 'ArrowUp' ? 1 : -1); }
       });
@@ -482,17 +487,23 @@
       P.ta.value = st.prompt; Q.ta.value = st.negative_prompt;
       for (const ta of [P.ta, Q.ta]) { const n = tokens(ta.value); ta.parentElement.querySelector('.fx-tok').textContent = n + '/' + Math.max(75, Math.ceil(n / 75) * 75); }
       trNote(c); renderChips(c); markLoras(c);
+      if (c.find) c.find.refresh();
     };
     c.trNote = h('div.fx-trnote'); c.chips = h('div.fx-lchips'); c.genbox = h('div.fx-genbox');
+    c.find = findBar(c);
     renderGenButtons(); trNote(c); renderChips(c);
+    c.findBtn = ebtn('🔍', 'Chercher et remplacer dans l\'invite (Ctrl+F dans l\'invite)', () => c.find.toggle());
     const tools = h('div.fx-ptools',
       ebtn('↙️', 'Lire les paramètres collés dans l\'invite (texte d\'une image de Forge), ou ceux de la dernière génération si l\'invite est vide', () => { readParams(c.k); if (c === EDIT) renderEditorDraw(); }),
       ebtn('🗑️', 'Effacer l\'invite et l\'invite négative', () => { for (const t of [P.ta, Q.ta]) { t.value = ''; t.dispatchEvent(new Event('input')); } }),
-      ebtn('📋', 'Appliquer les styles choisis à l\'invite', () => applyStyles(c)));
-    if (compact) return h('div.fx-toprow.fx-compact', P.box, c.chips,
+      ebtn('📋', 'Appliquer les styles choisis à l\'invite', () => applyStyles(c)),
+      c.findBtn,
+      ebtn('🕘', 'Historique des invites : reprendre une invite déjà utilisée, avec recherche', () => historyDialog(c)),
+      ebtn('🧹', 'Nettoyer l\'invite : doublons, virgules et espaces en trop (Ctrl+Z pour annuler)', () => cleanPrompts(c)));
+    if (compact) return h('div.fx-toprow.fx-compact', c.find.bar, P.box, c.chips,
       c === EDIT ? h('details.edraw-details', h('summary', { text: 'Éléments à éviter' }), Q.box) : Q.box,
       c.trNote, c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k)));
-    return h('div.fx-toprow', h('div.fx-prompts', P.box, c.chips, Q.box, c.trNote), h('div.fx-side', c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k))));
+    return h('div.fx-toprow', h('div.fx-prompts', c.find.bar, P.box, c.chips, Q.box, c.trNote), h('div.fx-side', c.genbox, h('div.fx-ptools-row', tools, stylesPicker(c.k))));
   }
   function trNote(c) {
     if (!c.trNote) return;
@@ -528,6 +539,198 @@
     ta.value = v.slice(0, s) + rep + v.slice(e);
     ta.selectionStart = s + 1; ta.selectionEnd = s + 1 + word.length;
     ta.dispatchEvent(new Event('input'));
+  }
+  // Chercher / remplacer dans l'invite, repris de l'extension forge_prompt_find : Ctrl+F dans une invite ou 🔍,
+  // Entrée / Maj+Entrée = suivant / précédent, Échap ou Ctrl+F = ranger. Surlignage par un calque transparent
+  // posé par-dessus le champ (le fond du champ est opaque), insensible à la souris.
+  const escHtml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function findBar(c) {
+    const input = h('input.fx-in.kf-input', { type: 'text', placeholder: 'Chercher dans l’invite', spellcheck: false });
+    const count = h('span.kf-count');
+    const field = h('div.kf-field', h('span.kf-glass', { text: '🔍' }), input, count);
+    const tbtn = (text, tip) => h('button.kf-btn', { type: 'button', text, title: tip });
+    const prev = tbtn('▲', 'Précédent (Maj+Entrée)'), next = tbtn('▼', 'Suivant (Entrée)');
+    const caseBtn = tbtn('Aa', 'Respecter la casse'), wordBtn = tbtn('Mot', 'Mot entier');
+    const scope = h('select.fx-sel.kf-scope', { title: 'Où chercher' }, ...[['both', 'Tout'], ['prompt', 'Invite'], ['neg', 'Négative']].map(([v, t]) => h('option', { value: v, text: t })));
+    const replBtn = tbtn('⇄', 'Remplacer'), close = tbtn('✕', 'Ranger (Échap ou Ctrl+F)');
+    const rinput = h('input.fx-in.kf-rinput', { type: 'text', placeholder: 'Remplacer par…', spellcheck: false });
+    const one = tbtn('Remplacer', 'Remplacer l’occurrence surlignée (Entrée)'), all = tbtn('Tout remplacer', 'Remplacer toutes les occurrences');
+    const row2 = h('div.kf-row.kf-row2', rinput, one, all); row2.hidden = true;
+    const bar = h('div.kf-bar', h('div.kf-row', field, prev, next, caseBtn, wordBtn, scope, replBtn, close), row2);
+    bar.hidden = true;
+    const F = { bar, open: false, matches: [], index: -1 };
+    const prompts = () => [c.promptTa, c.negTa].filter(Boolean);
+    const targets = () => scope.value === 'prompt' ? [c.promptTa] : scope.value === 'neg' ? [c.negTa] : prompts();
+    const mirror = ta => {
+      if (!ta._kfMirror) {
+        ta._kfMirror = h('div.kf-mirror');
+        ta.parentElement.appendChild(ta._kfMirror);
+        ta.addEventListener('scroll', () => { ta._kfMirror.scrollTop = ta.scrollTop; });
+        new ResizeObserver(() => { if (F.open && ta._kfMirror.style.display !== 'none') mirror(ta); }).observe(ta);
+      }
+      const m = ta._kfMirror, cs = getComputedStyle(ta);
+      m.style.display = '';
+      for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'wordSpacing']) m.style[p] = cs[p];
+      Object.assign(m.style, { left: ta.offsetLeft + ta.clientLeft + 'px', top: ta.offsetTop + ta.clientTop + 'px', width: ta.clientWidth + 'px', height: ta.clientHeight + 'px' });
+      m.scrollTop = ta.scrollTop;
+      return m;
+    };
+    const paint = () => {
+      const cur = F.matches[F.index];
+      for (const ta of prompts()) {
+        const list = F.open ? F.matches.filter(x => x.ta === ta) : [];
+        if (!list.length) { if (ta._kfMirror) { ta._kfMirror.innerHTML = ''; ta._kfMirror.style.display = 'none'; } continue; }
+        let html = '', last = 0;
+        for (const mt of list) { html += escHtml(ta.value.slice(last, mt.start)) + `<mark${mt === cur ? ' class="kf-cur"' : ''}>` + escHtml(ta.value.slice(mt.start, mt.end)) + '</mark>'; last = mt.end; }
+        mirror(ta).innerHTML = html + escHtml(ta.value.slice(last)) + '\n';
+      }
+      const n = F.matches.length;
+      count.textContent = !input.value ? '' : n ? `${F.index + 1}/${n}` : '0';
+      field.classList.toggle('kf-none', !!input.value && !n);
+    };
+    const compute = keep => {
+      const previous = keep && F.matches[F.index];
+      F.matches = [];
+      if (input.value) {
+        let src = esc(input.value);
+        if (wordBtn.classList.contains('on')) src = '(?<![\\w@])' + src + '(?![\\w@])';
+        const re = new RegExp(src, caseBtn.classList.contains('on') ? 'g' : 'gi');
+        for (const ta of targets()) for (const m of ta.value.matchAll(re)) if (m[0]) F.matches.push({ ta, start: m.index, end: m.index + m[0].length });
+      }
+      F.index = F.matches.length ? 0 : -1;
+      if (previous) { const k = F.matches.findIndex(x => x.ta === previous.ta && x.start >= previous.start); if (k >= 0) F.index = k; }
+      paint();
+    };
+    const reveal = () => {
+      const mt = F.matches[F.index]; if (!mt) return;
+      const mark = mt.ta._kfMirror && mt.ta._kfMirror.querySelector('mark.kf-cur');
+      if (mark) mt.ta.scrollTop = Math.max(0, mark.offsetTop - mt.ta.clientHeight / 3);
+      mt.ta.setSelectionRange(mt.start, mt.end);
+    };
+    const step = d => {
+      if (!F.matches.length) compute(false);
+      if (!F.matches.length) return;
+      F.index = (F.index + d + F.matches.length) % F.matches.length;
+      paint(); reveal();
+    };
+    // insertText garde l'annulation native (Ctrl+Z) et déclenche « input », donc l'état et les puces suivent
+    const replaceAt = (mt, text) => {
+      mt.ta.focus({ preventScroll: true }); mt.ta.setSelectionRange(mt.start, mt.end);
+      if (!document.execCommand('insertText', false, text)) { mt.ta.value = mt.ta.value.slice(0, mt.start) + text + mt.ta.value.slice(mt.end); mt.ta.dispatchEvent(new Event('input')); }
+    };
+    const replaceOne = () => { const mt = F.matches[F.index]; if (!mt) return; replaceAt(mt, rinput.value); compute(true); reveal(); rinput.focus(); };
+    const replaceAll = () => {
+      const list = F.matches.slice().sort((a, b) => a.ta === b.ta ? b.start - a.start : 0);   // de la fin vers le début
+      if (!list.length) return;
+      for (const mt of list) replaceAt(mt, rinput.value);
+      KS.toast(list.length + ' remplacement' + (list.length > 1 ? 's' : ''), 'ok', 1500);
+      compute(false); input.focus();
+    };
+    F.show = (seed = '') => {
+      F.open = true; bar.hidden = false;
+      if (seed) input.value = seed;
+      input.focus(); input.select(); compute(false); if (F.matches.length) reveal();
+      if (c.findBtn) c.findBtn.classList.add('on');
+    };
+    F.hide = () => {
+      F.open = false; bar.hidden = true; F.matches = []; F.index = -1; paint();
+      if (c.findBtn) c.findBtn.classList.remove('on');
+      if (c.promptTa) c.promptTa.focus({ preventScroll: true });
+    };
+    F.toggle = () => F.open ? F.hide() : F.show();
+    F.refresh = () => { if (F.open) compute(true); };
+    input.addEventListener('input', U.debounce(() => compute(false), 100));
+    scope.addEventListener('change', () => compute(false));
+    for (const b of [caseBtn, wordBtn]) b.addEventListener('click', () => { b.classList.toggle('on'); compute(false); input.focus(); });
+    prev.addEventListener('click', () => step(-1));
+    next.addEventListener('click', () => step(1));
+    replBtn.addEventListener('click', () => { row2.hidden = !row2.hidden; replBtn.classList.toggle('on', !row2.hidden); (row2.hidden ? input : rinput).focus(); });
+    one.addEventListener('click', replaceOne);
+    all.addEventListener('click', replaceAll);
+    close.addEventListener('click', F.hide);
+    bar.addEventListener('keydown', e => {
+      e.stopPropagation();                         // ni Ctrl+Entrée (générer) ni Échap (interrompre) pendant la frappe ici
+      if (e.key === 'Escape' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) { e.preventDefault(); F.hide(); }
+      else if (e.key === 'Enter' && e.target === input) { e.preventDefault(); step(e.shiftKey ? -1 : 1); }
+      else if (e.key === 'Enter' && e.target === rinput) { e.preventDefault(); replaceOne(); }
+    });
+    return F;
+  }
+  // 🧹 Nettoyer : par ligne, découpe aux virgules hors (), [], {}, <> ; retire espaces en trop, tags vides et doublons
+  function cleanPrompt(text) {
+    let removed = 0;
+    const lines = String(text || '').split('\n').map(line => {
+      const parts = []; let depth = 0, cur = '';
+      for (const ch of line) {
+        if ('([{<'.includes(ch)) depth++;
+        else if (')]}>'.includes(ch)) depth = Math.max(0, depth - 1);
+        if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; } else cur += ch;
+      }
+      parts.push(cur);
+      const seen = new Set(), out = [];
+      for (const p of parts) {
+        const t = p.replace(/\s+/g, ' ').trim(); if (!t) continue;
+        const key = t.toLowerCase();
+        if (seen.has(key)) { removed++; continue; }
+        seen.add(key); out.push(t);
+      }
+      return out.join(', ');
+    });
+    return { text: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim(), removed };
+  }
+  function cleanPrompts(c) {
+    let removed = 0, changed = 0;
+    for (const ta of [c.promptTa, c.negTa]) {
+      if (!ta) continue;
+      const r = cleanPrompt(ta.value);
+      removed += r.removed;
+      if (r.text === ta.value) continue;
+      changed++;
+      ta.focus({ preventScroll: true }); ta.select();
+      if (!document.execCommand('insertText', false, r.text)) { ta.value = r.text; ta.dispatchEvent(new Event('input')); }
+    }
+    KS.toast(!changed ? 'Invite déjà propre' : removed ? `Invite nettoyée : ${removed} doublon${removed > 1 ? 's' : ''} retiré${removed > 1 ? 's' : ''} (Ctrl+Z pour annuler)` : 'Invite nettoyée (Ctrl+Z pour annuler)', 'ok', 2600);
+  }
+  // 🕘 Historique : les 60 dernières invites envoyées à Forge (txt2img et img2img), avec recherche
+  const HISTORY_MAX = 60;
+  function rememberPrompt(st) {
+    const p = String(st.prompt || '').trim(), n = String(st.negative_prompt || '').trim();
+    if (!p && !n) return;
+    const list = (FX.promptHistory || []).filter(e => !(e.p === p && e.n === n));
+    FX.promptHistory = [{ p, n, t: Date.now() }, ...list].slice(0, HISTORY_MAX); save();
+  }
+  function historyDialog(c) {
+    const st = FX[c.k];
+    const q = h('input.fx-in', { type: 'search', placeholder: 'Chercher dans l’historique (mots de l’invite ou de l’invite négative)', spellcheck: false });
+    const list = h('div.kf-hist');
+    const when = t => new Date(t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    let dlg;
+    const apply = (e, withNeg) => {
+      st.prompt = e.p; if (withNeg) st.negative_prompt = e.n; save();
+      if (c.syncPrompt) c.syncPrompt();
+      for (const peer of [CTX.t2i, EDIT]) if (peer !== c && peer.k === c.k && peer.syncPrompt) peer.syncPrompt();
+      renderGenButtons(); dlg.close(null);
+      KS.toast('Invite reprise de l’historique', 'ok', 1500);
+    };
+    const draw = () => {
+      const words = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const all = FX.promptHistory || [];
+      const found = all.filter(e => words.every(w => (e.p + '\n' + e.n).toLowerCase().includes(w)));
+      list.replaceChildren(...(found.length ? found.map(e => {
+        const row = h('div.kf-hrow', { title: 'Cliquer : reprendre l’invite et l’invite négative' },
+          h('div.kf-hmeta', h('span', { text: when(e.t) }), ebtn('➕', 'Reprendre seulement l’invite (garder l’invite négative actuelle)', ev => { ev.stopPropagation(); apply(e, false); }, '.sm'),
+            ebtn('🗑️', 'Retirer de l’historique', ev => { ev.stopPropagation(); FX.promptHistory = (FX.promptHistory || []).filter(x => x !== e); save(); draw(); }, '.sm')),
+          h('div.kf-hp', { text: e.p || '—' }),
+          e.n ? h('div.kf-hn', { text: e.n }) : null);
+        row.addEventListener('click', () => apply(e, true));
+        return row;
+      }) : [h('div.fx-info', { text: all.length ? 'Aucune invite ne contient ces mots.' : 'L’historique se remplit à chaque génération.' })]));
+    };
+    q.addEventListener('input', draw);
+    draw();
+    const clear = ui.btn('Tout effacer', () => { FX.promptHistory = []; save(); draw(); KS.toast('Historique effacé', 'ok', 1500); });
+    dlg = KS.modal({ title: 'Historique des invites', width: 720, body: h('div.kf-hbox', q, list), buttons: [{ label: 'Fermer', value: null }], left: [clear] });
+    setTimeout(() => q.focus(), 0);
   }
   // LoRA de l'invite : une puce par balise, poids réglable, fiche modifiable
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1305,6 +1508,7 @@
       const st = FX[k]; st.seed = -1; st.subseed = -1; save();
       const p = await payloadFor(k, st);
       if (prep.canceled) return;
+      rememberPrompt(st);
       if (k === 't2i') await runT2I(p);
       else await runI2I(p, st);
     } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 7000); }

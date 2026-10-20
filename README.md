@@ -20,6 +20,12 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Chercher dans l'invite, historique, nettoyer (1.12.15)
+
+- Studio IA, sous l'invite : **🔍 Chercher** (ou Ctrl+F dans l'invite, le mot sélectionné est repris) surligne les occurrences dans l'invite et l'invite négative ; Entrée / Maj+Entrée pour passer de l'une à l'autre, Aa (casse), Mot (mot entier), portée Tout / Invite / Négative, ⇄ pour remplacer une occurrence ou tout remplacer (Ctrl+Z annule). Échap ou ✕ range la barre. Même outil que l'extension « Chercher dans le prompt » de Forge.
+- **🕘 Historique** : les 60 dernières invites générées (txt2img et img2img), avec recherche par mots ; un clic reprend l'invite et l'invite négative, ➕ seulement l'invite.
+- **🧹 Nettoyer** : retire les tags en double, les virgules et espaces en trop, sans casser les groupes entre parenthèses, les balises <lora:…> ni les retours à la ligne (Ctrl+Z annule).
+
 ### Respiration douce de tout le personnage (1.12.12)
 
 - Animation, panneau « Interactions souris » : nouvelle case **Respiration douce de tout le personnage**, cochée par défaut et sans zone à peindre. Le personnage se soulève et gonfle très légèrement (de 0,1 % à 0,7 % de la hauteur, réglable avec « Amplitude de la respiration »), les calques (cheveux, visage...) suivent le même mouvement et la boucle reste sans à-coup. Un curseur « Respiration douce » est aussi créé pour Wallpaper Engine. Cliquez « Appliquer au Web » pour la prendre en compte.

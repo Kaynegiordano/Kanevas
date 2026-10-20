@@ -754,11 +754,46 @@ body.fx-i2i .fx-ta.fx-prompt { min-height: 58px; }
 .fx-generate:disabled, .fx-interrupt:disabled { opacity: .5; cursor: default; }
 .fx-skip { border: 1px solid var(--border-2); background: var(--raised); color: var(--text); }
 body.fx-i2i .fx-generate, body.fx-i2i .fx-interrupt, body.fx-i2i .fx-skip { height: 58px; }
-.fx-ptools-row { display: flex; gap: 6px; align-items: stretch; }
-.fx-ptools { display: flex; gap: 6px; }
+.fx-ptools-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.fx-ptools { display: flex; flex-wrap: wrap; gap: 6px; }
+.fx-ptools-row .fx-styles { min-width: 120px; }
 .fx-ebtn { min-width: 34px; height: 34px; padding: 0 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); color: var(--text); font-size: 15px; line-height: 1; cursor: pointer; flex-shrink: 0; }
 .fx-ebtn:hover, .fx-ebtn.on { border-color: var(--fx-accent); }
 .fx-ebtn.on { background: var(--fx-accent-soft); }
+/* Chercher / remplacer dans l'invite (studio.js, findBar) */
+.kf-bar { padding: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); }
+.kf-bar[hidden], .kf-row[hidden] { display: none !important; }
+.kf-row { display: flex; align-items: center; gap: 4px; }
+.kf-row2 { margin-top: 5px; }
+.kf-field { flex: 1 1 auto; min-width: 120px; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
+.kf-field:focus-within { border-color: var(--fx-accent); box-shadow: 0 0 0 3px var(--fx-accent-soft); }
+.kf-field.kf-none { border-color: var(--danger); box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 30%, transparent); }
+.kf-glass { font-size: 12px; opacity: .6; }
+.kf-field .kf-input { flex: 1 1 auto; min-width: 0; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.kf-field .kf-input:focus { box-shadow: none; }
+.kf-rinput { flex: 1 1 auto; min-width: 0; height: 30px; }
+.kf-count { min-width: 30px; font: 11.5px var(--mono); text-align: right; color: var(--text-2); white-space: nowrap; }
+.kf-field.kf-none .kf-count { color: var(--danger); }
+.kf-btn { height: 30px; min-width: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font: 12px var(--ui); cursor: pointer; white-space: nowrap; }
+.kf-btn:hover { border-color: var(--border); background: var(--field); }
+.kf-btn.on { border-color: var(--fx-accent); background: var(--fx-accent-soft); }
+.kf-row2 .kf-btn { border-color: var(--border); }
+.kf-bar .kf-scope { flex: 0 0 96px; width: 96px; height: 30px; padding: 0 6px; font-size: 12px; }
+.kf-mirror { position: absolute; box-sizing: border-box; margin: 0; border: 0; overflow: hidden; pointer-events: none; z-index: 1; white-space: pre-wrap; overflow-wrap: break-word; color: transparent; background: transparent; }
+.kf-mirror mark { color: transparent; background: rgba(255, 196, 0, .42); border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 160, 0, .35); }
+.kf-mirror mark.kf-cur { background: rgba(255, 110, 0, .55); box-shadow: 0 0 0 2px rgba(255, 110, 0, .85); }
+.fx-tok { z-index: 2; }
+/* Historique des invites (studio.js, historyDialog) */
+.kf-hbox { display: flex; flex-direction: column; gap: 8px; }
+.kf-hist { max-height: 56vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.kf-hrow { padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--field); cursor: pointer; }
+.kf-hrow:hover { border-color: var(--fx-accent); }
+.kf-hmeta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.kf-hmeta > span { flex: 1; }
+.kf-hmeta .fx-ebtn { min-width: 26px; height: 24px; font-size: 12px; }
+.kf-hp { font-size: 12.5px; color: var(--text); white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.kf-hn { margin-top: 3px; font-size: 11.5px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.kf-hn::before { content: 'Négative : '; color: var(--muted); }
 .fx-styles { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 2px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); color: var(--text); cursor: pointer; text-align: left; }
 .fx-styles .fx-lbl { font-size: 10.5px; }
 .fx-styles-v { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
