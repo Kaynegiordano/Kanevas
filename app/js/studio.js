@@ -1373,12 +1373,24 @@
     Object.assign(els, { progBar: bar, progTxt: txt, progImg: img });
     return { box: h('div.fx-prog', h('div.fx-prog-bar', bar), txt), img };
   }
+  // Pendant une génération, un clic sur l'aperçu en direct montre en plein écran la dernière image terminée
+  // (la plus récente de la galerie, sinon le résultat affiché avant de lancer) ; l'aperçu continue derrière.
+  function peekLastDone(view, key) {
+    view.classList.add('fx-peek');
+    view.title = 'Clic : voir en plein écran la dernière image terminée';
+    view.addEventListener('click', () => {
+      const g = SD.gallery[0], o = OUT[key], it = o && (o.items[o.sel] || o.items[0]);
+      const pick = g ? { media: g.canvas, w: g.canvas.width, h: g.canvas.height } : it ? { media: h('img', { src: it.url }), w: it.canvas.width, h: it.canvas.height } : null;
+      if (!pick) return KS.toast('Aucune image terminée pour l’instant : la première arrive à la fin de cette génération.', 'info', 2600);
+      KS.preview.open(pick.media, pick.w, pick.h, { title: 'Dernière image terminée (génération en cours…)' });
+    });
+  }
   function renderOut(key = 't2i') {
     const box = key === 'i2i' ? els.i2iOut : els.out; if (!box) return;
     const o = OUT[key], it = o.items[o.sel];
     const view = h('div.fx-view');
-    if (BUSY && BUSY.k === key) { const p = progressBox(); view.classList.add('live'); els.progView = view; view.append(p.box, p.img); }
-    else if (it) { const im = h('img', { src: it.url, alt: '' }); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height }); }
+    if (BUSY && BUSY.k === key) { const p = progressBox(); view.classList.add('live'); els.progView = view; view.append(p.box, p.img); peekLastDone(view, key); }
+    else if (it) { const im = h('img', { src: it.url, alt: '' }); KS.preview.mount(view, im, { identity: it, width: it.canvas.width, height: it.canvas.height, clickOpen: true }); }
     else view.append(h('div.fx-ph', key === 'i2i' ? { text: 'Les résultats apparaîtront ici' } : { html: KS.icon('image') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '', title: x.from ? 'Venue de l\'Édition : ' + x.from : '' }); t.addEventListener('click', () => { o.sel = i; renderOut(key); }); return t; })) : null;
     fillEl(box, key === 'i2i' ? h('div.fx-h', { text: 'Résultat' }) : null, view, thumbs, outButtons(key, it), it ? h('div.fx-outinfo', { text: (it.from ? 'Venue de l\'Édition : ' + it.from + '\n\n' : '') + (it.info || '(sans paramètres de génération)') + (o.time && !it.from ? `\n\nTime taken: ${o.time}` : '') }) : null);
@@ -1641,8 +1653,8 @@
     const box = els.exOut; if (!box) return;
     const o = OUT.ex, it = o.items[o.sel];
     const view = h('div.fx-view');
-    if (BUSY && BUSY.k === 'ex') { const p = progressBox(); view.append(p.box); }
-    else if (it) KS.preview.mount(view, h('img', { src: it.url, alt: '' }), { identity: it, width: it.canvas.width, height: it.canvas.height });
+    if (BUSY && BUSY.k === 'ex') { const p = progressBox(); view.append(p.box); peekLastDone(view, 'ex'); }
+    else if (it) KS.preview.mount(view, h('img', { src: it.url, alt: '' }), { identity: it, width: it.canvas.width, height: it.canvas.height, clickOpen: true });
     else view.append(h('div.fx-ph', { html: KS.icon('upscale') }));
     const thumbs = o.items.length > 1 ? h('div.fx-thumbs', ...o.items.map((x, i) => { const t = h('img' + (i === o.sel ? '.on' : ''), { src: x.url, alt: '' }); t.addEventListener('click', () => { o.sel = i; renderExOut(); }); return t; })) : null;
     fillEl(box, view, thumbs, outButtons('ex', it), it ? h('div.fx-outinfo', { text: `${it.canvas.width} × ${it.canvas.height}` + (it.info ? '\n' + it.info : '') + (o.time ? `\nTime taken: ${o.time}` : '') }) : null);

@@ -115,17 +115,24 @@ async function scenario() {
   assert(+outputZoom.dataset.scale === oldScale && zoomedMedia.style.transform.includes('translate(0px, 0px)'), 'Image entière réinitialise le zoom et le déplacement du cadre');
     const docsBeforePreview = KS.state.docs.length;
     const imageRect = zoomedMedia.getBoundingClientRect();
-    await window.realDoubleClick(Math.round(imageRect.left + imageRect.width / 2), Math.round(imageRect.top + imageRect.height / 2));
+    await window.realClick(Math.round(imageRect.left + imageRect.width / 2), Math.round(imageRect.top + imageRect.height / 2));
     await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+    assert(document.querySelectorAll('.iv-lightbox').length === 1, 'Un seul clic sur le résultat terminé l’ouvre en plein écran');
     const fullImageRect = document.querySelector('.iv-lightbox .iv-media').getBoundingClientRect();
     await window.realClick(Math.round(fullImageRect.left + fullImageRect.width / 2), Math.round(fullImageRect.top + fullImageRect.height / 2));
     assert(!!document.querySelector('.iv-lightbox'), 'Un vrai clic sur l’image ne ferme pas le plein écran');
-    assert(KS.state.docs.length === docsBeforePreview, 'Le double-clic affiche le résultat en plein écran sans ouvrir un document dans l’Édition');
+    assert(KS.state.docs.length === docsBeforePreview, 'Le clic affiche le résultat en plein écran sans ouvrir un document dans l’Édition');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await window.realDoubleClick(Math.round(imageRect.left + imageRect.width / 2), Math.round(imageRect.top + imageRect.height / 2));
+    await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+    await new Promise(r => setTimeout(r, 100));
+    assert(document.querySelectorAll('.iv-lightbox').length === 1, 'Un double-clic par habitude ouvre le plein écran une fois sans le refermer');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     document.querySelector('.fx-view .iv-scale').click();
   await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
   assert(KS.modalOpen() && document.querySelector('.iv-lightbox img').src === zoomedMedia.src, 'Cliquer sur la barre au-dessus ouvre la même image en plein écran');
   const outsideRect = document.querySelector('.iv-fullscreen .iv-viewport').getBoundingClientRect();
+  await new Promise(r => setTimeout(r, 500));
   await window.realClick(Math.round(outsideRect.left + 4), Math.round(outsideRect.top + 4));
   assert(!KS.modalOpen(), 'Cliquer autour de l’image ferme le plein écran');
   await click('⛶', document.querySelector('.fx-source'));
@@ -445,6 +452,20 @@ async function scenario() {
   hmodal.querySelector('.kf-hrow').click();
   await new Promise(r => setTimeout(r, 30));
   assert(!document.querySelector('.modal') && KS.prefs.fx.t2i.prompt === 'history two' && document.querySelector('.fx-prompts textarea.fx-prompt').value === 'history two', 'Cliquer une entrée reprend l’invite');
+  // Pendant une génération : un clic sur l'aperçu en direct montre la dernière image terminée
+  window.holdGeneration = true;
+  const running = KS.cmd.studioGenerate();
+  await wait(() => !!window.releaseGeneration && !!document.querySelector('.fx-view.live'));
+  const lastDone = KS.studio.gallery[0];
+  document.querySelector('.fx-view.live').click();
+  await wait(() => !!document.querySelector('.iv-lightbox .iv-media'));
+  assert(document.querySelector('.iv-lightbox h3').textContent.startsWith('Dernière image terminée') && document.querySelector('.iv-lightbox .iv-media').src === lastDone.canvas.toDataURL('image/png'), 'Pendant la génération, un clic sur l’aperçu affiche la dernière image terminée');
+  assert(!!document.querySelector('.fx-view.live') && !!document.querySelector('.fx-interrupt'), 'La génération continue derrière le plein écran');
+  const interruptsPeek = window.interrupts;
+  document.querySelector('.iv-lightbox').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  assert(!KS.modalOpen() && window.interrupts === interruptsPeek && !!window.releaseGeneration, 'Échap ferme ce plein écran sans interrompre la génération');
+  window.holdGeneration = false; window.releaseGeneration(); window.releaseGeneration = null; await running;
+  assert(!document.querySelector('.fx-view.live') && !!document.querySelector('.fx-view .iv-click-open'), 'Une fois terminée, l’image se voit en plein écran d’un clic');
   return results;
 }
 
@@ -497,7 +518,7 @@ app.whenReady().then(async () => {
         await win.webContents.executeJavaScript('document.querySelector(".fx-view .iv-scale").click()');
         await new Promise(r => setTimeout(r, 200));
         fs.writeFileSync(process.env.KANEVAS_TEST_SCREENSHOT.replace('.png', '-fullscreen.png'), (await win.webContents.capturePage()).toPNG());
-        await win.webContents.executeJavaScript('document.querySelector(".iv-fullscreen .iv-viewport").click()');
+        await win.webContents.executeJavaScript('document.querySelector(".iv-lightbox").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))');
       }
 
     }

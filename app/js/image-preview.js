@@ -8,18 +8,21 @@
   window.addEventListener('blur', () => { space = false; });
   const detached = new MutationObserver(() => { for (const i of instances) if (!i.host.isConnected) { i.observer.disconnect(); instances.delete(i); } });
   detached.observe(document.documentElement, { subtree: true, childList: true });
-  KS.preview = { open(media, width, height) {
+  KS.preview = { open(media, width, height, { title = 'Aperçu plein écran' } = {}) {
     const image = KS.h('img', { src: media.tagName === 'CANVAS' ? media.toDataURL('image/png') : media.currentSrc || media.src, alt: 'Image en plein écran' });
     const host = KS.h('div.iv-fullscreen');
     const previous = document.activeElement;
-    const modal = KS.modal({ title: 'Aperçu plein écran', body: host, closeOnBackdrop: true, noFoot: true,
+    const modal = KS.modal({ title, body: host, noFoot: true,
       onClose: () => previous?.isConnected && previous.focus() });
     modal.back.classList.add('iv-lightbox');
+    // Le second clic d'un double-clic d'habitude ne doit pas refermer ce qu'un clic vient d'ouvrir.
+    const opened = performance.now(), settled = () => performance.now() - opened > 450;
+    modal.back.addEventListener('pointerdown', e => { if (e.target === modal.back && settled()) modal.close(null); });
     const preview = KS.preview.mount(host, image, { width, height, fullscreen: false });
-    preview.area.addEventListener('click', e => { if (e.target === preview.area && !e.defaultPrevented) modal.close(); });
+    preview.area.addEventListener('click', e => { if (e.target === preview.area && !e.defaultPrevented && settled()) modal.close(); });
     preview.area.focus();
     return modal;
-  }, mount(host, media, { identity = media, width, height, paint = false, fullscreen = true } = {}) {
+  }, mount(host, media, { identity = media, width, height, paint = false, fullscreen = true, clickOpen = false } = {}) {
     const h = KS.h;
     let state = states.get(identity); if (!state) { state = { scale: 1, x: 0, y: 0, fit: true }; states.set(identity, state); }
     host.classList.add('iv-host');
@@ -47,10 +50,11 @@
       button('100 %', 'Taille réelle : un pixel de l’image par pixel d’écran', () => { state.x = state.y = 0; zoom(1); }),
       fullscreen ? button('⛶', 'Voir l’image en plein écran · cliquer autour ou Échap pour fermer', () => KS.preview.open(media, size().w, size().h)) : null);
     if (fullscreen) {
-      media.title = 'Double-clic : voir l’image en plein écran';
+      media.title = clickOpen ? 'Clic : voir l’image en plein écran · glisser : déplacer' : 'Double-clic : voir l’image en plein écran';
+      if (clickOpen) area.classList.add('iv-click-open');
       // La capture du pointeur utilisée pour déplacer l'image redirige le double-clic
       // vers le cadre. Écouter ce cadre couvre les vrais clics comme les images zoomées.
-      area.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
+      else area.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
       label.title = 'Voir l’image en plein écran'; label.tabIndex = 0; label.setAttribute('role', 'button');
       label.addEventListener('click', e => { e.stopPropagation(); KS.preview.open(media, size().w, size().h); });
       label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); } }); }
@@ -74,7 +78,10 @@
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) area.addEventListener(type, e => { if (drag?.id === e.pointerId) drag = null; });
     area.addEventListener('pointerleave', () => { if (!dragged) drag = null; });
-    area.addEventListener('click', e => { if (dragged) { e.preventDefault(); e.stopPropagation(); dragged = false; } });
+    area.addEventListener('click', e => {
+      if (dragged) { e.preventDefault(); e.stopPropagation(); dragged = false; }
+      else if (fullscreen && clickOpen && e.button === 0) { e.preventDefault(); e.stopPropagation(); KS.preview.open(media, size().w, size().h); }
+    });
     area.addEventListener('keydown', e => {
       if (e.key === '+' || e.key === '=') { e.preventDefault(); e.stopPropagation(); zoom(state.scale * 1.25); }
       else if (e.key === '-') { e.preventDefault(); e.stopPropagation(); zoom(state.scale / 1.25); }

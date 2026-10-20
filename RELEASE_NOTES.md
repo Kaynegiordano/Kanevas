@@ -1,3 +1,8 @@
+Kane App / Kanevas 1.12.16 — Un clic = plein écran
+
+- Studio IA : un simple clic sur le résultat l'ouvre en plein écran (avant : double-clic).
+- Pendant une génération, un clic sur l'aperçu en direct montre la dernière image terminée en plein écran ; la génération continue derrière.
+
 Kane App / Kanevas 1.12.15 — Chercher dans l'invite
 
 - Studio IA : 🔍 (ou Ctrl+F dans l'invite) surligne, parcourt et remplace un mot dans l'invite et l'invite négative, comme l'extension Forge « Chercher dans le prompt ».

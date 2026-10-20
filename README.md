@@ -20,6 +20,11 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Un clic = plein écran, même pendant une génération (1.12.16)
+
+- Studio IA (txt2img, img2img, Extras) : un **simple clic** sur le résultat l'ouvre en plein écran (avant : double-clic). Glisser déplace toujours l'image zoomée, la molette zoome ; un double-clic par habitude n'ouvre puis ne referme plus le plein écran.
+- **Pendant une génération**, un clic sur l'aperçu en direct montre en plein écran la **dernière image terminée** (en général la précédente). La génération continue derrière ; Échap ou un clic autour referme sans l'interrompre.
+
 ### Chercher dans l'invite, historique, nettoyer (1.12.15)
 
 - Studio IA, sous l'invite : **🔍 Chercher** (ou Ctrl+F dans l'invite, le mot sélectionné est repris) surligne les occurrences dans l'invite et l'invite négative ; Entrée / Maj+Entrée pour passer de l'une à l'autre, Aa (casse), Mot (mot entier), portée Tout / Invite / Négative, ⇄ pour remplacer une occurrence ou tout remplacer (Ctrl+Z annule). Échap ou ✕ range la barre. Même outil que l'extension « Chercher dans le prompt » de Forge.
