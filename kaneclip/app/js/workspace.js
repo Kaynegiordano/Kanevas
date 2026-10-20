@@ -5,6 +5,9 @@
   const W = KC.workspace = { focused: false };
   const PRESETS = [
     { id: 'edit', name: 'Montage', dock: .33, upper: .46, tab: 'media', inspector: true },
+    { id: 'source', name: 'Dérushage', dock: .39, upper: .60, tab: 'trimmer', inspector: false },
+    { id: 'creative', name: 'Création', dock: .32, upper: .58, tab: 'creative', inspector: true },
+    { id: 'captions', name: 'Sous-titres', dock: .35, upper: .60, tab: 'captions', inspector: false },
     { id: 'effects', name: 'Effets', dock: .30, upper: .57, tab: 'fx', inspector: true },
     { id: 'audio', name: 'Audio', dock: .30, upper: .32, tab: 'media', inspector: false },
     { id: 'vertical', name: 'Vertical', dock: .27, upper: .64, tab: 'media', inspector: false },
@@ -86,6 +89,47 @@
 
   const section = title => h('div.inspector-section', h('h3', { text: title }));
   const row = (label, value) => h('div.inspector-row', h('span', { text: label }), h('b', { text: value }));
+  function effectControls(ev) {
+    const pane = section('Effets vidéo · ordre de traitement');
+    pane.id = 'effect-controls';
+    const add = h('select.field#inspector-add-fx', { 'aria-label': 'Ajouter un effet vidéo' }, h('option', { value: '', text: '+ Ajouter un effet…' }));
+    for (const [id, def] of Object.entries(KC.FX.VIDEO)) add.append(h('option', { value: id, text: def.name }));
+    add.addEventListener('change', () => {
+      if (!KC.FX.VIDEO[add.value]) return;
+      KC.edit('Ajouter un effet vidéo', () => ev.fx.push(KC.FX.make(add.value)));
+      add.value = ''; add.blur(); refreshInspector();
+    });
+    pane.append(add);
+    for (const [index, effect] of ev.fx.entries()) {
+      const def = KC.FX.VIDEO[effect.type]; if (!def) continue;
+      const card = h('details.inspector-fx', { open: ev.fx.length === 1 });
+      const enabled = h('input', { type: 'checkbox', checked: effect.on !== false, 'aria-label': 'Activer ' + def.name });
+      enabled.addEventListener('click', e => e.stopPropagation());
+      enabled.addEventListener('change', () => { KC.edit('Activer / désactiver un effet', () => { effect.on = enabled.checked; }); E.redraw(); });
+      card.append(h('summary', enabled, h('span', { text: def.name })));
+      const controls = h('div.inspector-fx-params');
+      const operations = h('div.inspector-fx-actions');
+      for (const [text, title, fn, disabled] of [
+        ['↑', 'Monter ' + def.name, () => { [ev.fx[index-1], ev.fx[index]] = [ev.fx[index], ev.fx[index-1]]; }, index === 0],
+        ['↓', 'Descendre ' + def.name, () => { [ev.fx[index+1], ev.fx[index]] = [ev.fx[index], ev.fx[index+1]]; }, index === ev.fx.length-1],
+        ['RàZ', 'Réinitialiser ' + def.name, () => { effect.params = KC.FX.defaults(def); }, false],
+        ['Retirer', 'Retirer ' + def.name, () => ev.fx.splice(index, 1), false],
+      ]) {
+        const action = h('button.btn.small', { text, title, disabled, 'aria-label': title });
+        action.addEventListener('click', () => { KC.edit(title, fn); E.redraw(); }); operations.append(action);
+      }
+      controls.append(operations);
+      const params = KC.FX.params(effect);
+      let pending = false;
+      for (const pd of def.params) if (!pd.hidden) controls.append(KC.ui.param(pd, params[pd.k], value => {
+        if (!pending) { KC.begin(); pending = true; }
+        effect.params = { ...effect.params, [pd.k]: value }; E.redraw();
+      }, () => { if (pending) { pending = false; KC.commit('Régler ' + def.name); } }));
+      card.append(controls); pane.append(card);
+    }
+    if (!ev.fx.length) pane.append(h('p.inspector-note', { text: 'Les effets se règlent ici et sont conservés au rendu.' }));
+    return pane;
+  }
   function refreshInspector() {
     if (!content || !KC.project) return;
     const selected = KC.sel.list();
@@ -113,6 +157,7 @@
       details.append(h('label.inspector-field', h('span', { text: 'Nom' }), name), row('Position', U.fmtTime(ev.start, P.fps())), row('Durée', U.fmtTime(ev.length, P.fps())),
         h('label.inspector-field.inline', h('span', { text: video ? 'Opacité (%)' : 'Gain (dB)' }), level));
       content.append(details);
+      if (video) content.append(effectControls(ev));
       const tools = section('Outils de l’événement');
       if (video) {
         tools.append(button('pancrop', 'Panoramique / recadrage', () => KC.windows.panCrop(ev)), button('fx', 'Chaîne d’effets vidéo', () => KC.windows.eventFx(ev)));

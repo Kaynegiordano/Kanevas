@@ -69,7 +69,8 @@
       } else if (m.op === 'menu-tree') value = menuTree();
       else if (m.op === 'menu-run') menuRun(m.path);
       else if (m.op === 'save') await save();
-      else if (m.op === 'stop') { KC.engine.stop(); clearTimeout(timer); await save(); }
+      else if (m.op === 'pause') { KC.trimmer?.pause?.(); KC.engine.pause(); }
+      else if (m.op === 'stop') { KC.trimmer?.pause?.(); KC.engine.stop(); clearTimeout(timer); await save(); }
       else if (m.op === 'add') {
         if (!project) throw new Error('Choisissez un projet Kanevas');
         const items = await KC.media.import([m.path]);

@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+let id=0;const KC={prefs:{},cmd:{},util:{uid:()=>String(++id),deep:o=>JSON.parse(JSON.stringify(o))},on(){},emit(){},toast(){},engine:{},FX:{GENERATORS:{text:{def:()=>({type:'text'})}}}};
+const ctx=vm.createContext({KC});
+for(const name of ['project','captions'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../app/js/'+name+'.js'),'utf8'),ctx);
+KC.project=KC.P.create({fps:30});
+const source='\uFEFF1\r\n00:00:00,250 --> 00:00:01,750\r\n<b>Été</b> & musique 🎵\r\nDeuxième ligne\r\n\r\n2\r\n00:00:02,000 --> 00:00:03,000\r\nFinal\r\n';
+const cues=KC.captions.parse(source);assert.equal(cues.length,2);assert.equal(cues[0].text,'Été & musique 🎵\nDeuxième ligne');
+for(const input of ['', '1\n00:61:00,000 --> 00:00:03,000\nNon','1\n00:00:03,000 --> 00:00:02,000\nNon','not srt'])assert.throws(()=>KC.captions.parse(input));
+KC.captions.add(cues);assert.equal(KC.captions.list().length,2);assert.equal(KC.project.tracks[0].role,'captions');
+const srt=KC.captions.srt();assert.equal(KC.captions.parse(srt)[0].text,cues[0].text);
+const clone=KC.P.deserialize(KC.P.serialize());assert.equal(clone.events[0].caption,true);assert.equal(clone.events[0].gen.text,cues[0].text);
+KC.undo();assert.equal(KC.captions.list().length,0);KC.redo();assert.equal(KC.captions.list().length,2);
+const before=KC.P.serialize();assert.throws(()=>KC.captions.add([{start:NaN,end:3,text:'Non'}]));assert.equal(KC.P.serialize(),before);
+console.log('PASS: UTF-8, BOM, multiline SRT, timing validation, roundtrip, project persistence and undo/redo');

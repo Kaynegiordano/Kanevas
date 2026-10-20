@@ -1,3 +1,19 @@
+# 1.12.18 — Montage : Atelier créatif et sous-titres
+
+- KaneClip 1.4 intégré : cinq looks éditables, intensité et mouvements progressifs sur les plans sélectionnés.
+- Sous-titres SRT : importer, corriger, caler, rechercher, styliser et exporter ; incrustation dans la vidéo.
+- Ctrl+K : palette d’actions avec recherche et navigation au clavier.
+- Lecture et timeline : index des événements et affichage limité aux clips visibles ; temps de composition et désactivation temporaire des effets d’aperçu.
+- Inclut le moniteur Source/Programme, le montage par insertion/remplacement, le rasoir et les améliorations de l’édition 1.12.17.
+
+# 1.12.17 — Montage : KaneClip 1.3
+
+- Moniteur Source / Programme et disposition Dérushage.
+- Montage par insertion ou remplacement sur pistes vidéo/audio ciblées.
+- Rasoir, levée et extraction de plage ; suppression ondulée corrigée.
+- Effets réglables dans Propriétés et gestionnaire de marqueurs.
+- Vérifications en profil isolé avec média synthétique et export réel.
+
 Kane App / Kanevas 1.12.16 — Un clic = plein écran
 
 - Studio IA : un simple clic sur le résultat l'ouvre en plein écran (avant : double-clic).

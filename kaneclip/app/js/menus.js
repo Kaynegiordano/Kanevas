@@ -38,6 +38,8 @@
       '-',
       { label: 'Diviser', icon: 'split', key: 'S', action: C.split },
       { label: 'Découper à la sélection temporelle', icon: 'trim', key: 'Ctrl+T', action: C.trimToSelection },
+      { label: 'Lever la plage (laisser un vide)', key: ';', action: C.liftRange },
+      { label: 'Extraire la plage et refermer', key: "'", action: C.extractRange },
       { label: 'Grouper', icon: 'group', key: 'G', action: C.group },
       { label: 'Dissocier', icon: 'ungroup', key: 'U', action: C.ungroup },
       '-',
@@ -59,6 +61,9 @@
       { label: 'Effets', icon: 'fx', action: () => KC.dock.show('fx') },
       { label: 'Générateurs de médias', icon: 'text', action: () => KC.dock.show('generators') },
       { label: 'Découpage', icon: 'trim', action: () => KC.dock.show('trimmer') },
+      { label: 'Liste des marqueurs', icon: 'marker', action: () => KC.dock.show('markers') },
+      { label: 'Atelier créatif', icon: 'wand', action: () => KC.workspace.activate('creative') },
+      { label: 'Sous-titres', icon: 'text', action: () => KC.workspace.activate('captions') },
       '-',
       { label: 'Zoom avant', icon: 'zoom-in', key: '↑', action: () => KC.timeline.setZoom(KC.project.view.zoom * 1.5) },
       { label: 'Zoom arrière', icon: 'zoom-out', key: '↓', action: () => KC.timeline.setZoom(KC.project.view.zoom / 1.5) },
@@ -81,6 +86,10 @@
       { label: 'Médias…', icon: 'import', key: 'Ctrl+I', action: C.importMedia },
     ]],
     ['Outils', [
+      { label: 'Actions rapides…', key: 'Ctrl+K', action: () => C.quickActions() },
+      { label: 'Importer des sous-titres SRT…', icon: 'text', action: () => KC.captions.import() },
+      { label: 'Exporter les sous-titres SRT…', icon: 'export', action: () => KC.captions.export() },
+      '-',
       { label: 'Panoramique/Recadrage de l\'événement…', icon: 'pancrop', action: () => { const e = sel1('video'); if (e) KC.windows.panCrop(e); } },
       { label: 'Transformer plusieurs événements…', icon: 'pancrop', key: 'Ctrl+Maj+G', action: () => KC.dialogs.batchTransform() },
       { label: 'Effets d\'événement vidéo…', icon: 'fx', action: () => { const e = sel1('video'); if (e) KC.windows.eventFx(e); } },
@@ -171,6 +180,7 @@
     b(null, 'trim', 'Découper à la sélection temporelle (Ctrl+T)', C.trimToSelection);
     sep();
     b('toolEdit', 'cursor', 'Outil Édition normale', () => C.setTool('edit'));
+    b('toolRazor', 'cut', 'Outil Rasoir (C) · couper au clic', () => C.setTool('razor'));
     b('toolSelect', 'select', 'Outil Sélection (rectangle)', () => C.setTool('select'));
     sep();
     b('snap', 'magnet', 'Magnétisme (F8)', C.toggleSnap);
@@ -179,6 +189,7 @@
     b('groups', 'ungroup', 'Ignorer le groupement (Ctrl+Maj+U)', C.toggleGroups);
     sep();
     b(null, 'marker', 'Insérer un marqueur (M)', C.addMarker);
+    b(null, 'ripple', 'Extraire la plage et refermer (apostrophe)', C.extractRange);
     b(null, 'text', 'Insérer un texte (Ctrl+Maj+T)', () => C.insertGenerator('text'));
     target.append(h('span.tb-flex'), h('span#timeline-summary'));
     const focus = b(null, 'fit', 'Agrandir / rétablir la timeline (Ctrl+Maj+F11)', () => KC.workspace.toggleTimeline());
@@ -197,6 +208,7 @@
     TB.groups.classList.toggle('on', !!KC.prefs.ignoreGroups);
     TB.toolEdit.classList.toggle('on', KC.timeline.tool === 'edit');
     TB.toolSelect.classList.toggle('on', KC.timeline.tool === 'select');
+    TB.toolRazor.classList.toggle('on', KC.timeline.tool === 'razor');
     TB.undo.disabled = !KC.history.undo.length;
     TB.redo.disabled = !KC.history.redo.length;
   }
@@ -224,6 +236,7 @@
         case 'n': return run(C.newProject);
         case 'i': return run(C.importMedia);
         case 'm': return run(C.render);
+        case 'k': return run(C.quickActions);
         case 'q': return run(shift ? C.addVideoTrack : C.addAudioTrack);
         case 't': return run(shift ? () => C.insertGenerator('text') : C.trimToSelection);
         case 'g': return run(shift ? () => KC.dialogs.batchTransform() : C.goTo);
@@ -259,6 +272,10 @@
     if (e.code === 'Numpad4') return run(() => C.nudge(-1));
     if (e.code === 'Numpad6') return run(() => C.nudge(1));
     switch (lower) {
+      case 'v': return run(() => C.setTool('edit'));
+      case 'c': return run(() => C.setTool('razor'));
+      case ';': return run(C.liftRange);
+      case "'": return run(C.extractRange);
       case 's': return run(C.split);
       case 'm': return run(C.addMarker);
       case 'g': return run(C.group);

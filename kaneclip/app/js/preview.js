@@ -3,7 +3,7 @@
 (() => {
   const h = KC.h, U = KC.util, P = KC.P, E = KC.engine, FX = KC.FX;
   const PV = KC.preview = {};
-  let canvas, stage, info, ovl;
+  let canvas, stage, info, ovl, health, healthAt=0;
   let adapt = 1, avg = 0;
   const QUAL = {
     draft: { label: 'Brouillon (auto)', scale: 0.25 },
@@ -41,6 +41,11 @@
     E.compose(t, canvas, { best: !!q.best });
     const dt = performance.now() - t0;
     avg = avg * 0.9 + dt * 0.1;
+    if (health && performance.now()-healthAt>500) {
+      healthAt=performance.now();health.textContent=Math.round(avg)+' ms';
+      health.dataset.state=avg>1000/P.fps()?'slow':'ready';
+      health.title='Calcul de l’aperçu : '+Math.round(avg)+' ms · budget à '+U.fmtFps(P.fps())+' i/s : '+Math.round(1000/P.fps())+' ms';
+    }
     if (E.playing && !q.full) {
       if (avg > 20 && adapt > 0.4) { adapt = Math.max(0.4, adapt * 0.85); avg = 12; }
       else if (avg < 7 && adapt < 1) adapt = Math.min(1, adapt * 1.05);
@@ -183,7 +188,11 @@
         { label: 'Zones de sécurité', checked: !!KC.prefs.overlays.safe, action: () => { KC.prefs.overlays.safe = !KC.prefs.overlays.safe; KC.prefs.save(); E.redraw(); } },
       ], r.left, r.bottom + 4);
     });
-    const bar = h('div.pv-bar', h('span.title', { text: 'Aperçu vidéo' }), q, h('div', { style: { flex: '1' } }),
+    health=h('span#preview-health',{text:'— ms',title:'Temps de calcul de l’aperçu'});
+    const bypass=h('button.tb-btn#preview-bypass',{text:'FX activés',title:'Comparer sans les effets vidéo · aperçu seulement','aria-pressed':'false'});
+    bypass.addEventListener('click',()=>{E.bypassEffects=!E.bypassEffects;bypass.textContent=E.bypassEffects?'FX ignorés':'FX activés';bypass.setAttribute('aria-pressed',String(E.bypassEffects));E.redraw();});
+    KC.on('project-loaded',()=>{E.bypassEffects=false;bypass.textContent='FX activés';bypass.setAttribute('aria-pressed','false');});
+    const bar = h('div.pv-bar', h('span.title', { text: 'Programme' }), q, health, bypass, h('div', { style: { flex: '1' } }),
       tb('props', 'Propriétés du projet…', () => KC.dialogs.projectProps()),
       ovlBtn,
       tb('fullscreen', 'Aperçu plein écran (Alt+Maj+4)', KC.cmd.previewFullscreen),

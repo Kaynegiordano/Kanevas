@@ -161,7 +161,7 @@
     }
     // événements
     const byTrack = new Map(rows.map(r => [r.track.id, r]));
-    const evs = KC.project.events.slice().sort((a, b) => a.start - b.start);
+    const evs = KC.eventIndex.between(TT(-2),TT(W+2));
     for (const ev of evs) {
       const r = byTrack.get(ev.track); if (!r) continue;
       if (r.y > H || r.y + r.h < 0) continue;
@@ -393,7 +393,7 @@
     const r = rowAt(py);
     if (!r) return null;
     const z = view().zoom;
-    const evs = KC.project.events.filter(e => e.track === r.track.id).sort((a, b) => b.start - a.start);
+    const evs = KC.eventIndex.between(TT(px - 4) - 1e-8, TT(px + 4) + 1e-8, r.track.id).sort((a, b) => b.start - a.start);
     // le plus récent d'abord (au-dessus dans un fondu enchaîné)
     let found = null;
     for (const ev of evs) {
@@ -463,6 +463,7 @@
       return startTimeSelect(e, px);
     }
     const ev = ht.ev;
+    if (T.tool === 'razor') { e.preventDefault(); KC.cmd.razorAt(ev, TT(px)); return; }
     KC.sel.track = ev.track;
     if (ht.zone === 'btnFx') { KC.windows.eventFx(ev); return; }
     if (ht.zone === 'btnPc') { KC.windows.panCrop(ev); return; }
@@ -739,7 +740,7 @@
     const ht = hit(e.clientX - r.left, e.clientY - r.top);
     const prev = T.hover && T.hover.ev;
     T.hover = ht && ht.ev ? ht : null;
-    cv.style.cursor = T.tool === 'time' ? 'crosshair' : Math.abs(e.clientX - r.left - X(E.time)) <= 6 ? 'ew-resize' : ht ? (CURSORS[ht.zone] || 'default') : 'default';
+    cv.style.cursor = T.tool === 'time' || T.tool === 'razor' ? 'crosshair' : Math.abs(e.clientX - r.left - X(E.time)) <= 6 ? 'ew-resize' : ht ? (CURSORS[ht.zone] || 'default') : 'default';
     if (ht && ht.zone === 'empty' && T.tool === 'select') cv.style.cursor = 'crosshair';
     if ((T.hover && T.hover.ev) !== prev) T.redraw();
   }
@@ -1188,11 +1189,12 @@
     if (c.querySelector('input')) return;
     const big = c.querySelector('.big'), small = c.querySelector('.small');
     big.textContent = U.fmtTime(E.time, P.fps());
-    const summary = [P.duration(), KC.project.settings.width, KC.project.settings.height, P.fps(), KC.prefs.timeFormat].join('|');
+    const duration = KC.eventIndex.duration();
+    const summary = [duration, KC.project.settings.width, KC.project.settings.height, P.fps(), KC.prefs.timeFormat].join('|');
     if (small.dataset.summary === summary) return;
     small.dataset.summary = summary;
     small.innerHTML = '';
-    small.append(h('span', { text: 'Durée ' + U.fmtTime(P.duration(), P.fps()) }), h('span', { text: Math.round(KC.project.settings.width) + '×' + Math.round(KC.project.settings.height) + ' · ' + U.fmtFps(P.fps()) + ' i/s' }));
+    small.append(h('span', { text: 'Durée ' + U.fmtTime(duration, P.fps()) }), h('span', { text: Math.round(KC.project.settings.width) + '×' + Math.round(KC.project.settings.height) + ' · ' + U.fmtFps(P.fps()) + ' i/s' }));
   }
   function buildClock() {
     const c = KC.$('#tl-clock');

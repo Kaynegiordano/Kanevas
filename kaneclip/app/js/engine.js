@@ -138,7 +138,8 @@
     const anySoloV = p.tracks.some(tr => tr.kind === 'video' && tr.solo);
     const anySoloA = p.tracks.some(tr => tr.kind === 'audio' && tr.solo);
     const want = new Set(), activeKeys = new Set();
-    for (const ev of p.events) {
+    const nearby = E.scrubbing ? KC.eventIndex.between(t-1e-8,t+1e-8) : KC.eventIndex.between(t-3.001,t+6.001);
+    for (const ev of nearby) {
       if (!ev.media) continue;
       const tr = P.track(ev.track); if (!tr) continue;
       const m = P.media(ev.media); if (!m || m.kind === 'image') continue;
@@ -242,7 +243,7 @@
     for (let i = vt.length - 1; i >= 0; i--) {
       const tr = vt[i];
       if (tr.mute || (anySolo && !tr.solo)) continue;
-      const evs = p.events.filter(e => e.track === tr.id && active(e, t) && !e.mute).sort((a, b) => a.start - b.start);
+      const evs = KC.eventIndex.between(t-1e-8,t+1e-8,tr.id).filter(e => active(e,t)&&!e.mute);
       let flash = 0;
       const tm = FX.tmOf(tr), moved = !FX.tmIsIdentity(tr);
       tmZoom = tm.zoom;
@@ -306,7 +307,7 @@
     const s = fit * pc.zoom * vs.scale;
     const sEff = s * tmZoom;
     let img = src, iw = sw, ih = sh;
-    if (ev.fx && ev.fx.some(f => f.on !== false)) {
+    if (!E.bypassEffects && !opts.bypassFx && ev.fx && ev.fx.some(f => f.on !== false)) {
       // Effets appliqués à la source, à la taille où elle sera affichée (au plus sa taille réelle)
       const k = Math.min(1, sEff);
       const ww = Math.max(2, Math.round(sw * k)), hh = Math.max(2, Math.round(sh * k));
@@ -332,7 +333,7 @@
   E.loopOn = () => KC.prefs.loop && KC.project.loop.out > KC.project.loop.in + 1e-6;
   // Au bout du projet, conserver la dernière image au lieu d'un cadre noir.
   E.previewTime = t => {
-    const end = P.duration();
+    const end = KC.eventIndex.duration();
     return !E.playing && end > 0 && Math.abs(t - end) < 1e-6 ? Math.max(0, end - P.frame()) : t;
   };
   function tick(now) {
@@ -344,7 +345,7 @@
       const lp = KC.project.loop;
       if (E.loopOn() && E.rate > 0 && t >= lp.out) { t = lp.in; playT0 = t; playP0 = now; E.time = t; E.wait(); }
       if (E.loopOn() && E.rate < 0 && t < lp.in) { t = Math.max(lp.in, lp.out - P.frame()); playT0 = t; playP0 = now; E.time = t; }
-      const end = P.duration();
+      const end = KC.eventIndex.duration();
       if (E.rate > 0 && !E.loopOn() && t >= end + 0.25) { t = end; E.pause(); }
       if (t < 0) { t = 0; E.pause(); }
       E.time = t;
@@ -441,7 +442,7 @@
     if (resume) E.play();
   };
   E.step = (n) => { if (E.playing) E.pause(); E.seek(P.snapFrame(E.time) + n / P.fps()); };
-  E.redraw = () => { E.needsDraw = true; };
+  E.redraw = () => { KC.eventIndex.invalidate(); E.needsDraw = true; };
   KC.on('change', () => { E.needsDraw = true; });
   KC.on('media-updated', () => { E.needsDraw = true; });
 })();

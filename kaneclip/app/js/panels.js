@@ -11,6 +11,9 @@
     { id: 'fx', label: 'Effets', icon: 'fx', build: buildFx },
     { id: 'generators', label: 'Générateurs de médias', icon: 'text', build: buildGenerators },
     { id: 'trimmer', label: 'Découpage', icon: 'trim', build: buildTrimmer },
+    { id: 'markers', label: 'Marqueurs', icon: 'marker', build: buildMarkers },
+    { id: 'creative', label: 'Atelier', icon: 'wand', build: page=>KC.creative.build(page) },
+    { id: 'captions', label: 'Sous-titres', icon: 'text', build: page=>KC.captions.build(page) },
   ];
 
   D.show = (id) => {
@@ -31,6 +34,7 @@
       tab.tabIndex = tab.dataset.id === id ? 0 : -1;
     }
     KC.prefs.dockTab = id; KC.prefs.save();
+    KC.emit('dock-tab', id);
   };
   D.init = () => {
     const tabs = KC.$('#dock-tabs');
@@ -320,81 +324,32 @@
 
   /* ============================================================ découpage (Trimmer) */
   const TR = KC.trimmer = { media: null, in: 0, out: 0 };
-  function buildTrimmer(page) {
-    const wrap = h('div.trimmer');
-    const empty = h('div.page-empty', { html: '<b>Découpage</b><br>Double-cliquez sur un média pour l\'ouvrir ici,<br>choisissez un point d\'entrée (I) et de sortie (O),<br>puis glissez la sélection sur la timeline.' });
-    const vid = h('video', { crossOrigin: 'anonymous', preload: 'auto' });
-    const img = h('img', { hidden: true });
-    const bar = h('div.trim-bar');
-    const barC = h('canvas'), selEl = h('div.sel'), curEl = h('div.cur');
-    bar.append(barC, selEl, curEl);
-    const tc = h('span.tc', { text: '00:00:00;00' });
-    const lenTc = h('span.tc', { text: '' });
-    const playB = tb('play', 'Lire / pause', () => { if (vid.paused) vid.play(); else vid.pause(); });
-    const inB = tb('kf-prev', 'Point d\'entrée (I)', () => setIn(vid.currentTime));
-    const outB = tb('kf-next', 'Point de sortie (O)', () => setOut(vid.currentTime));
-    const add = h('button.btn.small.primary', { html: KC.icon('plus') + 'Ajouter au curseur', title: 'Ajouter la sélection à la timeline, au curseur' });
-    add.addEventListener('click', () => { if (TR.media) KC.timeline.placeMedias([TR.media], KC.engine.time, KC.sel.track, { in: TR.in, out: TR.out }); });
-    const dragH = h('div', { draggable: true, title: 'Glisser la sélection sur la timeline', html: KC.icon('film'), style: { padding: '4px 6px', cursor: 'grab', color: 'var(--text-2)' } });
-    dragH.addEventListener('dragstart', e => { if (TR.media) startDrag(e, { kind: 'media', ids: [TR.media.id], in: TR.in, out: TR.out }, TR.media.name); });
-    const ctrl = h('div.trim-ctrl', playB, inB, outB, tc, lenTc, h('div', { style: { flex: 1 } }), dragH, add);
-    wrap.append(vid, img, bar, ctrl);
-    page.append(empty, wrap);
-    wrap.hidden = true;
-    const fps = () => (TR.media && TR.media.fps) || P.fps();
-    const paint = () => {
-      const d = TR.media ? (TR.media.duration || 1) : 1;
-      selEl.style.left = (TR.in / d * 100) + '%'; selEl.style.width = ((TR.out - TR.in) / d * 100) + '%';
-      curEl.style.left = (vid.currentTime / d * 100) + '%';
-      tc.textContent = U.fmtTime(vid.currentTime, fps());
-      lenTc.textContent = 'Sélection : ' + U.fmtTime(TR.out - TR.in, fps());
-      playB.innerHTML = KC.icon(vid.paused ? 'play' : 'pause');
-    };
-    const setIn = t => { TR.in = Math.min(t, TR.out - 1 / fps()); paint(); };
-    const setOut = t => { TR.out = Math.max(t, TR.in + 1 / fps()); paint(); };
-    vid.addEventListener('timeupdate', paint);
-    vid.addEventListener('play', paint); vid.addEventListener('pause', paint);
-    bar.addEventListener('pointerdown', e => {
-      if (!TR.media) return;
-      const r = bar.getBoundingClientRect();
-      const at = ev => U.clamp((ev.clientX - r.left) / r.width, 0, 1) * (TR.media.duration || 0);
-      vid.currentTime = at(e); paint();
-      U.drag(e, (dx, dy, ev) => { vid.currentTime = at(ev); paint(); });
-    });
-    wrap.addEventListener('keydown', e => {
-      if (e.key === 'i' || e.key === 'I') { setIn(vid.currentTime); e.stopPropagation(); }
-      if (e.key === 'o' || e.key === 'O') { setOut(vid.currentTime); e.stopPropagation(); }
-      if (e.key === ' ') { if (vid.paused) vid.play(); else vid.pause(); e.preventDefault(); e.stopPropagation(); }
-    });
-    wrap.tabIndex = 0;
-    const drawWave = () => {
-      const m = TR.media; const r = bar.getBoundingClientRect();
-      barC.width = Math.max(1, r.width); barC.height = Math.max(1, r.height);
-      const x = barC.getContext('2d'); x.clearRect(0, 0, barC.width, barC.height);
-      if (!m) return;
-      const rt = M.get(m);
-      if (!rt.peaks) return;
-      x.fillStyle = 'rgba(160,190,240,.45)';
-      const mid = barC.height / 2;
-      for (let px = 0; px < barC.width; px++) {
-        const pk = M.peakRange(m, px / barC.width * m.duration, (px + 1) / barC.width * m.duration);
-        const v = Math.sqrt(pk || 0) * (mid - 2);
-        x.fillRect(px, mid - v, 1, v * 2 + 1);
+  function buildMarkers(page) {
+    const search = h('input.field#marker-search', { placeholder: 'Rechercher un marqueur…', 'aria-label': 'Rechercher un marqueur' });
+    const list = h('div.marker-list');
+    const add = h('button.btn.small', { text: '+ Marqueur au curseur' });
+    add.addEventListener('click', KC.cmd.addMarker);
+    page.append(h('div.page-bar', search, add), list);
+    const render = () => {
+      if (list.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+      const query = search.value.toLocaleLowerCase();
+      const markers = KC.project.markers.slice().sort((a,b) => a.t-b.t).filter(m => (m.name || '').toLocaleLowerCase().includes(query) || String(m.num).includes(query));
+      list.replaceChildren();
+      if (!markers.length) list.append(h('div.page-empty', { text: KC.project.markers.length ? 'Aucun marqueur correspondant.' : 'M ajoute un marqueur au curseur. Nommez vos prises, coupes et passages à revoir ici.' }));
+      for (const marker of markers) {
+        const go = h('button.marker-time', { text: U.fmtTime(marker.t, P.fps()), title: 'Aller au marqueur ' + marker.num });
+        go.addEventListener('click', () => { KC.engine.seek(marker.t); KC.timeline.ensureVisible(marker.t); });
+        const name = h('input.field', { value: marker.name || '', placeholder: 'Marqueur ' + marker.num, 'aria-label': 'Nom du marqueur ' + marker.num });
+        name.addEventListener('change', () => KC.edit('Renommer le marqueur', () => { marker.name = name.value.trim(); }));
+        const remove = h('button.tb', { html: KC.icon('trash'), title: 'Supprimer le marqueur ' + marker.num, 'aria-label': 'Supprimer le marqueur ' + marker.num });
+        remove.addEventListener('click', () => KC.edit('Supprimer le marqueur', () => { KC.project.markers = KC.project.markers.filter(m => m.id !== marker.id); }));
+        list.append(h('div.marker-row', h('span.marker-number', { text: String(marker.num) }), go, name, remove));
       }
     };
-    TR.open = (m) => {
-      D.show('trimmer');
-      TR.media = m; TR.in = 0; TR.out = m.duration || KC.prefs.imageLength;
-      empty.hidden = true; wrap.hidden = false;
-      if (m.kind === 'image') { vid.hidden = true; img.hidden = false; img.src = U.mediaUrl(m.path); }
-      else { img.hidden = true; vid.hidden = false; vid.src = M.url(m, true); vid.load(); }
-      setTimeout(drawWave, 50);
-      paint();
-      wrap.focus();
-    };
-    KC.on('media-updated', mm => { if (mm === TR.media) drawWave(); });
-    new ResizeObserver(drawWave).observe(bar);
+    search.addEventListener('input', render);
+    KC.on('change', render); KC.on('project-loaded', render); render();
   }
+  function buildTrimmer(page) { KC.sourceMonitor.build(page); }
   // L'ouverture passe par l'onglet (le contenu est construit à la demande)
   const lazyOpen = (m) => { D.show('trimmer'); if (TR.open !== lazyOpen) TR.open(m); };
   TR.open = lazyOpen;

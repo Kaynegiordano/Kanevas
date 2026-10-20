@@ -184,7 +184,7 @@ KC.context = (e, items) => { e.preventDefault(); e.stopPropagation(); KC.menu.op
 
 /* ---------------------------------------------------------------- fenêtres modales */
 // buttons : [{label, primary, danger, action (retourne false pour garder ouvert), value}]
-KC.modal = ({ title, body, buttons = [{ label: 'OK', primary: true }], onClose, width, escValue = null, left }) => {
+KC.modal = ({ title, body, buttons = [{ label: 'OK', primary: true }], onClose, onKey, width, escValue = null, left }) => {
   let resolveFn;
   const done = new Promise(r => { resolveFn = r; });
   const back = h('div.modal-back');
@@ -209,6 +209,7 @@ KC.modal = ({ title, body, buttons = [{ label: 'OK', primary: true }], onClose, 
   box.append(h('div.modal-head', { text: title || '' }), h('div.modal-body', body), foot);
   back.appendChild(box);
   const key = e => {
+    if (onKey && onKey(e) === true) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(escValue); }
     else if (e.key === 'Enter' && !(e.target && e.target.tagName === 'TEXTAREA')) {
       const p = buttons.find(b => b.primary);

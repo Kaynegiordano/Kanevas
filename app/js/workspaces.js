@@ -120,6 +120,9 @@
   };
   function go(id) {
     if (id && !WS[id]) return;
+    if (WX.cur === 'video' && id !== 'video' && WX.el.video?.ready) {
+      WX.request('video', 'pause').catch(() => {});
+    }
     if (id && KS.studio.on) C.toggleStudio(false);
     KS.suite?.hideHome(); WX.cur = id;
     document.body.classList.toggle('ws-ext', !!id);

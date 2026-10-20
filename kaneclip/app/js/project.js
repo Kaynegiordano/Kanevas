@@ -170,7 +170,8 @@
   // Événement A dont la sortie est couverte par B (B entre pendant la fin de A, même piste)
   P.incoming = (A) => {
     let best = null;
-    for (const e of pr().events) {
+    const candidates = KC.eventIndex ? KC.eventIndex.between(A.start,P.end(A),A.track) : pr().events;
+    for (const e of candidates) {
       if (e === A || e.track !== A.track) continue;
       if (e.start > A.start + 1e-6 && e.start < P.end(A) - 1e-6 && P.end(e) > P.end(A) - 1e-6) {
         if (!best || e.start < best.start) best = e;
@@ -227,12 +228,27 @@
     const tracks = [...new Set(evs.map(e => e.track))];
     p.events = p.events.filter(e => !ids.includes(e.id));
     if (ripple && evs.length) {
-      // On referme chaque trou de droite à gauche
-      const byStart = evs.slice().sort((a, b) => b.start - a.start);
-      for (const e of byStart) {
-        const tr = KC.prefs.ripple === 'all' ? null : [e.track];
-        const stillCovered = p.events.some(o => (!tr || tr.includes(o.track)) && o.start < e.start + e.length - 1e-6 && o.start + o.length > e.start + 1e-6);
-        if (!stillCovered) P.ripple(e.start + e.length, -e.length, tr);
+      // Union des plages supprimées : un groupe A/V n'est jamais retranché deux fois.
+      const merge = ranges => ranges.sort((a,b) => a[0]-b[0]).reduce((out, range) => {
+        const last = out[out.length-1];
+        if (last && range[0] <= last[1]+1e-6) last[1] = Math.max(last[1], range[1]); else out.push(range.slice());
+        return out;
+      }, []);
+      for (const scope of KC.prefs.ripple === 'all' ? [null] : tracks) {
+        const removed = merge(evs.filter(e => !scope || e.track === scope).map(e => [e.start, P.end(e)]));
+        const covered = merge(p.events.filter(e => !scope || e.track === scope).map(e => [e.start, P.end(e)]));
+        const holes = [];
+        for (const [start, end] of removed) {
+          let cursor = start;
+          for (const [a,b] of covered) {
+            if (b <= cursor || a >= end) continue;
+            if (a > cursor) holes.push([cursor, Math.min(a,end)]);
+            cursor = Math.max(cursor,b);
+            if (cursor >= end) break;
+          }
+          if (cursor < end-1e-6) holes.push([cursor,end]);
+        }
+        for (const [a,b] of holes.reverse()) P.ripple(b, a-b, scope ? [scope] : null);
       }
     }
     P.recalcCrossfades(tracks);
