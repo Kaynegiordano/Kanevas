@@ -46,7 +46,7 @@
     if (id === 'wallpaper') {
       controls.push(btn('Ouvrir une image…', () => KS.suite.importAnimation()), btn('Animer le document', () => C.toWallpaper(), !KS.state.doc),
         btn('Reprendre l’animation', () => KS.suite.resumeAnimation(), !KS.suite?.project?.animation),
-        btn('Exporter la boucle', () => WX.request(id, 'export'), !up(s)));
+        btn('Exporter le fond', () => WX.request(id, 'export'), !up(s)));
     } else if (id === 'comfyui') {
       controls.push(btn('Charger un workflow…', () => KS.suite.loadWorkflow()),
         btn('Utiliser le document', () => C.toComfy(), !KS.state.doc));

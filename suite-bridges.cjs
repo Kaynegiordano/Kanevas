@@ -30,7 +30,7 @@ module.exports = function installSuiteBridge(kind) {
     };
     if (typeof REGL !== 'undefined' && document.getElementById('cote')) {
       const panel = document.createElement('div'); panel.className = 'bloc'; panel.id = 'kane-interactions';
-      panel.innerHTML = '<h2>Interactions souris</h2><div class="aide">Préparez les zones Regard, Tête et Yeux. Testez ensuite leurs réactions dans l’aperçu Web.</div>';
+      panel.innerHTML = '<h2>Interactions Web</h2><div class="aide">Ces interactions enrichissent la sortie Web et son aperçu. La scène utilise ses propres effets natifs. Préparez les zones Regard, Tête et Yeux.</div>';
       for (const [key, label] of [['respire','Respiration douce de tout le personnage (aucune zone à peindre)'],['regard','Le regard suit la souris'],['tete','La tête suit la souris'],['clic','Réagir au clic : clignement et petit mouvement']]) {
         const row=document.createElement('label'), input=document.createElement('input');
         input.id='kane-'+key; input.type='checkbox'; row.append(input,document.createTextNode(' '+label)); panel.append(row);

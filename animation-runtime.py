@@ -49,7 +49,14 @@ def worker(script, args):
     runpy.run_path(script, run_name='__main__')
     if os.path.basename(script) == 'auto_anim.py' and os.path.isfile('anim.json') and os.path.isfile('assets.js'):
         from animation_web import configure
-        configure(os.getcwd())
+        # Web interactions change the assembled preview only. Preserve the neutral
+        # animation description consumed by the independent native Scene exporter.
+        from pathlib import Path
+        neutral = Path('anim.json').read_bytes()
+        try:
+            configure(os.getcwd())
+        finally:
+            Path('anim.json').write_bytes(neutral)
 
 
 def server(script, args):

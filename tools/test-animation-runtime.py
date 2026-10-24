@@ -72,3 +72,25 @@ class FakePopen:
 with patch.dict(sys.modules, torch=torch), patch.object(runtime.runpy, 'run_path', lambda *a, **kw: context), patch.object(runtime.subprocess, 'Popen', FakePopen):
     runtime.server('C:/tools/peintre.py', ['--port', '18780'])
 print('OK Serveur : SAM libéré après segmentation, workers Animation adaptés, autres scripts conservés')
+
+# L'export Scene doit lire la description neutre, pas la respiration globale
+# ajoutée par l'aperçu Web après la préparation des zones.
+import tempfile
+import os
+with tempfile.TemporaryDirectory() as folder:
+    previous = os.getcwd()
+    try:
+        os.chdir(folder)
+        Path('anim.json').write_text('{"effets":[]}', encoding='utf-8')
+        Path('assets.js').write_text('assets', encoding='utf-8')
+        def configure(_directory):
+            Path('anim.json').write_text('{"effets":["web"]}', encoding='utf-8')
+            Path('index.html').write_text('aperçu enrichi', encoding='utf-8')
+        with patch.dict(sys.modules, wetools=wetools, forge_rebouche=forge, animation_web=SimpleNamespace(configure=configure)), patch.object(runtime.runpy, 'run_path', lambda *a, **kw: None):
+            runtime.worker('C:/fixture/auto_anim.py', [])
+        assert Path('anim.json').read_text(encoding='utf-8') == '{"effets":[]}'
+        assert Path('index.html').read_text(encoding='utf-8') == 'aperçu enrichi'
+    finally:
+        os.chdir(previous)
+        sys.argv[:], sys.path[:] = original_argv, original_path
+print('OK Description Scene conservée après enrichissement de l’aperçu Web')
