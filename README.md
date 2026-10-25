@@ -20,6 +20,11 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Animation : la scène va dans « a poster » (1.13.1)
+
+- En sortie **Scène** (par défaut), `a poster` ne contient plus que la scène Wallpaper Engine : ouvert dans l'éditeur de Wallpaper Engine, il est reconnu comme une scène (avant, le fond Web resté dans `a poster` créait un projet Web `myprojects\index…`).
+- `animation_web.py` écrit l'aperçu Web de l'atelier dans `work\apercu web`, et dans `a poster` seulement en sortie Web ou Vidéo, jamais par-dessus une scène. Moteur Animation 1.17.1 (`engines/animation/outils/sorties.py`, dans Kane OS).
+
 ### Optimisation générale, palette de commandes, VRAM libérée (1.13.0)
 
 - **Copies de secours sans gel** : les PNG des calques sont encodés en parallèle dans des workers (`app/js/codec.js`, `png-worker.js`) à partir d'instantanés pris dans la même tâche ; un calque inchangé (même empreinte de pixels) n'est pas réencodé. La vignette part de la copie réduite tenue pour l'écran au lieu de recomposer tout le document. Mesures sur une image 4K à 3 calques : gel de l'interface 690 → 40 ms, copie suivante 940 → 240 ms ; sur 6000 × 4000 à 5 calques : 946 → 31 ms. Pixels relus identiques. Le magasin des copies (`recovery-store.cjs`) lit l'en-tête sans charger l'image et écrit par morceaux (liste 74 → 4 ms), format de fichier inchangé.

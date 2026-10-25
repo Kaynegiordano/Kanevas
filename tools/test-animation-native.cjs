@@ -58,7 +58,7 @@ app.on('browser-window-created',(_e,win)=>{
         assert(panel.note.includes('Tête') && panel.note.includes('Regard :'),panel.note);
         const settings=JSON.parse(fs.readFileSync(path.join(projectDir,'peinture/peinture.json'))).reglages;
         assert(settings.interaction_tete&&settings.interaction_regard&&settings.interaction_clic);
-        const manifest=JSON.parse(fs.readFileSync(path.join(projectDir,'a poster/project.json')));
+        const manifest=JSON.parse(fs.readFileSync(path.join(projectDir,'work/apercu web/project.json')));
         assert(manifest.general.properties.kane_tete.value);
         if(process.env.KANEVAS_TEST_SCREENSHOT){
           await animationFrame.executeJavaScript("montre('peindre');document.getElementById('kane-interactions').scrollIntoView({block:'center'})");

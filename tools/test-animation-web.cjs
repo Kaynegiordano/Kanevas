@@ -31,7 +31,9 @@ app.whenReady().then(async()=>{
  try{
   win=new BrowserWindow({show:false,width:960,height:720,webPreferences:{preload:path.join(tmp,'preload.cjs'),contextIsolation:false,offscreen:true}});
   const errors=[];win.webContents.on('console-message',d=>{if(d.level==='error')errors.push(d.message);});
-  await win.loadFile(path.join(tmp,'a poster','index.html'));
+  // sortie Scène (par défaut) : l'aperçu Web reste dans l'atelier, « a poster » ne reçoit aucun fond Web
+  assert(!fs.existsSync(path.join(tmp,'a poster','index.html')),'Aucun fond Web dans « a poster » en sortie Scène');
+  await win.loadFile(path.join(tmp,'work','apercu web','index.html'));
   let ready=false;for(let i=0;i<200;i++){ready=await win.webContents.executeJavaScript('window.READY===true');if(ready)break;await new Promise(r=>setTimeout(r,20));}assert(ready,errors.join('\n'));
   const result=await win.webContents.executeJavaScript(`(()=>{
     const pixels=()=>{render();const b=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,b);return b;};
@@ -68,7 +70,12 @@ app.whenReady().then(async()=>{
   assert(breath.diff>50 && breath.diff<breath.total*.9 && Math.abs(breath.dy)>.3 && Math.abs(breath.dy)<20 && breath.loop<30,JSON.stringify(breath));
   assert(JSON.parse(fs.readFileSync(path.join(tmp,'anim.json'),'utf8')).effets.filter(e=>e.kane==='respire').length===1,'Un seul effet de respiration douce');
   assert.equal(result.error,0);assert.equal(errors.length,0,errors.join('\n'));
-  assert(fs.readFileSync(path.join(tmp,'a poster/index.html')).equals(original));
+  assert(fs.readFileSync(path.join(tmp,'work/apercu web/index.html')).equals(original));
+  // sortie Web : le fond Web va aussi dans « a poster » ; jamais par-dessus une scène
+  fs.writeFileSync(path.join(tmp,'peinture/peinture.json'),JSON.stringify({reglages:{sortie:'web',interaction_regard:true,interaction_tete:true,interaction_clic:true,interaction_force:.65}}));
+  configure();assert(fs.readFileSync(path.join(tmp,'a poster/index.html')).equals(original),'Fond Web dans « a poster » en sortie Web');
+  fs.rmSync(path.join(tmp,'a poster'),{recursive:true});fs.mkdirSync(path.join(tmp,'a poster'));fs.writeFileSync(path.join(tmp,'a poster/kane-scene-export.json'),'{}');
+  configure();assert(!fs.existsSync(path.join(tmp,'a poster/index.html')),'Une scène dans « a poster » n’est jamais recouverte');
   console.log('OK WebGL réel : pixels modifiés par le regard, la tête et le clic ; retrait souris, désactivation et absence d’erreur shader');
   console.log(JSON.stringify(result),JSON.stringify(breath));app.exit(0);
  }catch(error){console.error(error);app.exit(1);}

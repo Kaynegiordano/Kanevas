@@ -52,12 +52,18 @@ def configure(directory):
         backup = folder / (name + '.before-interactions')
         if target.exists() and not backup.exists(): backup.write_bytes(target.read_bytes())
         temp = folder / (name + '.interaction.tmp'); temp.write_text(value, encoding='utf-8'); temp.replace(target)
-    export = folder / 'a poster'; export.mkdir(exist_ok=True)
-    for name in ('index.html', 'project.json', 'assets.js'):
-        target = export / name; backup = export / (name + '.before-interactions')
-        if name != 'assets.js' and target.exists() and not backup.exists(): backup.write_bytes(target.read_bytes())
-        temp = export / (name + '.interaction.tmp'); temp.write_bytes((folder / name).read_bytes()); temp.replace(target)
-    return {'available': available, 'settings': config}
+    # Aperçu de travail de l'atelier : toujours. « a poster » (le fond à publier) seulement si la sortie choisie est Web
+    # ou Vidéo, et jamais par-dessus une scène : en sortie Scène, Wallpaper Engine ne doit y trouver que la scène.
+    exports = [folder / 'work' / 'apercu web']
+    poster = folder / 'a poster'
+    if settings.get('sortie', 'scene') in ('web', 'video') and not (poster / 'kane-scene-export.json').is_file(): exports.append(poster)
+    for export in exports:
+        export.mkdir(parents=True, exist_ok=True)
+        for name in ('index.html', 'project.json', 'assets.js'):
+            target = export / name; backup = export / (name + '.before-interactions')
+            if name != 'assets.js' and target.exists() and not backup.exists(): backup.write_bytes(target.read_bytes())
+            temp = export / (name + '.interaction.tmp'); temp.write_bytes((folder / name).read_bytes()); temp.replace(target)
+    return {'available': available, 'settings': config, 'apercu': str(exports[0])}
 
 
 if __name__ == '__main__':

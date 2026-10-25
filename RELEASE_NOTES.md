@@ -1,3 +1,9 @@
+# 1.13.1 — Animation : la scène va dans « a poster »
+
+- Sortie Scène : « a poster » contient la scène Wallpaper Engine et plus aucun fond Web ; Wallpaper Engine la reconnaît comme une scène.
+- L’aperçu Web de l’atelier passe dans « work\apercu web ». En sortie Web, « a poster » reçoit le fond Web comme avant.
+- Les interactions (Appliquer) ne recouvrent jamais une scène.
+
 # 1.13.0 — Plus fluide, palette de commandes, VRAM libérée
 
 - Copies de secours sans gel : calques encodés en parallèle hors de l’interface, calques inchangés non réencodés (gel 690 → 40 ms sur une image 4K à 3 calques).
