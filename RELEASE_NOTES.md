@@ -1,3 +1,12 @@
+# 1.13.0 — Plus fluide, palette de commandes, VRAM libérée
+
+- Copies de secours sans gel : calques encodés en parallèle hors de l’interface, calques inchangés non réencodés (gel 690 → 40 ms sur une image 4K à 3 calques).
+- Montage (KaneClip 1.4.2) : plus aucun calcul quand rien ne bouge, même masqué ; inclut le rendu 4K de KaneClip 1.4.1.
+- Jauge VRAM : un seul relevé continu du pilote au lieu d’un processus toutes les 3 secondes.
+- Clic sur la jauge VRAM : libérer la mémoire graphique (Studio, ComfyUI) maintenant ou après 10 min / 30 min / 1 h sans génération. Modèle rechargé à la génération suivante.
+- Palette de commandes (Ctrl+Maj+P ou la loupe) : menus, outils, espaces, fichiers récents et réglages en quelques lettres, sans accents.
+- Animation et ComfyUI s’ouvrent dès qu’ils sont prêts ; mise à jour de ComfyUI plus rapide (pip seulement si ses dépendances changent).
+
 # 1.12.18 — Montage : Atelier créatif et sous-titres
 
 - KaneClip 1.4 intégré : cinq looks éditables, intensité et mouvements progressifs sur les plans sélectionnés.

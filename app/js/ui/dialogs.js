@@ -524,8 +524,8 @@
     if (!N?.engineConfig) return KS.toast('Disponible dans l’application de bureau.', 'info');
     if (KS.studioApi?.isBusy()) return KS.toast('Attendez la fin de la génération avant de changer le moteur.', 'info');
     const config = await N.engineConfig();
-    if (config.managed) return KS.modal({ title: 'Moteurs gérés par Kanevas', width: 640,
-      body: h('div.form-col', h('p', { text: 'Le Studio utilise sa copie vérifiée dans les données de Kanevas.' }), h('div.note', { text: config.runtime }),
+    if (config.managed) return KS.modal({ title: 'Moteurs gérés par Kane App', width: 640,
+      body: h('div.form-col', h('p', { text: 'Le Studio utilise sa copie vérifiée dans les données de Kane App.' }), h('div.note', { text: config.runtime }),
         h('p.note', { text: 'Les modèles communs restent dans ' + config.models + '. Les anciennes installations sont conservées.' })),
       buttons: [{ label: 'Fermer' }, { label: 'Gérer la migration…', primary: true, action: () => D.runtimeMigration() }] });
     let directory = config.runtime, models = config.models, shareExternal = config.shareExternal;
@@ -563,7 +563,7 @@
       const components = Object.entries(value.report?.components || {});
       const copied = components.length === 4 && components.every(([, c]) => ['verified', 'probed'].includes(c.phase));
       const tested = copied && components.every(([, c]) => c.phase === 'probed') && value.report.integrityCheckedAt && value.report.media?.phase === 'probed';
-      status.textContent = value.error || (value.running ? 'Opération en cours… ' + (labels[value.progress?.component] || '') + (value.progress?.files ? ' · ' + value.progress.files + ' fichiers' : '') : value.active ? 'Kanevas utilise ses copies des moteurs.' : 'Les installations actuelles sont encore utilisées.');
+      status.textContent = value.error || (value.running ? 'Opération en cours… ' + (labels[value.progress?.component] || '') + (value.progress?.files ? ' · ' + value.progress.files + ' fichiers' : '') : value.active ? 'Kane App utilise ses copies des moteurs.' : 'Les installations actuelles sont encore utilisées.');
       rows.replaceChildren(h('div.note', { text: value.destination }), ...components.map(([id, c]) => h('div.note', { text: labels[id] + ' · ' + (phases[c.phase] || c.phase) + ' · ' + (c.bytes / 2 ** 30).toFixed(1) + ' Go' })));
       if (value.report?.media) rows.append(h('div.note', { text: 'Montage · FFmpeg · ' + (phases[value.report.media.phase] || value.report.media.phase) }));
       buttons.copy.disabled = value.running || value.active;
@@ -574,12 +574,12 @@
       if (value.report?.cleanup?.startedAt) status.textContent = value.error || 'Migration définitive : les moteurs et projets sont gérés par Kane App. Les anciennes installations sont retirées.';
     };
     const body = h('div.form-col', { style: { gap: '12px' } },
-      h('p', { text: 'Les moteurs, extensions, environnements Python et projets sont copiés dans les données de Kanevas. Les modèles communs restent partagés dans leur dossier actuel.' }),
+      h('p', { text: 'Les moteurs, extensions, environnements Python et projets sont copiés dans les données de Kane App. Les modèles communs restent partagés dans leur dossier actuel.' }),
       status, rows,
       h('div.form-row', action('copy', '1. Copier les moteurs'), action('verify', '2. Vérifier les fichiers'), action('probe', '3. Tester les environnements')),
       h('div.form-row', action('activate', 'Activer les copies vérifiées'), action('rollback', 'Revenir aux installations précédentes')),
       h('p.note', { text: 'Le retrait des anciennes installations est une opération distincte, après validation de vos usages et vérification des données. Après ce retrait, les moteurs restent gérés par Kane App et le retour aux anciennes installations est désactivé.' }));
-    KS.modal({ title: 'Migration des applications vers Kanevas', body, width: 760, buttons: [{ label: 'Fermer', primary: true }], onClose: () => { migrationView = null; } });
+    KS.modal({ title: 'Migration des applications vers Kane App', body, width: 760, buttons: [{ label: 'Fermer', primary: true }], onClose: () => { migrationView = null; } });
     migrationView = update; update(await N.runtimeMigrationState());
   };
 

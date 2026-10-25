@@ -308,7 +308,7 @@
       label: 'Aide', items: [
         { label: 'Raccourcis clavier', kb: 'F1', icon: 'keyboard', action: KS.dialogs.shortcuts },
         { label: 'Rechercher des mises à jour…', icon: 'history', action: () => C.checkUpdates(), hidden: !KS.native },
-        { label: 'À propos de Kanevas', icon: 'info', action: KS.dialogs.about },
+        { label: 'À propos de Kane App', icon: 'info', action: KS.dialogs.about },
         { sep: true },
         { label: 'Outils de développement', kb: 'Ctrl+Maj+F12', action: () => KS.native && KS.native.toggleDevTools(), hidden: !KS.native },
       ],
@@ -320,6 +320,7 @@
   let external = null, built = [], showToken = 0;
   KS.on('menus-closed', () => { built.forEach(x => x.classList.remove('open')); });
   M.setExternal = ext => { if (external === ext) return; external = ext; M.build(); };
+  M.current = () => external;          // menus de l'espace intégré actif (palette de commandes)
   M.build = () => {
     const bar = KS.$('#menubar');
     bar.innerHTML = '';
@@ -366,7 +367,7 @@
     };
     M.defs().forEach(m => walk(m.items));
     // compléments
-    const extra = { 'ctrl+alt+z': C.undo, 'shift+f6': C.feather, 'ctrl+shift+x': () => KS.liquify && KS.liquify(), 'ctrl+=': C.zoomIn, 'ctrl+shift+=': C.zoomIn, 'f1': KS.dialogs.shortcuts, 'ctrl+shift+f12': () => KS.native && KS.native.toggleDevTools(), 'ctrl+shift+a': C.cameraRaw, 'ctrl+enter': () => C.pathToSelection(), 'ctrl+2': () => C.selectChannel('rgb'), 'ctrl+3': () => C.selectChannel('r'), 'ctrl+4': () => C.selectChannel('g'), 'ctrl+5': () => C.selectChannel('b'),
+    const extra = { 'ctrl+shift+p': () => KS.palette?.open(), 'ctrl+alt+z': C.undo, 'shift+f6': C.feather, 'ctrl+shift+x': () => KS.liquify && KS.liquify(), 'ctrl+=': C.zoomIn, 'ctrl+shift+=': C.zoomIn, 'f1': KS.dialogs.shortcuts, 'ctrl+shift+f12': () => KS.native && KS.native.toggleDevTools(), 'ctrl+shift+a': C.cameraRaw, 'ctrl+enter': () => C.pathToSelection(), 'ctrl+2': () => C.selectChannel('rgb'), 'ctrl+3': () => C.selectChannel('r'), 'ctrl+4': () => C.selectChannel('g'), 'ctrl+5': () => C.selectChannel('b'),
       'ctrl+6': () => D()?.alphas[0] && C.selectChannel(D().alphas[0].id), 'ctrl+7': () => D()?.alphas[1] && C.selectChannel(D().alphas[1].id), 'ctrl+g': C.groupLayers, 'ctrl+shift+g': C.ungroup, 'ctrl+alt+a': C.selectAllLayers };
     for (const k in extra) M.shortcuts.set(k, { action: extra[k] });
   };

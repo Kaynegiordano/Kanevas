@@ -336,9 +336,27 @@
     const end = KC.eventIndex.duration();
     return !E.playing && end > 0 && Math.abs(t - end) < 1e-6 ? Math.max(0, end - P.frame()) : t;
   };
+  // Au repos (ni lecture, ni défilement, rien à redessiner, vu-mètres retombés), la boucle ne demande plus
+  // d'image : un montage arrêté ou masqué ne réveille plus la page à chaque rafraîchissement de l'écran.
+  // Toute écriture de time, playing, scrubbing ou needsDraw la relance, ainsi que les boucles abonnées (timeline).
+  let looping = false;
+  const wakers = [];
+  E.onWake = fn => { wakers.push(fn); };
+  E.wake = () => {
+    if (!looping) { looping = true; requestAnimationFrame(tick); }
+    for (const fn of wakers) fn();
+  };
+  for (const key of ['time', 'playing', 'scrubbing', 'needsDraw']) {
+    let value = E[key];
+    Object.defineProperty(E, key, { enumerable: true, get: () => value, set: v => { const changed = v !== value; value = v; if (key === 'time' ? changed : v) E.wake(); } });
+  }
+  const QUIET = 0.002;            // sous -54 dB, les vu-mètres n'affichent plus rien
   function tick(now) {
-    requestAnimationFrame(tick);
-    if (!KC.project) return;
+    let again = true;
+    try { again = step(now); } finally { if (again) requestAnimationFrame(tick); else looping = false; }
+  }
+  function step(now) {
+    if (!KC.project) return false;
     if (E.playing) {
       // en attente (recherche en cours) : l'horloge est figée
       let t = E.waiting ? E.time : playT0 + (now - playP0) / 1000 * E.rate;
@@ -360,9 +378,13 @@
     }
     meters(now);
     lastFrameT = now;
+    const lv = E.levels;
+    return E.playing || E.scrubbing || E.needsDraw || lv.L > QUIET || lv.R > QUIET || lv.peakL > QUIET || lv.peakR > QUIET;
   }
   void lastFrameT;
-  requestAnimationFrame(tick);
+  KC.on('project-loaded', () => E.wake());
+  window.addEventListener('resize', () => E.wake());
+  E.wake();
 
   let lastMeter = -Infinity;
   const meterData = new Float32Array(1024);

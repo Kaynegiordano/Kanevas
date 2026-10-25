@@ -5,11 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-module.exports = function mediaTools({ app, send, binary }) {
+module.exports = function mediaTools({ app, send }) {
   /* ------------------------------------------------------------ binaire ffmpeg */
   let ffmpeg = null;
   function findFfmpeg() {
-    const owned = binary?.(); if (owned) return owned;
     if (ffmpeg) return ffmpeg;
     const cands = [
       process.resourcesPath && path.join(process.resourcesPath, 'bin', 'ffmpeg.exe'),

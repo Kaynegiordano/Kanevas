@@ -15,6 +15,9 @@ fs.rmSync(dst, { recursive: true, force: true });
 fs.mkdirSync(dst, { recursive: true });
 fs.cpSync(path.join(src, 'app'), path.join(dst, 'app'), { recursive: true, filter: f => !f.endsWith('.map') });
 for (const f of ['media-tools.cjs', 'ai-upscale.cjs']) fs.copyFileSync(path.join(src, f), path.join(dst, f));
+// Tests de modèle sans Electron, lancés depuis ce dépôt (MONTAGE.md) ; exclus de l'installateur.
+fs.mkdirSync(path.join(dst, 'tests'), { recursive: true });
+for (const f of ['editing-model.cjs', 'captions-model.cjs', 'event-index.cjs']) if (fs.existsSync(path.join(src, 'tests', f))) fs.copyFileSync(path.join(src, 'tests', f), path.join(dst, 'tests', f));
 // Menus exposés à Kane App (barre de menus du haut) : KC.menus.defs.
 const menusFile = path.join(dst, 'app', 'js', 'menus.js');
 const menusSource = fs.readFileSync(menusFile, 'utf8');

@@ -166,7 +166,7 @@
   };
   KC.cmd.snapshotSave = async () => {
     const base = KC.project.path ? U.stripExt(U.base(KC.project.path)) : 'Cliché';
-    const p = await KC.native.saveDialog({ title: 'Enregistrer le cliché', defaultPath: base + ' ' + U.fmtTime(E.time, P.fps(), 'sec').replace(/[:.]/g, '-') + '.png', filters: [{ name: 'Image PNG', extensions: ['png'] }, { name: 'Image JPEG', extensions: ['jpg'] }] });
+    const p = await KC.native.saveDialog({ title: 'Enregistrer le cliché', defaultPath: (await KC.native.defaultDir('Clichés')) + '\\' + base + ' ' + U.fmtTime(E.time, P.fps(), 'sec').replace(/[:.]/g, '-') + '.png', filters: [{ name: 'Image PNG', extensions: ['png'] }, { name: 'Image JPEG', extensions: ['jpg'] }] });
     if (!p) return;
     const jpg = /\.jpe?g$/i.test(p);
     const b = await U.blob(PV.snapshotCanvas(), jpg ? 'image/jpeg' : 'image/png', 0.95);
@@ -227,7 +227,7 @@
     const mute = h('button.tb', { title: 'Couper le son du maître', html: KC.icon('mute') });
     mute.addEventListener('click', () => { E.masterMute = !E.masterMute; mute.classList.toggle('on', E.masterMute); });
     pane.append(h('div.mb-title', { text: 'Maître' }), h('div.mb-body', mwrap, fwrap), h('div.mb-foot', dbv, mute));
-    meter.addEventListener('click', () => { E.levels.clip = false; E.levels.peakL = E.levels.peakR = 0; });
+    meter.addEventListener('click', () => { E.levels.clip = false; E.levels.peakL = E.levels.peakR = 0; E.wake(); });
     meter.title = 'Cliquer pour réinitialiser les crêtes';
     KC.on('project-loaded', () => { fader.set(KC.ui.dbToFader(KC.project.settings.masterGain || 0)); dbv.textContent = U.fmtDb(KC.project.settings.masterGain || 0); });
     const MIN = -54;

@@ -153,7 +153,7 @@ function setup(getWin, { output } = {}) {
   }));
   /* fenêtre : c'est celle de Kanevas */
   H('app-version', () => app.getVersion());
-  H('update-state', () => ({ state: 'none', note: 'Mis à jour avec Kanevas' }));
+  H('update-state', () => ({ state: 'none', note: 'Mis à jour avec Kane App' }));
   H('update-check', () => ({ state: 'none' }));
   H('update-download', () => ({ state: 'none' }));
   O('show-in-folder', (_e, p) => shell.showItemInFolder(p));

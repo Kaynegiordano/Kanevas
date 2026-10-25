@@ -9,7 +9,7 @@
   const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', svg: 'image/svg+xml', ico: 'image/x-icon', avif: 'image/avif' };
   io.OPEN_FILTERS = [
     { name: 'Tous les fichiers pris en charge', extensions: ['ksp', 'psd', ...IMG_EXT] },
-    { name: 'Document Kanevas', extensions: ['ksp'] }, { name: 'Photoshop', extensions: ['psd'] },
+    { name: 'Document Kane App', extensions: ['ksp'] }, { name: 'Photoshop', extensions: ['psd'] },
     { name: 'Images', extensions: IMG_EXT }, { name: 'Tous les fichiers', extensions: ['*'] },
   ];
 
@@ -72,21 +72,39 @@
 
   /* ---------------------------------------------------------------- format natif KSP */
   const toDataURL = c => c.toDataURL('image/png');
-  io.writeKSP = async doc => {
+  // Les PNG des calques sont encodés en parallèle hors du fil de l'interface (KS.codec) : une copie de
+  // secours ne fige plus la fenêtre. Le JSON garde des marqueurs à leur place, remplacés octet pour octet.
+  function kspJSON(doc, png) {
     const idx = new Map(doc.layers.map((L, i) => [L.id, i]));
     const layers = doc.layers.map(L => ({
       name: L.name, kind: L.kind, x: L.x, y: L.y, opacity: L.opacity, blend: L.blend, visible: L.visible, lockAll: L.lockAll, lockAlpha: L.lockAlpha, clip: L.clip,
       text: L.text, adjust: L.adjust, effects: L.effects, shape: L.shape, fill: L.fill, collapsed: L.collapsed,
       parent: L.parent && idx.has(L.parent) ? idx.get(L.parent) : -1,
-      png: L.kind === 'adjust' || L.kind === 'group' ? null : toDataURL(L.canvas),
-      mask: L.mask ? { x: L.mask.x, y: L.mask.y, enabled: L.mask.enabled, linked: L.mask.linked, outside: L.mask.outside, png: toDataURL(L.mask.canvas) } : null,
+      png: L.kind === 'adjust' || L.kind === 'group' ? null : png(L.canvas, L.id),
+      mask: L.mask ? { x: L.mask.x, y: L.mask.y, enabled: L.mask.enabled, linked: L.mask.linked, outside: L.mask.outside, png: png(L.mask.canvas, L.id + ':masque') } : null,
     }));
     const thumb = io.thumbnail(doc, 160);
-    const json = JSON.stringify({
+    return JSON.stringify({
       app: 'Kanevas', version: 2, width: doc.width, height: doc.height, guides: doc.guides, active: doc.activeIndex, thumb, layers,
-      paths: doc.paths, alphas: doc.alphas.map(a => ({ name: a.name, png: toDataURL(a.canvas) })),
+      paths: doc.paths, alphas: doc.alphas.map(a => ({ name: a.name, png: png(a.canvas, a.id) })),
     });
-    return new TextEncoder().encode(json);
+  }
+  io.writeKSP = async doc => {
+    if (KS.codec?.available()) {
+      const images = [], mark = 'KSPNG-' + U.uid() + '-';
+      const json = kspJSON(doc, (canvas, key) => { images.push({ canvas, key }); return mark + (images.length - 1); });
+      try {
+        const pngs = await KS.codec.pngs(images), enc = new TextEncoder(), parts = [];
+        const re = new RegExp('"' + mark + '(\\d+)"', 'g');
+        let at = 0, m;
+        while ((m = re.exec(json))) { parts.push(enc.encode(json.slice(at, m.index + 1)), pngs[+m[1]], enc.encode('"')); at = m.index + m[0].length; }
+        parts.push(enc.encode(json.slice(at)));
+        const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
+        let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+        return out;
+      } catch (err) { console.warn('Encodage PNG en parallèle indisponible :', err); }
+    }
+    return new TextEncoder().encode(kspJSON(doc, toDataURL));
   };
   io.readKSP = async f => {
     const j = JSON.parse(new TextDecoder().decode(f.data));
@@ -308,7 +326,7 @@
 
   /* ---------------------------------------------------------------- enregistrer */
   io.SAVE_FILTERS = [
-    { name: 'Document Kanevas (.ksp)', extensions: ['ksp'] }, { name: 'Photoshop (.psd)', extensions: ['psd'] },
+    { name: 'Document Kane App (.ksp)', extensions: ['ksp'] }, { name: 'Photoshop (.psd)', extensions: ['psd'] },
     { name: 'PNG', extensions: ['png'] }, { name: 'JPEG', extensions: ['jpg'] }, { name: 'WebP', extensions: ['webp'] },
   ];
   io.exportCanvas = (doc, scale = 1, bg = null) => {
@@ -454,7 +472,9 @@
 
   /* ---------------------------------------------------------------- récents */
   io.thumbnail = (doc, size = 120) => {
-    const c = doc.flatten(), s = Math.min(1, size / Math.max(c.width, c.height));
+    // copie réduite tenue à jour pour l'écran : recomposer tout le document en pleine résolution coûtait près d'une seconde sur une grande image
+    const src = doc.previewSource ? doc.previewSource() : doc.flatten();
+    const c = src.width > 0 && src.height > 0 ? src : doc.flatten(), s = Math.min(size / doc.width, size / doc.height, 1) * doc.width / c.width;
     const t = U.canvas(c.width * s, c.height * s); const x = t.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(c, 0, 0, t.width, t.height);
     return t.toDataURL('image/jpeg', 0.7);
   };

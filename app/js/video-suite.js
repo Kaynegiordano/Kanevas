@@ -72,7 +72,7 @@
       else if (m.op === 'pause') { KC.trimmer?.pause?.(); KC.engine.pause(); }
       else if (m.op === 'stop') { KC.trimmer?.pause?.(); KC.engine.stop(); clearTimeout(timer); await save(); }
       else if (m.op === 'add') {
-        if (!project) throw new Error('Choisissez un projet Kanevas');
+        if (!project) throw new Error('Choisissez un projet Kane App');
         const items = await KC.media.import([m.path]);
         if (items.length) KC.timeline.placeMedias(items, KC.P.duration(), null);
         await save(); value = { added: items.length };
@@ -81,7 +81,7 @@
         if (!media) throw new Error('Cette version n’est pas utilisée dans le montage');
         const info = await KC.native.probe(m.path);
         if (!info?.ok) throw new Error(info?.error || 'Média de remplacement illisible');
-        KC.edit('Mettre à jour le média depuis Kanevas', () => {
+        KC.edit('Mettre à jour le média depuis Kane App', () => {
           media.origPath ||= media.path;
           Object.assign(media, { path: m.path, name: info.name, kind: info.kind, duration: info.duration || 0, size: info.size,
             width: info.video?.width || 0, height: info.video?.height || 0, fps: info.video?.fps || 0,

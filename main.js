@@ -6,6 +6,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const gpuMemory = require('./gpu-memory.cjs')();
 ipcMain.handle('gpu-memory', () => gpuMemory());
+app.on('will-quit', () => gpuMemory.stop());
 
 // Réutiliser les données existantes (préférences et modèles IA) après le changement de nom.
 const legacyData = ['KaneShop', 'kaneshop'].map(n => path.join(app.getPath('appData'), n)).find(p => fs.existsSync(p));
@@ -20,6 +21,7 @@ const kcHost = require('./kaneclip-host.cjs');
 kcHost.registerScheme();
 
 let win = null;
+let services = null;           // ateliers ComfyUI / Animation (services.cjs)
 let allowClose = false;
 let animationBusy = false;
 const pending = [];          // fichiers reçus avant que la page soit prête
@@ -45,7 +47,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     kcHost.setup(() => win, { output: () => outputPaths.directory('montage') });
     require('./suite-host.cjs')(() => win);
-    require('./services.cjs')({
+    services = require('./services.cjs')({
       getWin: () => win,
       root: () => engineDirs().root,
       managed: () => managedRuntime.read(),
@@ -358,8 +360,14 @@ const forgeBase = url => {
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname) || !/^https?:$/.test(u.protocol)) throw new Error('Adresse de Forge non locale');
   return u.origin;
 };
+// Mémoire graphique : le moteur du Studio garde son modèle chargé (près de 9 Go) entre deux générations. Après le délai
+// choisi sans génération (jauge VRAM, Préférences), Kanevas le décharge ; la génération suivante le recharge et l'ouverture
+// du Studio le préchauffe. Le Forge de Kane OS (externe) n'est jamais déchargé automatiquement.
+const GPU_WORK = /^\/sdapi\/v1\/(txt2img|img2img|extra-single-image|reload-checkpoint)$/;
+const vram = { idleMin: 0, lastWork: Date.now(), unloaded: false };
 async function forgeCall(base, route, body, timeout = 600000) {
   if (animationBusy && body && /^\/sdapi\/v1\/(txt2img|img2img|extra-single-image|options|reload-checkpoint)$/.test(route)) throw new Error('Le moteur IA est réservé à Animation. Attendez la fin de sa tâche.');
+  if (GPU_WORK.test(route)) { vram.lastWork = Date.now(); vram.unloaded = false; }
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout);
   try {
     const res = await fetch(forgeBase(base) + route, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal } : { signal: ctl.signal });
@@ -537,7 +545,7 @@ ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
   try {
     // dossiers mémorisés au dernier contact avec Forge : l'atelier marche aussi Forge éteint (carte graphique libre)
     loadDirs();
-    if (!forgeDirs || !forgeDirs.data) throw new Error('Démarrez Forge une fois depuis Kane OS : Kanevas y lit ses dossiers (entraîneur, modèles)');
+    if (!forgeDirs || !forgeDirs.data) throw new Error('Démarrez Forge une fois depuis Kane OS : Kane App y lit ses dossiers (entraîneur, modèles)');
     const py = path.join(forgeDirs.data, 'venv', 'Scripts', 'python.exe');
     if (!fs.existsSync(py)) throw new Error('Python de Forge introuvable : ' + py);
     if (!/^[a-z_]+$/.test(cmd)) throw new Error('Commande invalide');
@@ -725,7 +733,7 @@ function engineDirs() {
 ipcMain.handle('engine-config', () => engineDirs());
 ipcMain.handle('engine-config-save', async (_e, options) => {
   try {
-    if (managedRuntime.read().active) throw new Error('Les moteurs sont gérés par Kanevas. Utilisez Migration vers Kanevas pour revenir à la configuration précédente.');
+    if (managedRuntime.read().active) throw new Error('Les moteurs sont gérés par Kane App. Utilisez Migration vers Kane App pour revenir à la configuration précédente.');
     if (engine.ours && ['ready', 'starting'].includes(engine.state) || await ping('http://127.0.0.1:' + ENGINE_PORT, 800)) throw new Error('Arrêtez le Studio avant de changer son moteur');
     const value = studioRuntime.save(options, engineDirs());
     if (engine.state === 'external') { engine.state = 'off'; engine.url = ''; engineEmit(); }
@@ -747,7 +755,7 @@ async function engineStart(profileId) {
   if (await ping('http://127.0.0.1:' + ENGINE_PORT, 1200)) {
     if (d.managed) {
       try { require('./local-process.cjs').identify({ port: ENGINE_PORT, script: path.join(d.runtime, 'launch.py'), python: d.python }); }
-      catch { engine.state = 'error'; engine.error = 'L’ancien moteur Studio occupe le port. Arrêtez-le avant d’ouvrir la copie Kanevas.'; engineEmit(); return engineStatus(); }
+      catch { engine.state = 'error'; engine.error = 'L’ancien moteur Studio occupe le port. Arrêtez-le avant d’ouvrir la copie Kane App.'; engineEmit(); return engineStatus(); }
     }
     engine.state = 'ready'; engine.url = 'http://127.0.0.1:' + ENGINE_PORT; engine.ours = true; engine.pid = pidOnPort(ENGINE_PORT); engineEmit(); return engineStatus();
   }
@@ -766,6 +774,7 @@ async function engineStart(profileId) {
   args = args.replace(/--port\s+\d+/g, '').replace(/--nowebui/g, '').replace(/--listen/g, '').replace(/--server-name\s+\S+/g, '') + ` --nowebui --port ${ENGINE_PORT} --server-name 127.0.0.1 --skip-prepare-environment`;   // joignable seulement depuis ce PC
   engine.profile = prof ? prof.name : 'par défaut';
   engine.log = []; engine.error = ''; engine.state = 'starting'; engine.ours = true; engine.startedAt = Date.now();
+  vram.lastWork = Date.now(); vram.unloaded = false;
   engine.url = 'http://127.0.0.1:' + ENGINE_PORT;
   ensureEnginePatches(d.runtime);
   engineLog('> ' + args);
@@ -816,6 +825,31 @@ ipcMain.handle('engine-stop', (_e, explicit) => {
   engineKill(); engine.state = 'off'; engine.url = ''; engine.ours = false; engineEmit(); return engineStatus();
 });
 ipcMain.handle('engine-log', () => engine.log.join('\n'));
+
+// Déchargement du modèle du Studio : 'busy' si une génération (ou Animation) l'utilise.
+async function studioUnload(reason) {
+  if (engine.state === 'external') return 'external';
+  if (!engine.ours || engine.state !== 'ready') return 'off';
+  if (animationBusy) return 'busy';
+  const p = await forgeCall(engine.url, '/sdapi/v1/progress?skip_current_image=true', null, 4000);
+  if (p?.state?.job_count > 0 || p?.progress > 0) { vram.lastWork = Date.now(); return 'busy'; }
+  await forgeCall(engine.url, '/sdapi/v1/unload-checkpoint', {}, 60000);
+  vram.unloaded = true;
+  engineLog('Modèle déchargé ' + reason + ' : mémoire graphique libérée');
+  if (win) win.webContents.send('vram-released', { reason });
+  return 'freed';
+}
+setInterval(async () => {
+  if (!vram.idleMin || vram.unloaded || Date.now() - vram.lastWork < vram.idleMin * 60000) return;
+  try { await studioUnload(`après ${vram.idleMin} min sans génération`); } catch { /* moteur occupé ou arrêté : nouvel essai dans une minute */ }
+}, 60000).unref?.();
+ipcMain.handle('vram-idle', (_e, minutes) => { vram.idleMin = Math.max(0, Math.min(1440, Math.round(Number(minutes) || 0))); return vram.idleMin; });
+ipcMain.handle('vram-release', async () => {
+  let studio;
+  try { studio = await studioUnload('à la demande'); } catch (e) { studio = 'error'; engineLog('Déchargement impossible : ' + e.message); }
+  const comfy = services ? await services.comfyFree() : 'off';
+  return { studio, comfy };
+});
 app.on('will-quit', () => { if (!globalThis.__kvKeepEngine) engineKill(); });
 
 // Résultats enregistrés automatiquement (comme le dossier « outputs » de Forge), avec leurs paramètres.

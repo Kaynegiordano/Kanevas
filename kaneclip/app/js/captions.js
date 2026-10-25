@@ -36,7 +36,7 @@
   };
   C.export=async()=>{
     if(!C.list().some(e=>String(e.gen.text||'').trim()))return KC.toast('Aucun sous-titre non vide dans ce montage.','info');
-    const path=await KC.native.saveDialog({title:'Exporter les sous-titres SRT',defaultPath:'Sous-titres.srt',filters:[{name:'Sous-titres SubRip',extensions:['srt']}]});
+    const path=await KC.native.saveDialog({title:'Exporter les sous-titres SRT',defaultPath:(await KC.native.defaultDir('Sous-titres'))+'\\Sous-titres.srt',filters:[{name:'Sous-titres SubRip',extensions:['srt']}]});
     if(!path)return;const result=await KC.native.writeFile(path,C.srt());KC.toast(result.ok?'Sous-titres SRT enregistrés.':result.error,result.ok?'ok':'err');
   };
   C.build=page=>{

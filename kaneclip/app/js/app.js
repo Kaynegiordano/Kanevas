@@ -146,7 +146,7 @@
     const p = KC.project;
     let path = p.path;
     if (!path || saveAs) {
-      path = await N.saveDialog({ title: 'Enregistrer le projet', defaultPath: (p.path || ((await N.defaultDir()) + '\\' + (p.info.title || 'Sans titre') + '.kcp')), filters: [{ name: 'Projet KaneClip', extensions: ['kcp'] }] });
+      path = await N.saveDialog({ title: 'Enregistrer le projet', defaultPath: (p.path || ((await N.defaultDir('Projets')) + '\\' + (p.info.title || 'Sans titre') + '.kcp')), filters: [{ name: 'Projet KaneClip', extensions: ['kcp'] }] });
       if (!path) return false;
       if (!/\.kcp$/i.test(path)) path += '.kcp';
     }

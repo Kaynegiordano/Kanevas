@@ -65,7 +65,7 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
     const git = (...a) => run('git', a, d, 120000);
     try {
       log(id, '[Kane OS] Recherche d’une mise à jour de ComfyUI…');
-      await git('fetch', '--quiet', 'origin', 'master');
+      await run('git', ['fetch', '--quiet', 'origin', 'master'], d, 20000);     // réseau lent ou absent : démarrer sans attendre
       const behind = +(await git('rev-list', '--count', 'HEAD..origin/master'));
       const ahead = +(await git('rev-list', '--count', 'origin/master..HEAD'));
       if (!behind) { log(id, '[Kane OS] ComfyUI est à jour.'); return; }
@@ -77,6 +77,8 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
       const py = path.join(d, 'venv', 'Scripts', 'python.exe');
       for (const f of ['requirements.txt', 'manager_requirements.txt']) {
         if (!fs.existsSync(path.join(d, f))) continue;
+        // paquets inchangés par la mise à jour : pip n'a rien à faire (il prenait de 10 s à plusieurs minutes)
+        if (await git('diff', '--quiet', avant, 'HEAD', '--', f).then(() => true, () => false)) continue;
         try { await run(py, ['-m', 'pip', 'install', '--quiet', '-r', path.join(d, f)], d, 1800000); }
         catch (e) { await git('reset', '--hard', avant).catch(() => {}); log(id, `[Kane OS] pip a échoué sur ${f} : retour à la version précédente. ` + String(e.out || e.message).slice(-300)); return; }
       }
@@ -87,7 +89,7 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
   async function start(id) {
     const S = st[id], D = SV[id];
     if (S.state === 'ready' || S.state === 'external' || S.state === 'starting') return status(id);
-    if (await ping(id)) { S.state = adoptable(id) ? 'external' : 'error'; S.error = S.state === 'error' ? 'Une ancienne installation occupe le port. Arrêtez-la dans KaneOS avant d’ouvrir cette copie Kanevas.' : ''; S.ours = false; emit(id); return status(id); }
+    if (await ping(id)) { S.state = adoptable(id) ? 'external' : 'error'; S.error = S.state === 'error' ? 'Une ancienne installation occupe le port. Arrêtez-la dans KaneOS avant d’ouvrir cette copie Kane App.' : ''; S.ours = false; emit(id); return status(id); }
     const d = D.dir();
     if (!D.check(d)) { S.state = 'error'; S.error = D.name + ' introuvable ou incomplet : ' + d; emit(id); return status(id); }
     if (id === 'wallpaper') startRelay();
@@ -113,9 +115,9 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
       if (S.state !== 'starting') return;
       if (await ping(id)) { S.state = 'ready'; emit(id); return; }
       if (Date.now() - t0 > 600000) { S.state = 'error'; S.error = D.name + ' ne répond pas'; emit(id); return; }
-      setTimeout(wait, 1500);
+      setTimeout(wait, 400);
     };
-    setTimeout(wait, 1500);
+    setTimeout(wait, 400);         // un port fermé répond tout de suite : sonder souvent ne coûte rien et l'atelier s'ouvre dès qu'il est prêt
     return status(id);
   }
   function kill(id, explicit = false) {
@@ -139,7 +141,7 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
       try {
         if (u === '/api/health') return out(200, { application: 'Kane OS', relais: 'Kanevas' });
         if (u === '/api/status') { const s = engine.state(); return out(200, { webui: { status: s === 'ready' || s === 'external' ? 'running' : s === 'starting' ? 'starting' : 'stopped' } }); }
-        if (u === '/api/webui/profiles') return out(200, [{ id: 'kanevas', name: 'Moteur IA de Kanevas', args: '--api' }]);
+        if (u === '/api/webui/profiles') return out(200, [{ id: 'kanevas', name: 'Moteur IA de Kane App', args: '--api' }]);
         if (u === '/api/webui/start' && req.method === 'POST') { engine.start(); return out(200, { ok: true }); }
         if (u === '/api/comfyui/start' && req.method === 'POST') { start('comfyui'); return out(200, { ok: true }); }   // Geste IA de Wallpaper
         out(404, { error: 'introuvable' });
@@ -278,5 +280,15 @@ module.exports = function services({ getWin, root, engine, managed = () => ({ ac
     const d = id === 'comfyui' ? outputs.directory('comfyui') : id === 'wallpaper' ? await weaProjects() : null;
     if (d && fs.existsSync(d)) shell.openPath(d);
   });
-  return { status };
+  // ComfyUI garde ses modèles en mémoire graphique entre deux workflows : /free les décharge sans arrêter le serveur.
+  async function comfyFree() {
+    if (!(await ping('comfyui', 700))) return 'off';
+    try {
+      const queue = await (await fetch('http://127.0.0.1:8188/queue', { signal: AbortSignal.timeout(3000) })).json();
+      if (queue.queue_running?.length || queue.queue_pending?.length) return 'busy';
+      const r = await fetch('http://127.0.0.1:8188/free', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }), signal: AbortSignal.timeout(15000) });
+      return r.ok ? 'freed' : 'error';
+    } catch { return 'error'; }
+  }
+  return { status, comfyFree };
 };

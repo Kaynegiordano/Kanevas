@@ -94,3 +94,24 @@ body.suite-home #suite-home { display:flex; flex:1; min-width:0; min-height:0; }
   .suite-pipeline { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .suite-home-footer { align-items:flex-start; flex-direction:column; }
 }
+
+/* Palette de commandes (Ctrl+Maj+P) */
+.kp-back { position:fixed; inset:0; z-index:250; background:rgba(5,7,10,.28); display:flex; justify-content:center; align-items:flex-start; padding-top:11vh; animation:fade .1s ease-out; }
+.kp { width:min(660px, calc(100vw - 32px)); max-height:70vh; display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--border-2); border-radius:var(--radius-lg); box-shadow:var(--shadow); overflow:hidden; }
+.kp-input { border:0; border-bottom:1px solid var(--border); background:transparent; color:var(--text); font:inherit; font-size:15px; padding:14px 16px; outline:none; }
+.kp-input::placeholder { color:var(--muted); }
+.kp-list { overflow-y:auto; padding:6px; min-height:0; }
+.kp-row { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:6px; color:var(--text-2); cursor:default; }
+.kp-row .ic { width:18px; height:18px; flex-shrink:0; color:var(--muted); }
+.kp-row .ic svg { width:18px; height:18px; display:block; }
+.kp-row .kp-l { display:flex; flex-direction:column; min-width:0; flex:1; }
+.kp-row .kp-l b { font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kp-row .kp-w { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kp-row .kb { font-size:11px; color:var(--muted); font-family:var(--mono); white-space:nowrap; }
+.kp-row.sel { background:var(--accent); }
+.kp-row.sel b, .kp-row.sel .kp-w, .kp-row.sel .kb, .kp-row.sel .ic { color:#fff; }
+.kp-row.off { opacity:.45; }
+.kp-empty { padding:18px; text-align:center; color:var(--muted); }
+.kp-hint { padding:7px 14px; border-top:1px solid var(--border); font-size:11px; color:var(--muted); }
+#gpu-status { cursor:pointer; }
+#gpu-status:hover .gpu-memory-value { color:var(--text); }

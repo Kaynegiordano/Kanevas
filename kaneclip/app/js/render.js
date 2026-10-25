@@ -21,7 +21,7 @@
   R.TEMPLATES = [
     { id: 'project', name: 'Paramètres du projet', w: 0, h: 0, fps: 0, mbps: 0 },
     { id: '2160p60', name: 'UHD 4K 2160p 60 i/s (3840×2160)', w: 3840, h: 2160, fps: 60, mbps: 60 },
-    { id: '2160p30', name: 'UHD 4K 2160p 30 i/s (3840×2160)', w: 3840, h: 2160, fps: 30, mbps: 40 },
+    { id: '2160p30', name: 'UHD 4K 2160p 30 i/s (3840×2160)', w: 3840, h: 2160, fps: 30, mbps: 80 },
     { id: '1440p60', name: 'QHD 1440p 60 i/s (2560×1440)', w: 2560, h: 1440, fps: 60, mbps: 28 },
     { id: '1080p60', name: 'HD 1080p 60 i/s (1920×1080)', w: 1920, h: 1080, fps: 60, mbps: 16 },
     { id: '1080p30', name: 'HD 1080p 30 i/s (1920×1080)', w: 1920, h: 1080, fps: 30, mbps: 12 },
@@ -32,6 +32,8 @@
     { id: 'sq1080', name: 'Carré 1080×1080 30 i/s', w: 1080, h: 1080, fps: 30, mbps: 10 },
     { id: '480p', name: 'SD 854×480 30 i/s', w: 854, h: 480, fps: 30, mbps: 3 },
   ];
+  // Chaque ouverture repart sur 4K 30 i/s en qualité maximale
+  const DEFAULT_TEMPLATE = '2160p30', DEFAULT_Q = 14;
   const GIF_TEMPLATES = [
     { id: 'gif480', name: '480 px de large, 15 i/s', w: 480, h: 0, fps: 15 },
     { id: 'gif720', name: '720 px de large, 20 i/s', w: 720, h: 0, fps: 20 },
@@ -71,7 +73,7 @@
       case 'libx264': return ['-c:v', 'libx264', '-preset', 'medium', '-profile:v', 'high', ...(mode === 'cq' ? ['-crf', String(q)] : br), '-pix_fmt', 'yuv420p'];
       case 'libx265': return ['-c:v', 'libx265', '-preset', 'medium', ...(mode === 'cq' ? ['-crf', String(q)] : br), '-pix_fmt', 'yuv420p', '-tag:v', 'hvc1'];
       case 'h264_nvenc': case 'hevc_nvenc': case 'av1_nvenc':
-        return ['-c:v', encName, '-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', ...(mode === 'cq' ? ['-cq', String(q), '-b:v', '0'] : br), '-pix_fmt', 'yuv420p', ...(encName === 'hevc_nvenc' ? ['-tag:v', 'hvc1'] : [])];
+        return ['-c:v', encName, '-preset', 'p7', '-tune', 'hq', '-multipass', 'fullres', '-spatial-aq', '1', '-rc-lookahead', '32', '-rc', 'vbr', ...(mode === 'cq' ? ['-cq', String(q), '-b:v', '0'] : br), '-pix_fmt', 'yuv420p', ...(encName === 'hevc_nvenc' ? ['-tag:v', 'hvc1'] : [])];
       case 'h264_qsv': case 'hevc_qsv': return ['-c:v', encName, '-preset', 'medium', ...(mode === 'cq' ? ['-global_quality', String(q)] : br), '-pix_fmt', 'nv12', ...(encName === 'hevc_qsv' ? ['-tag:v', 'hvc1'] : [])];
       case 'h264_amf': case 'hevc_amf': return ['-c:v', encName, '-quality', 'quality', ...(mode === 'cq' ? ['-rc', 'cqp', '-qp_i', String(q), '-qp_p', String(q)] : br), '-pix_fmt', 'yuv420p', ...(encName === 'hevc_amf' ? ['-tag:v', 'hvc1'] : [])];
       case 'libsvtav1': return ['-c:v', 'libsvtav1', '-preset', '8', ...(mode === 'cq' ? ['-crf', String(q + 8)] : ['-b:v', `${b}M`]), '-pix_fmt', 'yuv420p'];
@@ -419,7 +421,10 @@
     const lp = KC.project.loop;
     const hasLoop = lp.out > lp.in + 1e-6;
     const baseName = KC.project.path ? U.stripExt(U.base(KC.project.path)) : (KC.project.info.title || 'Sans titre');
-    let dir = (await N.outputDir?.()) || KC.prefs.renderDir || (KC.project.path ? U.dir(KC.project.path) : await N.defaultDir());
+    // Par défaut D:\KaneClip\Rendus ; un dossier choisi sur D: est mémorisé
+    const defDir = await N.defaultDir('Rendus');
+    const saved = KC.prefs.renderDir;
+    let dir = saved && (/^d:/i.test(saved) || !/^d:/i.test(defDir)) ? saved : defDir;
     const list = h('div.fmt-list');
     const right = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 } });
     const nameIn = h('input.field', { value: baseName, style: { flex: 1 } });
@@ -429,7 +434,7 @@
       const r = await N.saveDialog({ title: 'Rendre en tant que', defaultPath: dirIn.value + '\\' + nameIn.value + '.' + fmt.ext, filters: [{ name: fmt.name, extensions: [fmt.ext] }] });
       if (r) { dirIn.value = U.dir(r); nameIn.value = U.stripExt(U.base(r)); }
     });
-    const region = KC.ui.select([['all', 'Projet entier (' + U.fmtTime(P.duration(), P.fps()) + ')'], ...(hasLoop ? [['loop', 'Sélection temporelle (' + U.fmtTime(lp.out - lp.in, P.fps()) + ')']] : [])], hasLoop && KC.prefs.loop ? 'loop' : 'all');
+    const region = KC.ui.select([['all', 'Projet entier (' + U.fmtTime(P.duration(), P.fps()) + ')'], ...(hasLoop ? [['loop', 'Sélection temporelle (' + U.fmtTime(lp.out - lp.in, P.fps()) + ')']] : [])], 'all');
     const opts = h('div.form', { style: { gridTemplateColumns: '150px 1fr' } });
     let ctl = {};
     const renderOpts = () => {
@@ -438,7 +443,7 @@
       opts.append(h('div.group-title', { text: fmt.name }), h('div.note.full', { text: fmt.desc }));
       if (fmt.v) {
         const tpls = fmt.v === 'gif' ? GIF_TEMPLATES : R.TEMPLATES;
-        ctl.tpl = KC.ui.select(tpls.map(t => [t.id, t.id === 'project' ? `Paramètres du projet (${st.width}×${st.height}, ${U.fmtFps(st.fps)} i/s)` : t.name]), KC.prefs.renderTemplate && tpls.some(t => t.id === KC.prefs.renderTemplate) ? KC.prefs.renderTemplate : tpls[0].id);
+        ctl.tpl = KC.ui.select(tpls.map(t => [t.id, t.id === 'project' ? `Paramètres du projet (${st.width}×${st.height}, ${U.fmtFps(st.fps)} i/s)` : t.name]), fmt.v === 'gif' ? tpls[0].id : DEFAULT_TEMPLATE);
         opts.append(h('label', { text: 'Modèle' }), ctl.tpl);
         const encs = encoderChoices(fmt);
         if (fmt.v !== 'gif') {
@@ -447,7 +452,7 @@
           if (fmt.v !== 'prores') {
             ctl.mode = KC.ui.select([['cq', 'Qualité constante (recommandé)'], ['vbr', 'Débit cible']], 'cq');
             const qv = h('span', { style: { width: '120px', color: 'var(--text-2)' } });
-            ctl.q = h('input', { type: 'range', min: 12, max: 36, step: 1, value: 20, style: { flex: 1 } });
+            ctl.q = h('input', { type: 'range', min: 12, max: 36, step: 1, value: DEFAULT_Q, style: { flex: 1 } });
             const qlabel = () => { const v = +ctl.q.value; qv.textContent = v + (v <= 17 ? ' (très haute)' : v <= 21 ? ' (haute)' : v <= 26 ? ' (moyenne)' : ' (légère)'); };
             ctl.q.addEventListener('input', qlabel); qlabel();
             ctl.mbps = h('input.field', { value: '12', style: { width: '80px' } });
@@ -491,6 +496,10 @@
           upInfo();
         }
       }
+      if (fmt.a && fmt.v) {
+        ctl.withAudio = KC.ui.check('Intégrer le son au fichier vidéo', true);
+        opts.append(h('div.group-title', { text: 'Son' }), h('label'), ctl.withAudio);
+      }
       if (fmt.a) {
         if (/^(aac|mp3|opus)$/.test(fmt.a)) { ctl.ab = KC.ui.select([['128', '128 kbit/s'], ['192', '192 kbit/s'], ['256', '256 kbit/s'], ['320', '320 kbit/s']], fmt.a === 'opus' ? '160' : '320'); if (fmt.a === 'opus') ctl.ab.innerHTML = '<option value="96">96 kbit/s</option><option value="128">128 kbit/s</option><option value="160" selected>160 kbit/s</option><option value="256">256 kbit/s</option>'; opts.append(h('label', { text: 'Audio' }), ctl.ab); }
         ctl.sr = KC.ui.select([['48000', '48 000 Hz'], ['44100', '44 100 Hz']], String(st.sampleRate || 48000));
@@ -521,7 +530,8 @@
       const out = dirIn.value.replace(/[\\/]$/, '') + '\\' + name + '.' + fmt.ext;
       if (await N.exists(out) && !(await KC.confirm('Remplacer le fichier ?', `« ${U.base(out)} » existe déjà dans ce dossier. Le remplacer ?`, 'Remplacer', true))) return;
       // paramètres
-      const o = { out, video: !!fmt.v, audio: !!fmt.a, gif: fmt.v === 'gif' };
+      const withAudio = !!fmt.a && (!ctl.withAudio || ctl.withAudio.input.checked);
+      const o = { out, video: !!fmt.v, audio: withAudio, gif: fmt.v === 'gif' };
       if (fmt.v) {
         const tpls = fmt.v === 'gif' ? GIF_TEMPLATES : R.TEMPLATES;
         const t = tpls.find(x => x.id === ctl.tpl.value) || tpls[0];
@@ -541,7 +551,7 @@
           if (e === 'h264_qsv' || e === 'hevc_qsv') o.pixfmt = 'nv12';
         }
       } else { o.width = 16; o.height = 16; o.fps = 30; }
-      if (fmt.a) { o.sampleRate = ctl.sr ? parseInt(ctl.sr.value, 10) : 48000; o.aArgs = audioCodecArgs(fmt.a, ctl.ab ? ctl.ab.value : 192, fmt.a === 'opus' ? 48000 : o.sampleRate); }
+      if (withAudio) { o.sampleRate = ctl.sr ? parseInt(ctl.sr.value, 10) : 48000; o.aArgs = audioCodecArgs(fmt.a, ctl.ab ? ctl.ab.value : 192, fmt.a === 'opus' ? 48000 : o.sampleRate); }
       if (region.value === 'loop') { o.from = lp.in; o.to = lp.out; } else { o.from = 0; o.to = P.duration(); }
       if (o.to - o.from < 0.04) { KC.toast('Rien à rendre', 'info'); return; }
       KC.prefs.renderFormat = fmt.id; KC.prefs.renderDir = dirIn.value; KC.prefs.save();

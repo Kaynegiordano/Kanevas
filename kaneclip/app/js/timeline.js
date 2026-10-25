@@ -1312,10 +1312,17 @@
   }
 
   /* ============================================================ boucle de dessin */
-  let lastTime = -1, lastDrawn = -1;
+  // Elle s'endort quand rien ne change (ni lecture, ni position, ni redessin demandé) ; le moteur et T.dirty la réveillent.
+  let lastTime = -1, lastDrawn = -1, looping = false, dirty = T.dirty;
+  const wake = () => { if (!looping) { looping = true; requestAnimationFrame(frame); } };
+  Object.defineProperty(T, 'dirty', { enumerable: true, get: () => dirty, set: v => { dirty = v; if (v) wake(); } });
+  E.onWake(wake);
   function frame() {
-    requestAnimationFrame(frame);
-    if (!KC.project) return;
+    let again = true;
+    try { again = step(); } finally { if (again) requestAnimationFrame(frame); else looping = false; }
+  }
+  function step() {
+    if (!KC.project || !cv) return false;
     if (E.time !== lastTime) {
       lastTime = E.time;
       updateClock(); updatePosition();
@@ -1325,6 +1332,7 @@
     else if (lastDrawn !== E.time) { draw(false); lastDrawn = E.time; }
     // vu-mètres de piste
     if (E.playing) for (const m of KC.$$('.track-h .meter')) { const v = E.trackLevel(m.dataset.track); m.firstChild.style.width = Math.min(100, Math.sqrt(v) * 100) + '%'; }
+    return E.playing || T.dirty || E.time !== lastTime || lastDrawn !== E.time;
   }
 
   T.init = () => {
@@ -1373,7 +1381,8 @@
     });
     KC.on('change', updateTransport);
     KC.on('project-loaded', updateTransport);
-    requestAnimationFrame(frame);
+    KC.on('project-loaded', wake);
+    wake();
   };
   function updateEmpty() {
     const el = KC.$('#tl-empty');

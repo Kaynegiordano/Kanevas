@@ -20,6 +20,16 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Optimisation générale, palette de commandes, VRAM libérée (1.13.0)
+
+- **Copies de secours sans gel** : les PNG des calques sont encodés en parallèle dans des workers (`app/js/codec.js`, `png-worker.js`) à partir d'instantanés pris dans la même tâche ; un calque inchangé (même empreinte de pixels) n'est pas réencodé. La vignette part de la copie réduite tenue pour l'écran au lieu de recomposer tout le document. Mesures sur une image 4K à 3 calques : gel de l'interface 690 → 40 ms, copie suivante 940 → 240 ms ; sur 6000 × 4000 à 5 calques : 946 → 31 ms. Pixels relus identiques. Le magasin des copies (`recovery-store.cjs`) lit l'en-tête sans charger l'image et écrit par morceaux (liste 74 → 4 ms), format de fichier inchangé.
+- **Montage au repos** (KaneClip 1.4.2) : l'aperçu et la timeline ne demandent plus d'image quand rien ne bouge ; Montage masqué 175 → 17 ms de calcul par 15 s. Inclut KaneClip 1.4.1 (rendu 4K, son au choix).
+- **Jauge VRAM** : un seul `nvidia-smi -lms` tant que la jauge est lue (environ 1 ms par relevé au lieu de 30 ms pour un processus toutes les 3 s), arrêté 10 s après la dernière lecture.
+- **Libérer la mémoire graphique** : clic sur la jauge VRAM → Libérer maintenant (modèle du Studio, modèles de ComfyUI via `/free`) ou décharger le Studio après 10 min / 30 min (défaut) / 1 h sans génération (aussi dans Préférences › IA et Studio). Le modèle est rechargé à la génération suivante et préchauffé à l'ouverture du Studio ; le Forge de Kane OS n'est pas touché.
+- **Palette de commandes** (Ctrl+Maj+P ou la loupe de la barre de titre) : commandes des menus de l'espace actif (y compris Montage), outils, espaces, fichiers récents et réglages ; recherche sans accents, flèches + Entrée, les dernières commandes en tête.
+- **Ateliers plus prompts** : Animation et ComfyUI s'ouvrent dès que leur serveur répond (sondage 0,4 s au lieu de 1,5 s) ; la mise à jour de ComfyUI au lancement n'attend plus le réseau plus de 20 s et ne relance pip que si ses fichiers de dépendances ont changé.
+- Tests : `node tools/test-recovery-store.cjs`, `node tools/test-gpu-memory.cjs`.
+
 ### Un clic = plein écran, même pendant une génération (1.12.16)
 
 - Studio IA (txt2img, img2img, Extras) : un **simple clic** sur le résultat l'ouvre en plein écran (avant : double-clic). Glisser déplace toujours l'image zoomée, la molette zoome ; un double-clic par habitude n'ouvre puis ne referme plus le plein écran.

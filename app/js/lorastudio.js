@@ -102,7 +102,7 @@
       if (r.ok) n++;
     }
     await openProject(S.cur);
-    msg('project', `${n} image(s) ajoutée(s) depuis Kanevas.`);
+    msg('project', `${n} image(s) ajoutée(s) depuis Kane App.`);
   }
   async function applyPreset() {
     if (!S.cur) return msg('preset', 'Select a project first.');
@@ -161,7 +161,7 @@
       S.msgs.train = `Started (pid ${r.pid}). ${r.count} image(s) x ${f.repeats} repeats${r.resolutions.length > 1 ? ` x ${r.resolutions.length} resolutions` : ''} = ${r.per_epoch} per epoch, `
         + `${+f.epochs > 0 ? f.epochs + ' epochs' : f.steps + ' steps set directly'} = ${r.total} steps total at ${r.resolutions.map(x => x + 'px').join(' x ')}, dim/alpha ${f.dim}, `
         + `${f.optimizer === 'prodigy' ? 'lr adaptive' : 'lr ' + (+f.learning_rate).toPrecision(2)}.\n\nBudget roughly **${hh}h${String(mm).padStart(2, '0')}**. The result lands in \`${r.output}\`.\n\n`
-        + 'Kanevas attendra la fin de cet entraînement pour les nouvelles générations.' + note;
+        + 'Kane App attendra la fin de cet entraînement pour les nouvelles générations.' + note;
       S.run = { run: r.run, project: S.cur, running: true, state: 'running', pct: 0, text: S.msgs.train, checkpoints: [], samples: [] };
       startPoll(); render();
     } catch (e) { msg('train', '⚠️ ' + e.message); }
@@ -310,7 +310,7 @@
         tbtn('Import images', () => { if (!folder.value.trim()) return msg('project', 'Give a folder path, or drop some images.'); importFrom({ folder: folder.value.trim() }).catch(() => {}); }, '.primary')),
       h('div.fx-info', { text: 'Pour de gros lots haute résolution : indiquez le dossier puis Import images. Copie locale ; qualité originale conservée.' }),
       drop,
-      h('div.fx-outbtns', h('span.fx-info', { text: 'Depuis Kanevas :' }), tbtn('Image du document', () => addFromKanevas('doc')), tbtn('Sélection', () => addFromKanevas('sel')), tbtn('Documents ouverts', () => addFromKanevas('all'))),
+      h('div.fx-outbtns', h('span.fx-info', { text: 'Depuis Kane App :' }), tbtn('Image du document', () => addFromKanevas('doc')), tbtn('Sélection', () => addFromKanevas('sel')), tbtn('Documents ouverts', () => addFromKanevas('all'))),
       msgBox('project'), on ? gallery : null);
     // carte Preset
     const kinds = Object.entries(I.presets);

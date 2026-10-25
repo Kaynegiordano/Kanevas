@@ -36,13 +36,13 @@
   const spaceColor = () => KS.appearance.controls();
 
   // Général
-  add({ tab: 'general', group: 'Démarrage', key: 'startPage', def: 'project', label: 'Écran au lancement', desc: 'Ce que Kanevas affiche à l’ouverture, quand aucun document n’est repris.', type: 'seg', opts: [['project', 'Projet'], ['edit', 'Retouche']] });
+  add({ tab: 'general', group: 'Démarrage', key: 'startPage', def: 'project', label: 'Écran au lancement', desc: 'Ce que Kane App affiche à l’ouverture, quand aucun document n’est repris.', type: 'seg', opts: [['project', 'Projet'], ['edit', 'Retouche']] });
   on('general', 'Protection du travail', 'autoRecovery', 'Sauvegardes de secours automatiques', 'Copies locales séparées du projet, après 5 secondes d’inactivité puis à intervalle régulier. La récupération est proposée au lancement.', true, { after: () => KS.recovery?.configure() });
   add({ tab: 'general', group: 'Protection du travail', key: 'recoveryInterval', def: 30, label: 'Intervalle de secours', type: 'seg', num: true, opts: [['15', '15 s'], ['30', '30 s'], ['60', '1 min'], ['120', '2 min']], after: () => KS.recovery?.configure() });
   add({ tab: 'general', group: 'Retouche', key: 'historySize', def: 60, label: 'États d’historique', desc: 'Nombre d’étapes que l’on peut annuler. Plus il est élevé, plus la mémoire est sollicitée.', type: 'scrub', min: 5, max: 300 });
   on('general', 'Retouche', 'editableAdjustments', 'Créer des réglages modifiables', 'Les réglages d’image sont conservés dans des calques. Double-cliquez sur leur vignette pour les reprendre.', true);
   on('general', 'Retouche', 'keepGenInfo', 'Conserver les paramètres de génération dans les PNG', 'Ajoute le prompt et les réglages IA aux fichiers PNG exportés.', true);
-  add({ tab: 'general', group: 'Mises à jour', label: 'Mises à jour de Kanevas', desc: 'Vérifie les nouvelles versions publiées sur GitHub.', kw: 'version télécharger', type: 'btns', hidden: () => !KS.updates?.available,
+  add({ tab: 'general', group: 'Mises à jour', label: 'Mises à jour de Kane App', desc: 'Vérifie les nouvelles versions publiées sur GitHub.', kw: 'version télécharger', type: 'btns', hidden: () => !KS.updates?.available,
     btns: () => [['Rechercher maintenant', () => C.checkUpdates()], P.skipUpdate ? ['Réafficher la version ignorée', e => { delete P.skipUpdate; P.save(); e.currentTarget.remove(); KS.toast('Les mises à jour seront de nouveau proposées', 'ok'); }] : null] });
 
   // Affichage : tout ce que l’on peut masquer
@@ -84,6 +84,7 @@
 
   // IA et Studio
   on('ai', 'Moteur', 'engineAuto', 'Démarrer le moteur automatiquement', 'Lance le moteur IA local dès qu’une fonction en a besoin.', true, { kw: 'forge génération' });
+  add({ tab: 'ai', group: 'Moteur', key: 'vramIdle', def: 30, label: 'Libérer la mémoire graphique', desc: 'Décharge le modèle du Studio (près de 9 Go) après ce délai sans génération. Il est rechargé à la génération suivante ou à l’ouverture du Studio. La jauge VRAM, en bas de la fenêtre, libère aussi la mémoire à la demande.', type: 'seg', num: true, kw: 'vram gpu carte graphique décharger jeu', opts: [['10', '10 min'], ['30', '30 min'], ['60', '1 h'], ['0', 'Jamais']], after: () => KS.gpuMemory?.setIdle?.(P.vramIdle) });
   on('ai', 'Génération', 'hideAfterGen', 'Masquer les calques Zone IA / Croquis IA après une génération', null, true);
   on('ai', 'Génération', 'autoSave', 'Archiver les générations du Studio', 'Enregistre chaque image générée dans le dossier de sortie.', true);
   add({ tab: 'ai', group: 'Moteurs et modèles', label: 'Moteur local', desc: 'Dossier, profil et démarrage du moteur du Studio.', type: 'btns', hidden: () => !N?.engineConfig, btns: () => [['Configurer le moteur local…', () => KS.dialogs.enginePrefs()]] });
@@ -93,7 +94,7 @@
   add({ tab: 'advanced', group: 'Disposition', label: 'Panneaux', desc: 'Remet les panneaux latéraux à leur place d’origine.', type: 'btns', btns: () => [['Rétablir la disposition des panneaux', () => { C.resetWorkspace(); KS.toast('Disposition rétablie', 'ok'); }]] });
   add({ tab: 'advanced', group: 'Disposition', label: 'Raccourcis clavier', type: 'btns', btns: () => [['Afficher les raccourcis…', () => KS.dialogs.shortcuts()]] });
   add({ tab: 'advanced', group: 'Données', label: 'Liste des fichiers récents', desc: 'Efface la liste. Les fichiers ne sont pas supprimés.', type: 'btns', btns: () => [['Vider la liste', () => { P.recent = []; P.save(); KS.emit('recent'); KS.toast('Liste vidée', 'ok'); }]] });
-  add({ tab: 'advanced', group: 'Données', label: 'Applications intégrées', desc: 'Migration des moteurs vers Kanevas.', type: 'btns', hidden: () => !N, btns: () => [['Migration vers Kanevas…', () => KS.dialogs.runtimeMigration()]] });
+  add({ tab: 'advanced', group: 'Données', label: 'Applications intégrées', desc: 'Migration des moteurs vers Kane App.', type: 'btns', hidden: () => !N, btns: () => [['Migration vers Kane App…', () => KS.dialogs.runtimeMigration()]] });
 
   const get = s => s.get ? s.get() : (P[s.key] === undefined ? s.def : P[s.key]);
   const commit = (s, v) => {

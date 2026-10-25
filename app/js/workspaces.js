@@ -32,7 +32,7 @@
       const menu = (await WX.request('video', 'menu-tree')).find(m => m.label === label);
       const items = convertMenu(menu ? menu.items : []);
       if (label !== 'Fichier') return items;
-      return [{ label: 'Ajouter le document Kanevas', disabled: !KS.state.doc, action: () => KS.suite.run('Ajout au montage', () => C.toVideo()).catch(() => {}) },
+      return [{ label: 'Ajouter le document Kane App', disabled: !KS.state.doc, action: () => KS.suite.run('Ajout au montage', () => C.toVideo()).catch(() => {}) },
         { label: 'Bibliothèque du projet', action: () => KS.suite.library() }, { sep: true }, ...items];
     },
   };
@@ -232,7 +232,7 @@
     sync();
   }, 0));
   KS.beforeClose = async () => {
-    try { if ((await N.runtimeMigrationState?.())?.running) { KS.toast('La migration continue. Attendez sa fin avant de quitter Kanevas.', 'info', 5000); return false; } } catch { /* version sans migration */ }
+    try { if ((await N.runtimeMigrationState?.())?.running) { KS.toast('La migration continue. Attendez sa fin avant de quitter Kane App.', 'info', 5000); return false; } } catch { /* version sans migration */ }
     if (WX.el.video?.ready) { try { await WX.request('video', 'save'); } catch (e) { KS.toast(e.message, 'err'); return false; } }
     if (WX.el.wallpaper?.ready) { try { await WX.request('wallpaper', 'flush'); } catch (e) { KS.toast(e.message, 'err'); return false; } }
     // Le dialogue natif de KaneClip reste disponible pour un montage non rattaché au projet.

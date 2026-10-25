@@ -122,6 +122,8 @@
     try { const r = await N.forgeWarm(url()); warmed = !!(r && r.ok); } catch { /* sera chargé à la première génération */ }
     warming = false; renderTop();
   }
+  // modèle déchargé pour libérer la mémoire graphique : préchauffé de nouveau à la prochaine ouverture du Studio
+  N?.onVramReleased?.(() => { warmed = false; });
 
   /* ---------------------------------------------------------------- petits composants façon Forge */
   const field = (label, ctl, tip) => h('div.fx-field', { title: tip || '' }, label ? h('label.fx-lbl', { text: label }) : null, ctl);
@@ -1733,7 +1735,7 @@
     const pane = (title, ...kids) => h('div.fx-panel', h('div.fx-h', { text: title }), ...kids);
     return h('div.fx-settings',
       pane('Moteur du Studio IA',
-        h('div.fx-info', { text: !E ? 'Indisponible dans cette version.' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS (déjà lancé) : Kanevas l\'utilise.' : 'Moteur démarré par Kanevas, profil ' + (E.profile || 'Kane OS') + '. Il s\'arrête quand vous quittez Kanevas.') : E.state === 'starting' ? 'Démarrage…' : E.state === 'error' ? 'Erreur : ' + E.error : 'Arrêté.' }),
+        h('div.fx-info', { text: !E ? 'Indisponible dans cette version.' : E.ready() ? (E.state === 'external' ? 'Forge de Kane OS (déjà lancé) : Kanevas l\'utilise.' : 'Moteur démarré par Kane App, profil ' + (E.profile || 'Kane OS') + '. Il s\'arrête quand vous quittez Kanevas.') : E.state === 'starting' ? 'Démarrage…' : E.state === 'error' ? 'Erreur : ' + E.error : 'Arrêté.' }),
         E ? h('div.fx-outbtns', tbtn('Démarrer', () => E.ensure().then(ok => ok && loadCat()), '.primary'), tbtn('Arrêter', () => E.stop(true)), tbtn('Journal…', () => E.showLog && E.showLog()), tbtn('Profil…', () => E.pickProfile && E.pickProfile()), tbtn('Configurer le moteur…', () => KS.dialogs.enginePrefs())) : null,
         check('Démarrer le moteur automatiquement quand il le faut', { v: KS.prefs.engineAuto !== false }, 'v', '', v => { KS.prefs.engineAuto = v; KS.prefs.save(); })),
       pane('Génération',
