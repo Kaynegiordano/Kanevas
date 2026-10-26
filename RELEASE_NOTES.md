@@ -1,3 +1,13 @@
+# 1.14.0 — Studio IA : onglet Merge
+
+- Nouvel onglet **Merge** juste sous Lora : mixer des LoRA, mélanger des checkpoints, fusionner des LoRA dans un checkpoint.
+- **LoRA + LoRA** : un seul LoRA à partir de plusieurs, avec une force par LoRA. « Exact » additionne les rangs (identique à charger les LoRA ensemble) ; « Recompressé » ramène la somme au rang voulu (SVD).
+- **Checkpoint + Checkpoint** : somme pondérée A·(1−α)+B·α, ou différence ajoutée A+α·(B−C) ; dégradé d’α le long des blocs (structure de A, style de B). Les checkpoints de noms de couches différents (ANIMA « net. » / « model.diffusion_model. ») se marient.
+- **LoRA → Checkpoint** : le LoRA fait partie du modèle, sans rien à charger ni écrire dans l’invite. Les couches sans LoRA restent identiques ; le compte rendu indique combien de modules ont été appliqués.
+- Vérifications avant de lancer : architectures lues dans les fichiers (ANIMA, SDXL, SD 1.5…), fusion bloquée si elles diffèrent. Progression, annulation, précision de sortie (bf16 / fp16 / fp32).
+- Fichiers d’origine jamais modifiés ; résultats dans output/merge (checkpoints, listés par Forge dans Stable-diffusion/KaneApp) et output/lora (LoRA). Bouton « Utiliser dans le Studio » : relit les modèles et sélectionne le checkpoint obtenu.
+- Essais sur deux checkpoints ANIMA de 4 Go : fusion en 3 à 5 secondes.
+
 # 1.13.1 — Animation : la scène va dans « a poster »
 
 - Sortie Scène : « a poster » contient la scène Wallpaper Engine et plus aucun fond Web ; Wallpaper Engine la reconnaît comme une scène.

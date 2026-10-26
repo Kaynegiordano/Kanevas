@@ -11,6 +11,7 @@
     'lasso-magnetic': '<path d="M7.2 11.6L3.6 6.4 9.8 3l7.4 1.6-.4 4.2"/><path d="M7 11.8c-1.5.4-2.3 1.6-1.8 2.6.4.9 1.6 1 2.2.2"/><path d="M5.8 15c-.4 1.6-1.4 3-2.8 3.9"/><path d="M13 12v4.8a3.5 3.5 0 0 0 7 0V12"/><path d="M13 14.4h2.4M17.6 14.4H20"/>',
     wand: '<path d="M4 20l11-11"/><path d="M15 9l2-2"/><path d="M17 3v2M21 7h-2M19.5 4.5l-1.2 1.2M13 4l.6 1.5M20 11l-1.5-.6"/>',
     'quick-select': '<circle cx="9" cy="9" r="6.2" stroke-dasharray="2.4 2"/><path d="M6.4 11.6c0-1.6 1-2.8 2.6-3.3l1.7 1.7c-.5 1.6-1.7 2.6-3.3 2.6-.6 0-1-.4-1-1z" fill="currentColor"/><path d="M10.7 8.3l1.6-1.6 1 1-1.6 1.6M12.8 7.2l7.7 13.3"/>',
+    merge: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
     crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/>',
     eyedropper: '<path d="M14.5 4.5l5 5"/><path d="M17 3.5a2.1 2.1 0 0 1 3 3L17.5 9l-3-3z"/><path d="M15.5 7.5L6 17l-2 3 3-2 9.5-9.5"/>',
     'heal-spot': '<rect x="3.5" y="8.5" width="17" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M10 12h4M12 10v4"/><path d="M19 3l.5 1.5L21 5l-1.5.5L19 7l-.5-1.5L17 5l1.5-.5z"/>',

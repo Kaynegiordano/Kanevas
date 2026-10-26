@@ -1137,3 +1137,18 @@ html.kn-pinned #app > :not(#titlebar) { margin-left: 236px; }
 .fx-view.fx-peek, .iv-viewport.iv-click-open { cursor: zoom-in; }
 .iv-viewport.iv-click-open:active { cursor: grabbing; }
 .fx-stale { padding: 6px 10px; border-left: 3px solid var(--fx-accent); background: var(--fx-accent-soft); border-radius: 6px; margin: 0 0 8px; }
+
+/* Merge (Studio IA) */
+.mg-page { grid-template-columns: minmax(0, 1100px); }
+.mg-col { gap: 12px; }
+.mg-rows { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.mg-row { display: grid; grid-template-columns: minmax(240px, 1.4fr) minmax(200px, 1fr) 28px; gap: 12px; align-items: end; width: 100%; }
+.mg-pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mg-note { min-height: 16px; }
+.mg-x { width: 28px; height: 28px; border: 0; border-radius: 6px; background: var(--raised); color: var(--text-2); cursor: pointer; }
+.mg-x:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.mg-x:disabled { opacity: .3; cursor: default; }
+.mg-warn:empty { display: none; }
+.mg-err { color: var(--danger); }
+.mg-result { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.mg-bar { margin-top: 4px; }

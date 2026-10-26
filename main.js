@@ -563,6 +563,108 @@ ipcMain.handle('lora-call', async (_e, cmd, args = {}) => {
     return out;
   } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
+/* ------------------------------------------------------------------ Merge (fusion de LoRA et de checkpoints) */
+// merge_bridge.py fait les calculs avec le Python du Studio. La page ne passe que des identifiants « ckpt:<chemin relatif> » /
+// « lora:<chemin relatif> » : ils sont résolus ici, dans les dossiers de modèles, et la sortie va toujours dans output/merge ou output/lora.
+const mergeBridgePath = () => path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), 'merge_bridge.py');
+let mergeChild = null, mergeOut = '';
+const mergeRoots = () => {
+  loadDirs();
+  if (!forgeDirs || !forgeDirs.models) throw new Error('Démarrez Forge une fois depuis Kane OS : Kane App y lit ses dossiers de modèles');
+  return { ckpt: path.join(forgeDirs.models, 'Stable-diffusion'), lora: forgeDirs.lora || path.join(forgeDirs.models, 'Lora') };
+};
+const mergeResolve = id => {
+  const m = /^(ckpt|lora):(.+)$/.exec(String(id || '')); if (!m) throw new Error('Modèle invalide');
+  const root = mergeRoots()[m[1]], file = path.resolve(root, m[2]);
+  if (!insideDir(root, file) || !/\.safetensors$/i.test(file) || !fs.existsSync(file)) throw new Error('Modèle introuvable : ' + m[2]);
+  return file;
+};
+const mergeSpawn = (cmd, input, onLine) => new Promise((resolve, reject) => {
+  const py = path.join(forgeDirs.data, 'venv', 'Scripts', 'python.exe');
+  if (!fs.existsSync(py)) return reject(new Error('Python du Studio introuvable : ' + py));
+  const child = require('child_process').spawn(py, [mergeBridgePath(), cmd], { cwd: forgeDirs.data, windowsHide: true, env: { ...managedRuntime.environment('studio'), PYTHONIOENCODING: 'utf-8' } });
+  mergeChild = child; let buf = '', last = null, err = '';
+  const feed = chunk => {
+    buf += chunk; let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+      try { last = JSON.parse(line); if (last.progress !== undefined && onLine) onLine(last); } catch { /* bruit de bibliothèque */ }
+    }
+  };
+  child.stdout.setEncoding('utf8'); child.stdout.on('data', feed);
+  child.stderr.on('data', d => { err = (err + d).slice(-4000); });
+  child.on('error', reject);
+  child.on('close', code => {
+    mergeChild = null; feed('\n');
+    if (child.killedByUs) return resolve({ ok: false, cancelled: true, error: 'Fusion annulée' });
+    last && last.ok !== undefined ? resolve(last) : reject(new Error('Fusion interrompue (' + code + ') ' + err.slice(-300)));
+  });
+  child.stdin.end(JSON.stringify(input));
+});
+const walkModels = (dir, out = [], depth = 0) => {
+  let ents = []; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of ents) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory() || (e.isSymbolicLink() && fs.statSync(f, { throwIfNoEntry: false })?.isDirectory())) { if (depth < 4) walkModels(f, out, depth + 1); }
+    else if (/\.safetensors$/i.test(e.name)) out.push(f);
+  }
+  return out;
+};
+ipcMain.handle('merge-list', () => {
+  try {
+    const roots = mergeRoots();
+    const list = kind => walkModels(roots[kind]).map(f => {
+      const st = fs.statSync(f), rel = path.relative(roots[kind], f).replace(/\\/g, '/');
+      return { id: kind + ':' + rel, name: rel.replace(/\.safetensors$/i, ''), size: st.size, mtime: st.mtimeMs };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+    return { ok: true, checkpoints: list('ckpt'), loras: list('lora') };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('merge-inspect', async (_e, ids) => {
+  try {
+    if (mergeChild) throw new Error('Une fusion est en cours');
+    mergeRoots(); if (!Array.isArray(ids) || !ids.length || ids.length > 8) throw new Error('Demande invalide');
+    return await mergeSpawn('inspect', { files: ids.map(mergeResolve) });
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+ipcMain.handle('merge-run', async (event, job) => {
+  let out = '';
+  try {
+    if (mergeChild) throw new Error('Une fusion est déjà en cours');
+    const roots = mergeRoots(), models = roots.ckpt.replace(/[\\/]Stable-diffusion$/i, '');
+    const kind = job && job.kind;
+    if (!['checkpoints', 'lora_into_checkpoint', 'loras'].includes(kind)) throw new Error('Type de fusion inconnu');
+    const dtype = ['source', 'bf16', 'fp16', 'fp32'].includes(job.dtype) ? job.dtype : 'source';
+    const num = (v, lo, hi, d) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+    const loraList = () => {
+      const l = (job.loras || []).slice(0, 12).map(x => ({ path: mergeResolve(x.id), weight: num(x.weight, -4, 4, 1) }));
+      if (!l.length) throw new Error('Choisissez au moins un LoRA');
+      return l;
+    };
+    const input = { dtype };
+    if (kind === 'checkpoints') Object.assign(input, { models: (job.models || []).slice(0, 3).map(mergeResolve), mode: job.mode === 'diff' ? 'diff' : 'sum', alpha: num(job.alpha, -2, 3, 0.5), alpha_end: job.alpha_end == null ? null : num(job.alpha_end, -2, 3, 0.5) });
+    else if (kind === 'lora_into_checkpoint') Object.assign(input, { model: mergeResolve(job.model), loras: loraList() });
+    else Object.assign(input, { loras: loraList(), method: job.method === 'svd' ? 'svd' : 'concat', rank: Math.round(num(job.rank, 1, 256, 32)) });
+    const dir = kind === 'loras' ? outputPaths.loraDirectory(models) : outputPaths.mergeDirectory(models);
+    const stem = String(job.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '_').replace(/^\.+|\.+$/g, '').trim().slice(0, 80) || 'merge';
+    out = path.join(dir, stem + '.safetensors');
+    for (let i = 2; fs.existsSync(out); i++) out = path.join(dir, `${stem}_${i}.safetensors`);
+    input.out = out; mergeOut = out;
+    const send = m => { try { event.sender.send('merge-progress', m); } catch { /* fenêtre fermée */ } };
+    const r = await mergeSpawn(kind, input, send);
+    if (!r.ok) { try { fs.rmSync(out + '.tmp', { force: true }); } catch { /* rien */ } return r; }
+    return { ...r, name: path.basename(out, '.safetensors'), id: (kind === 'loras' ? 'lora:KaneApp/' : 'ckpt:KaneApp/') + path.basename(out) };
+  } catch (err) {
+    if (out) try { fs.rmSync(out + '.tmp', { force: true }); } catch { /* rien */ }
+    return { ok: false, error: String(err.message || err) };
+  }
+});
+ipcMain.handle('merge-cancel', () => {
+  if (!mergeChild) return { ok: true };
+  mergeChild.killedByUs = true; try { mergeChild.kill(); } catch { /* déjà fini */ }
+  if (mergeOut) try { fs.rmSync(mergeOut + '.tmp', { force: true }); } catch { /* rien */ }
+  return { ok: true };
+});
 // Miniature d'une image du dossier des entraînements ou des LoRA (aperçus, échantillons)
 ipcMain.handle('lora-thumb', (_e, file, width = 256) => {
   try {

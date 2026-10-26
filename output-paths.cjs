@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 module.exports = root => {
   const directory = id => {
-    if (!['studio', 'animation', 'comfyui', 'montage', 'lora', 'edition'].includes(id)) throw new Error('Sortie inconnue');
+    if (!['studio', 'animation', 'comfyui', 'montage', 'lora', 'edition', 'merge'].includes(id)) throw new Error('Sortie inconnue');
     const dir = path.join(root(), 'output', id); fs.mkdirSync(dir, { recursive: true }); return dir;
   };
   const studioOptions = () => Object.fromEntries(Object.entries({
@@ -20,6 +20,14 @@ module.exports = root => {
       if (!fs.existsSync(file + '.before-output')) fs.writeFileSync(file + '.before-output', previous);
       fs.writeFileSync(file + '.output.tmp', JSON.stringify({ ...config, ...options }, null, 2));
       fs.renameSync(file + '.output.tmp', file);
+    },
+    // checkpoints fusionnés : sortie publique output/merge, vue par Forge via models/Stable-diffusion/KaneApp
+    mergeDirectory(models) {
+      const dir = directory('merge'), link = path.join(models, 'Stable-diffusion', 'KaneApp');
+      if (fs.existsSync(link)) {
+        if (fs.realpathSync(link).toLowerCase() !== fs.realpathSync(dir).toLowerCase()) throw new Error('Le dossier de modèles Stable-diffusion/KaneApp est déjà utilisé');
+      } else { fs.mkdirSync(path.dirname(link), { recursive: true }); fs.symlinkSync(dir, link, 'junction'); }
+      return dir;
     },
     loraDirectory(models) {
       const dir = directory('lora'), link = path.join(models, 'Lora', 'KaneApp');

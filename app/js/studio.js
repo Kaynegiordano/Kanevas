@@ -239,7 +239,7 @@
   const els = {};
   let root = null;
   const RAIL = [['txt2img', 'Créer', 'file-plus'], ['img2img', 'Transformer', 'image'], ['extras', 'Agrandir', 'upscale'], ['pnginfo', 'Paramètres PNG', 'info'],
-    ['train', 'Lora', 'layers'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
+    ['train', 'Lora', 'layers'], ['merge', 'Merge', 'merge'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
   function mountPage() {
     root = KS.$('#studio');
     root.className = 'fx';
@@ -350,10 +350,12 @@
       case 'pnginfo': content = pngTab(); break;
       case 'settings': content = settingsTab(); break;
       case 'train': content = h('div.fx-train'); break;
+      case 'merge': content = h('div.fx-train.mg-page'); break;
       default: FX.tab = 'txt2img'; content = t2iTab();
     }
     els.body.replaceChildren(content);
     if (FX.tab === 'train') KS.trainTab ? KS.trainTab.render(content) : content.append(h('div.fx-note', { text: 'Atelier indisponible.' }));
+    if (FX.tab === 'merge') KS.mergeTab ? KS.mergeTab.render(content) : content.append(h('div.fx-note', { text: 'Merge indisponible.' }));
   }
   function t2iTab() {
     const c = CTX.t2i;
@@ -1901,6 +1903,18 @@
   G.applyInfo = async t => { applyInfoTo('t2i', t); FX.tab = 'txt2img'; save(); await C.toggleStudio(true); render(); };
   C.pngInfo = async () => { const d = D(); if (d) OUT.png = { canvas: d.composite(), name: d.name, text: d.genInfo || '', chunks: d.genInfo ? { parameters: d.genInfo } : {} }; FX.tab = 'pnginfo'; save(); await C.toggleStudio(true); render(); };
   C.loraStudio = async () => { FX.tab = 'train'; save(); await C.toggleStudio(true); render(); };
+  // Merge : relire les modèles de Forge après une fusion, et charger le checkpoint obtenu
+  SD.refreshModels = async () => {
+    if (!KS.engine || !KS.engine.ready()) return false;
+    await N.forgeRefreshCheckpoints(url()); await N.forgeRefreshLoras(url()); await loadCat();
+    return true;
+  };
+  SD.useCheckpoint = async file => {
+    const want = String(file || '').replace(/\\/g, '/').toLowerCase();
+    const m = cat && cat.models.find(x => String(x.file || '').replace(/\\/g, '/').toLowerCase().endsWith('/' + want) || String(x.file || '').replace(/\\/g, '/').toLowerCase().endsWith(want));
+    if (!m) return KS.toast('Checkpoint introuvable dans Forge : relisez les modèles (🔄)', 'err', 5000);
+    await setOptions({ sd_model_checkpoint: m.title }, 'Checkpoint : ' + norm(m.title) + ' (chargé à la prochaine génération)');
+  };
   KS.studioApi = {
     isBusy: () => !!(BUSY || PREPARING),
     interrupt,
