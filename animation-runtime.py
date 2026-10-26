@@ -43,8 +43,8 @@ def worker(script, args):
                     print('>> Libération du Studio : ' + str(exc), flush=True)
 
         forge.rebouche = rebuild
-        # Le checkpoint du Studio reste la référence ; pas de substitution INPAINT_Kane.
-        forge._checkpoint = lambda: None
+        # ANIMATION_INPAINT (tout-en-un, créé dans Merge) s'il est dans Forge ; sinon le checkpoint du Studio reste la référence, sans substitution d'INPAINT_Kane.
+        forge.CHECKPOINTS = ('ANIMATION_INPAINT',)
     sys.argv = [script, *args]
     runpy.run_path(script, run_name='__main__')
     if os.path.basename(script) == 'auto_anim.py' and os.path.isfile('anim.json') and os.path.isfile('assets.js'):

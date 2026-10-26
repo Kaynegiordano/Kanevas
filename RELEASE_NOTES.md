@@ -1,3 +1,8 @@
+# 1.14.2 — Animation : rebouchage avec ANIMATION_INPAINT
+
+- Le rebouchage des tuiles (mode Découpes) utilise le checkpoint tout-en-un **ANIMATION_INPAINT** (créé avec Merge) quand Forge le voit ; sinon le checkpoint du Studio, comme avant.
+- Le temps de la passe, les modules VAE / encodeur du Studio sont écartés (le fichier porte les siens), puis rendus tels qu’ils étaient.
+
 # 1.14.1 — Merge : VAE et encodeur de texte intégrés
 
 - Nouveau mode **VAE + encodeur** dans l’onglet Merge : un checkpoint ANIMA, son VAE et son encodeur Qwen3 0.6B dans un seul fichier. Forge le relit exactement comme avec les trois fichiers séparés (comparé couche par couche avec son propre chargeur). Dans le Studio, laisser « VAE / Text Encoder » vide.

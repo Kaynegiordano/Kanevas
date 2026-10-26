@@ -15,7 +15,7 @@ torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, empty_ca
 
 def rebuild(*a, **kw):
     assert not wetools._cache
-    assert forge._checkpoint() is None
+    assert forge.CHECKPOINTS == ('ANIMATION_INPAINT',)       # ni INPAINT_Kane : sinon le checkpoint du Studio
     events.append('diffusion')
     return 'fond'
 
@@ -46,7 +46,7 @@ try:
         assert events == ['empty', 'unload']
 finally:
     sys.argv[:], sys.path[:] = original_argv, original_path
-print('OK LaMa et ViTMatte libérés avant diffusion, checkpoint Studio conservé, décharge même après erreur')
+print('OK LaMa et ViTMatte libérés avant diffusion, ANIMATION_INPAINT recherché (repli : checkpoint du Studio), décharge même après erreur')
 
 # Le serveur conserve ses routes et passe les workers par le même adaptateur.
 import threading
