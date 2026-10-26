@@ -21,8 +21,9 @@ window.ksNative = {
   forgeRefreshCheckpoints: async () => ({ ok: true }), forgeRefreshLoras: async () => ({ ok: true }), forgeSetOptions: async () => ({ ok: true }),
   mergeList: async () => ({ ok: true,
     checkpoints: [{ id: 'ckpt:anima_a.safetensors', name: 'anima_a', size: 4e9 }, { id: 'ckpt:anima_b.safetensors', name: 'anima_b', size: 4e9 }, { id: 'ckpt:anima_base.safetensors', name: 'anima_base', size: 4e9 }, { id: 'ckpt:sdxl_x.safetensors', name: 'sdxl_x', size: 6e9 }],
-    loras: [{ id: 'lora:Anima/one.safetensors', name: 'Anima/one', size: 6e7 }, { id: 'lora:Anima/two.safetensors', name: 'Anima/two', size: 9e7 }, { id: 'lora:sd/other.safetensors', name: 'sd/other', size: 9e7 }] }),
-  mergeInspect: async ids => { window.inspected.push(...ids); return { ok: true, files: ids.map(id => ({ path: id, arch: /sdxl|sd\\//.test(id) ? 'sdxl' : 'anima', kind: id.startsWith('lora') ? 'lora' : 'checkpoint', dtype: 'bf16', size: 6e7, rank: 24, modules: 280 })) }; },
+    loras: [{ id: 'lora:Anima/one.safetensors', name: 'Anima/one', size: 6e7 }, { id: 'lora:Anima/two.safetensors', name: 'Anima/two', size: 9e7 }, { id: 'lora:sd/other.safetensors', name: 'sd/other', size: 9e7 }],
+    vaes: [{ id: 'vae:qwen_image_vae.safetensors', name: 'qwen_image_vae', size: 2.5e8 }], encoders: [{ id: 'te:qwen_3_06b_base.safetensors', name: 'qwen_3_06b_base', size: 1.2e9 }] }),
+  mergeInspect: async ids => { window.inspected.push(...ids); return { ok: true, files: ids.map(id => ({ path: id, arch: /sdxl|sd\\//.test(id) ? 'sdxl' : 'anima', kind: id.startsWith('lora') ? 'lora' : id.startsWith('vae') ? 'vae' : id.startsWith('te:') ? 'text_encoder' : 'checkpoint', dtype: 'bf16', size: 6e7, rank: 24, modules: 280 })) }; },
   mergeRun: async job => { window.merges.push(job); window.progressFn && window.progressFn({ progress: 40, text: 'Couche 5 / 10' });
     if (window.mergeFails) return { ok: false, error: 'Architectures incompatibles' };
     return { ok: true, name: job.name, id: (job.kind === 'loras' ? 'lora:KaneApp/' : 'ckpt:KaneApp/') + job.name + '.safetensors', size: 1e8, seconds: 3.2, layers: 10, merged: 10, kept: 0, rank: job.kind === 'loras' ? 56 : undefined, modules: 280, report: [] }; },
@@ -42,7 +43,7 @@ async function scenario() {
   const rail = [...document.querySelectorAll('.fx-rail button')].map(b => b.textContent);
   assert(rail.indexOf('Merge') === rail.indexOf('Lora') + 1, 'Merge est juste sous Lora dans le Studio : ' + rail.join(', '));
   assert(document.querySelector('.fx-rail button.on').textContent === 'Merge', 'L’onglet Merge est actif');
-  assert([...document.querySelectorAll('.fx-tabs button')].map(b => b.textContent).join('|') === 'LoRA + LoRA|Checkpoints|LoRA → Checkpoint', 'Trois modes');
+  assert([...document.querySelectorAll('.fx-tabs button')].map(b => b.textContent).join('|') === 'LoRA + LoRA|Checkpoints|LoRA → Checkpoint|VAE + encodeur', 'Quatre modes');
   // --- LoRA + LoRA
   let go = button('Fusionner');
   assert(go.disabled, 'Fusionner est inactif sans deux LoRA');
@@ -68,15 +69,15 @@ async function scenario() {
   [...document.querySelectorAll('.fx-tabs button')].find(b => b.textContent === 'Checkpoints').click();
   await wait(() => document.querySelector('.lt-grid3 select'), 'checkpoints');
   assert(button('Fusionner').disabled, 'Checkpoints : inactif sans A et B');
-  let cs = [...document.querySelectorAll('.lt-grid3 select')];
-  await pick(cs[0], 'ckpt:anima_a.safetensors'); cs = [...document.querySelectorAll('.lt-grid3 select')]; await pick(cs[1], 'ckpt:anima_b.safetensors');
+  let cs = [...document.querySelector('.lt-grid3').querySelectorAll('select')];
+  await pick(cs[0], 'ckpt:anima_a.safetensors'); cs = [...document.querySelector('.lt-grid3').querySelectorAll('select')]; await pick(cs[1], 'ckpt:anima_b.safetensors');
   assert(!button('Fusionner').disabled, 'Checkpoints : actif avec A et B');
   [...document.querySelectorAll('.fx-check')].find(l => l.textContent.includes('Dégradé')).querySelector('input').click();
   await wait(() => [...document.querySelectorAll('.fx-lbl')].some(l => l.textContent === 'α au dernier bloc'), 'dégradé');
   [...document.querySelectorAll('.fx-ropt')].find(l => l.textContent.includes('Différence ajoutée')).click();
-  await wait(() => document.querySelectorAll('.lt-grid3 select').length === 3, 'sélecteur C');
+  await wait(() => document.querySelector('.lt-grid3').querySelectorAll('select').length === 3, 'sélecteur C');
   assert(button('Fusionner').disabled, 'Différence ajoutée demande un modèle C');
-  cs = [...document.querySelectorAll('.lt-grid3 select')]; await pick(cs[2], 'ckpt:anima_base.safetensors');
+  cs = [...document.querySelector('.lt-grid3').querySelectorAll('select')]; await pick(cs[2], 'ckpt:anima_base.safetensors');
   await button('Fusionner').click();
   await wait(() => window.merges.length === 2, 'job 2');
   job = window.merges[1];
@@ -94,6 +95,23 @@ async function scenario() {
   job = window.merges.at(-1);
   assert(job.kind === 'lora_into_checkpoint' && job.model === 'ckpt:anima_a.safetensors' && job.loras.length === 1 && job.loras[0].weight === 1, 'Le job LoRA → checkpoint est complet : ' + JSON.stringify(job));
   assert(!!button('Utiliser dans le Studio'), 'Le checkpoint obtenu peut être utilisé');
+  assert(!window.merges.at(-1).embed, 'Sans VAE ni encodeur choisis, rien n’est intégré');
+  // VAE + encodeur intégrés : option des modes checkpoint, et mode dédié
+  const parts = () => [...document.querySelectorAll('.mg-parts select')];
+  await pick(parts()[0], 'vae:qwen_image_vae.safetensors'); await pick(parts()[1], 'te:qwen_3_06b_base.safetensors');
+  await button('Fusionner').click(); await wait(() => window.merges.length === 5, 'job 5');
+  job = window.merges.at(-1);
+  assert(job.kind === 'lora_into_checkpoint' && job.embed.vae === 'vae:qwen_image_vae.safetensors' && job.embed.text_encoder === 'te:qwen_3_06b_base.safetensors', 'LoRA → checkpoint accepte VAE et encodeur à intégrer : ' + JSON.stringify(job.embed));
+  [...document.querySelectorAll('.fx-tabs button')].find(b => b.textContent === 'VAE + encodeur').click();
+  await wait(() => document.querySelector('.mg-parts') && document.querySelector('.lt-grid3 select'), 'embed');
+  await pick(document.querySelector('.lt-grid3 select'), 'ckpt:anima_a.safetensors');
+  assert(document.querySelector('.mg-name').value === 'anima_a_complet', 'Nom proposé : ' + document.querySelector('.mg-name').value);
+  await button('Fusionner').click(); await wait(() => window.merges.length === 6, 'job 6');
+  job = window.merges.at(-1);
+  assert(job.kind === 'embed' && job.model === 'ckpt:anima_a.safetensors' && job.embed.vae && job.embed.text_encoder, 'Le job tout-en-un est complet : ' + JSON.stringify(job));
+  await pick(document.querySelector('.lt-grid3 select'), 'ckpt:sdxl_x.safetensors');
+  await wait(() => /ANIMA|anima/.test(document.querySelector('.mg-warn').textContent), 'avertissement ANIMA');
+  assert(button('Fusionner').disabled, 'Un checkpoint non ANIMA ne peut pas recevoir VAE et encodeur');
   return results;
 }
 

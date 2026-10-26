@@ -571,10 +571,10 @@ let mergeChild = null, mergeOut = '';
 const mergeRoots = () => {
   loadDirs();
   if (!forgeDirs || !forgeDirs.models) throw new Error('Démarrez Forge une fois depuis Kane OS : Kane App y lit ses dossiers de modèles');
-  return { ckpt: path.join(forgeDirs.models, 'Stable-diffusion'), lora: forgeDirs.lora || path.join(forgeDirs.models, 'Lora') };
+  return { ckpt: path.join(forgeDirs.models, 'Stable-diffusion'), lora: forgeDirs.lora || path.join(forgeDirs.models, 'Lora'), vae: path.join(forgeDirs.models, 'VAE'), te: path.join(forgeDirs.models, 'text_encoder') };
 };
 const mergeResolve = id => {
-  const m = /^(ckpt|lora):(.+)$/.exec(String(id || '')); if (!m) throw new Error('Modèle invalide');
+  const m = /^(ckpt|lora|vae|te):(.+)$/.exec(String(id || '')); if (!m) throw new Error('Modèle invalide');
   const root = mergeRoots()[m[1]], file = path.resolve(root, m[2]);
   if (!insideDir(root, file) || !/\.safetensors$/i.test(file) || !fs.existsSync(file)) throw new Error('Modèle introuvable : ' + m[2]);
   return file;
@@ -617,7 +617,7 @@ ipcMain.handle('merge-list', () => {
       const st = fs.statSync(f), rel = path.relative(roots[kind], f).replace(/\\/g, '/');
       return { id: kind + ':' + rel, name: rel.replace(/\.safetensors$/i, ''), size: st.size, mtime: st.mtimeMs };
     }).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
-    return { ok: true, checkpoints: list('ckpt'), loras: list('lora') };
+    return { ok: true, checkpoints: list('ckpt'), loras: list('lora'), vaes: list('vae'), encoders: list('te') };
   } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
 ipcMain.handle('merge-inspect', async (_e, ids) => {
@@ -633,7 +633,7 @@ ipcMain.handle('merge-run', async (event, job) => {
     if (mergeChild) throw new Error('Une fusion est déjà en cours');
     const roots = mergeRoots(), models = roots.ckpt.replace(/[\\/]Stable-diffusion$/i, '');
     const kind = job && job.kind;
-    if (!['checkpoints', 'lora_into_checkpoint', 'loras'].includes(kind)) throw new Error('Type de fusion inconnu');
+    if (!['checkpoints', 'lora_into_checkpoint', 'loras', 'embed'].includes(kind)) throw new Error('Type de fusion inconnu');
     const dtype = ['source', 'bf16', 'fp16', 'fp32'].includes(job.dtype) ? job.dtype : 'source';
     const num = (v, lo, hi, d) => { v = Number(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
     const loraList = () => {
@@ -642,8 +642,11 @@ ipcMain.handle('merge-run', async (event, job) => {
       return l;
     };
     const input = { dtype };
+    // VAE et encodeur de texte à intégrer au checkpoint produit (facultatif, sauf pour « embed »)
+    if (kind !== 'loras' && job.embed) input.embed = { vae: job.embed.vae ? mergeResolve(job.embed.vae) : null, text_encoder: job.embed.text_encoder ? mergeResolve(job.embed.text_encoder) : null };
     if (kind === 'checkpoints') Object.assign(input, { models: (job.models || []).slice(0, 3).map(mergeResolve), mode: job.mode === 'diff' ? 'diff' : 'sum', alpha: num(job.alpha, -2, 3, 0.5), alpha_end: job.alpha_end == null ? null : num(job.alpha_end, -2, 3, 0.5) });
     else if (kind === 'lora_into_checkpoint') Object.assign(input, { model: mergeResolve(job.model), loras: loraList() });
+    else if (kind === 'embed') Object.assign(input, { model: mergeResolve(job.model) });
     else Object.assign(input, { loras: loraList(), method: job.method === 'svd' ? 'svd' : 'concat', rank: Math.round(num(job.rank, 1, 256, 32)) });
     const dir = kind === 'loras' ? outputPaths.loraDirectory(models) : outputPaths.mergeDirectory(models);
     const stem = String(job.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '_').replace(/^\.+|\.+$/g, '').trim().slice(0, 80) || 'merge';

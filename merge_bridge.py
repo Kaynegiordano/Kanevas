@@ -12,6 +12,8 @@ Commandes
                                                      alpha_end : dégradé d'α le long des blocs (début → fin)
   lora_into_checkpoint {model, loras: [{path, weight}], dtype, out}
                                                      W' = W + Σ force·(alpha/rang)·(up @ down)
+  embed {model, embed, dtype, out}                   checkpoint + VAE + encodeur de texte dans un seul fichier (ANIMA)
+  (checkpoints et lora_into_checkpoint acceptent aussi « embed » : {vae: chemin|null, text_encoder: chemin|null})
   loras {loras: [{path, weight}], method, rank, dtype, out}
                                                      method « concat » : exact (rangs additionnés)
                                                      method « svd »    : somme recompressée au rang demandé
@@ -82,10 +84,13 @@ def inspect(files):
         h = header(p); meta = h.pop('__metadata__', None) or {}
         keys = list(h)
         style = lora_style(keys); lora = style is not None
+        part = None
+        if not lora and 'decoder.middle.0.residual.0.gamma' in h: part = 'vae'
+        elif not lora and 'model.layers.0.post_attention_layernorm.weight' in h and 'model.embed_tokens.weight' in h: part = 'text_encoder'
         dt = {}
         for v in h.values(): dt[v['dtype']] = dt.get(v['dtype'], 0) + 1
-        info = {'path': p, 'name': os.path.basename(p), 'size': os.path.getsize(p), 'tensors': len(keys), 'kind': 'lora' if lora else 'checkpoint',
-                'arch': arch_of(keys, lora), 'dtype': DTYPE_NAMES.get(max(dt, key=dt.get), max(dt, key=dt.get)) if dt else '?'}
+        info = {'path': p, 'name': os.path.basename(p), 'size': os.path.getsize(p), 'tensors': len(keys), 'kind': 'lora' if lora else (part or 'checkpoint'),
+                'arch': 'anima' if part == 'vae' or (part == 'text_encoder' and h['model.embed_tokens.weight']['shape'][1] == 1024) else ('inconnue' if part else arch_of(keys, lora)), 'dtype': DTYPE_NAMES.get(max(dt, key=dt.get), max(dt, key=dt.get)) if dt else '?'}
         if lora:
             ranks = [v['shape'][0] for k, v in h.items() if k.endswith('.lora_down.weight') or k.endswith('.lora_A.weight')]
             info['modules'] = len(ranks); info['rank'] = max(ranks) if ranks else 0
@@ -103,6 +108,36 @@ def torch_ctx():
 
 def out_dtype(torch, name, source=None):
     return {'bf16': torch.bfloat16, 'fp16': torch.float16, 'fp32': torch.float32}.get(name, source or torch.bfloat16)
+
+
+def embed_components(out, job, arch, torch):
+    """VAE et encodeur de texte dans le checkpoint, aux préfixes que Forge relit (`vae.` et `text_encoders.qwen3_06b.transformer.`) :
+    le fichier se charge sans choisir de module à côté. ANIMA seulement (c'est la disposition vérifiée)."""
+    from safetensors import safe_open
+    emb = job.get('embed') or {}
+    if not emb.get('vae') and not emb.get('text_encoder'): return []
+    if arch != 'anima': raise ValueError('Intégrer le VAE et l’encodeur est prévu pour les checkpoints ANIMA (architecture détectée : ' + arch + ').')
+    done = []
+    def put(path, prefix, check):
+        with safe_open(path, framework='pt', device='cpu') as f:
+            keys = list(f.keys()); check(f, keys)
+            for k in [k for k in out if k.startswith(prefix)]: del out[k]
+            for k in keys:
+                x = f.get_tensor(k)
+                out[prefix + k] = x.to(out_dtype(torch, job.get('dtype', 'source'), x.dtype)) if x.is_floating_point() else x
+    def check_vae(f, keys):
+        if 'decoder.middle.0.residual.0.gamma' not in keys: raise ValueError('« ' + os.path.basename(emb['vae']) + ' » n’est pas un VAE Wan 2.1 / Qwen-Image, celui d’ANIMA.')
+    def check_te(f, keys):
+        if 'model.layers.0.post_attention_layernorm.weight' not in keys or f.get_slice('model.layers.0.post_attention_layernorm.weight').get_shape()[0] != 1024 or 'model.layers.0.self_attn.q_norm.weight' not in keys:
+            raise ValueError('« ' + os.path.basename(emb['text_encoder']) + ' » n’est pas l’encodeur Qwen3 0.6B d’ANIMA.')
+    if emb.get('vae'): progress(92, 'Intégration du VAE…'); put(emb['vae'], 'vae.', check_vae); done.append(os.path.basename(emb['vae']))
+    if emb.get('text_encoder'): progress(94, 'Intégration de l’encodeur de texte…'); put(emb['text_encoder'], 'text_encoders.qwen3_06b.transformer.', check_te); done.append(os.path.basename(emb['text_encoder']))
+    return done
+
+
+def arch_of_file(path):
+    h = header(path); h.pop('__metadata__', None)
+    return arch_of(list(h), False)
 
 
 def finish(path_out, tensors, recipe, torch):
@@ -168,9 +203,10 @@ def merge_checkpoints(job):
         out[k] = x.to(dtype).cpu(); hit += 1
     if total == 0 or hit / total < 0.5:
         raise ValueError(f'Architectures incompatibles : seulement {hit} couches sur {total} existent dans les deux modèles.')
-    recipe = {'type': 'checkpoints', 'mode': mode, 'models': [os.path.basename(p) for p in models], 'alpha': a0, 'alpha_end': a1, 'dtype': job.get('dtype', 'source')}
+    embedded = embed_components(out, job, arch_of_file(models[0]), torch)
+    recipe = {'type': 'checkpoints', 'embedded': embedded, 'mode': mode, 'models': [os.path.basename(p) for p in models], 'alpha': a0, 'alpha_end': a1, 'dtype': job.get('dtype', 'source')}
     size = finish(job['out'], out, recipe, torch)
-    return {'size': size, 'layers': total, 'merged': hit, 'kept': total - hit, 'seconds': round(time.time() - t0, 1)}
+    return {'size': size, 'embedded': embedded, 'layers': total, 'merged': hit, 'kept': total - hit, 'seconds': round(time.time() - t0, 1)}
 
 
 # ---------------------------------------------------------------------------------------------- LoRA
@@ -229,9 +265,10 @@ def lora_into_checkpoint(job):
                 x = x + (w * scale_of(m)) * (up.reshape(up.shape[0], -1) @ dn.reshape(dn.shape[0], -1)).reshape(x.shape)
             out[k] = x.to(dtype).cpu()
         else: out[k] = t.to(dtype) if t.is_floating_point() else t
-    recipe = {'type': 'lora_into_checkpoint', 'model': os.path.basename(job['model']), 'loras': [{'name': os.path.basename(s['path']), 'weight': s.get('weight', 1.0)} for s in job['loras']], 'dtype': job.get('dtype', 'source')}
+    embedded = embed_components(out, job, arch_of_file(job['model']), torch)
+    recipe = {'type': 'lora_into_checkpoint', 'embedded': embedded, 'model': os.path.basename(job['model']), 'loras': [{'name': os.path.basename(s['path']), 'weight': s.get('weight', 1.0)} for s in job['loras']], 'dtype': job.get('dtype', 'source')}
     size = finish(job['out'], out, recipe, torch)
-    return {'size': size, 'report': report, 'applied': len(plan), 'seconds': round(time.time() - t0, 1)}
+    return {'size': size, 'embedded': embedded, 'report': report, 'applied': len(plan), 'seconds': round(time.time() - t0, 1)}
 
 
 def merge_loras(job):
@@ -277,7 +314,23 @@ def merge_loras(job):
     return {'size': size, 'modules': len(names), 'rank': max((t.shape[0] for k, t in out.items() if k.endswith(('lora_down.weight', 'lora_A.weight'))), default=0), 'seconds': round(time.time() - t0, 1)}
 
 
-COMMANDS = {'checkpoints': merge_checkpoints, 'lora_into_checkpoint': lora_into_checkpoint, 'loras': merge_loras}
+def embed_only(job):
+    torch, _dev = torch_ctx()
+    from safetensors import safe_open
+    if not (job.get('embed') or {}).get('vae') and not (job.get('embed') or {}).get('text_encoder'): raise ValueError('Choisissez un VAE et/ou un encodeur de texte à intégrer.')
+    t0 = time.time(); out = {}
+    with safe_open(job['model'], framework='pt', device='cpu') as f:
+        keys = list(f.keys())
+        for i, k in enumerate(keys):
+            if i % 40 == 0: progress(88 * i / len(keys), f'Couche {i + 1} / {len(keys)}')
+            x = f.get_tensor(k); out[k] = x.to(out_dtype(torch, job.get('dtype', 'source'), x.dtype)) if x.is_floating_point() else x
+    embedded = embed_components(out, job, arch_of_file(job['model']), torch)
+    recipe = {'type': 'embed', 'model': os.path.basename(job['model']), 'embedded': embedded, 'dtype': job.get('dtype', 'source')}
+    size = finish(job['out'], out, recipe, torch)
+    return {'size': size, 'embedded': embedded, 'seconds': round(time.time() - t0, 1)}
+
+
+COMMANDS = {'embed': embed_only, 'checkpoints': merge_checkpoints, 'lora_into_checkpoint': lora_into_checkpoint, 'loras': merge_loras}
 
 
 def main():

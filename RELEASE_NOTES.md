@@ -1,3 +1,10 @@
+# 1.14.1 — Merge : VAE et encodeur de texte intégrés
+
+- Nouveau mode **VAE + encodeur** dans l’onglet Merge : un checkpoint ANIMA, son VAE et son encodeur Qwen3 0.6B dans un seul fichier. Forge le relit exactement comme avec les trois fichiers séparés (comparé couche par couche avec son propre chargeur). Dans le Studio, laisser « VAE / Text Encoder » vide.
+- Les modes **Checkpoints** et **LoRA → Checkpoint** peuvent aussi intégrer VAE et encodeur au fichier produit (facultatif).
+- Les fichiers choisis sont vérifiés (VAE Wan 2.1 / Qwen-Image, encodeur Qwen3 0.6B) ; autre architecture que ANIMA : refusé avec un message clair.
+- Le fichier grossit d’environ 1,5 Go.
+
 # 1.14.0 — Studio IA : onglet Merge
 
 - Nouvel onglet **Merge** juste sous Lora : mixer des LoRA, mélanger des checkpoints, fusionner des LoRA dans un checkpoint.
