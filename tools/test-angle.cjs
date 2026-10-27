@@ -40,7 +40,7 @@ async function scenario() {
   const g = x.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2a6f9e'); g.addColorStop(1, '#e6c27a'); x.fillStyle = g; x.fillRect(0, 0, W, H);
   x.fillStyle = '#c0392b'; x.beginPath(); x.arc(W / 2, H / 2, Math.min(W, H) * 0.25, 0, Math.PI * 2); x.fill();
   for (let i = 0; i < W; i += 16) { x.fillStyle = i % 32 ? '#fff' : '#111'; x.fillRect(i, H / 2 - 4, 8, 8); }
-  d.addLayer(new KS.Layer({ name: 'Fond', canvas: c }), 0); d.genInfo = '1girl, red ball\nNegative prompt: lowres\nSteps: 30'; KS.addDoc(d);
+  d.addLayer(new KS.Layer({ name: 'Fond', canvas: c }), 0); d.genInfo = '1girl, red ball\nNegative prompt: lowres\nSteps: 30, Sampler: Euler, CFG scale: 4, Shift: 3.5, Seed: 1'; KS.addDoc(d);
   await KS.cmd.openStudioTab('angle');
   await wait(() => document.querySelector('.ag-gl') && button('Depuis Retouche'), 'onglet Angle');
   const rail = [...document.querySelectorAll('.fx-rail button')].map(b => b.textContent);
@@ -69,6 +69,9 @@ async function scenario() {
   assert(p0.denoising_strength === 1 && p0.batch_size === 2 && p0.inpainting_fill === 1, 'Repeindre : force 1, 2 variantes, remplissage depuis l’image');
   assert(p0.width * p0.height >= W * H * 0.6 * 0.9 || p0.width * p0.height >= 0.6 * 1048576 * 0.9, `Forge travaille à la taille de l’image (${p0.width}×${p0.height})`);
   assert(Math.abs(p1.denoising_strength - 0.2) < 1e-6, 'Unifier : passe légère à 0,2 sur toute l’image');
+  assert(p0.prompt === '1girl, red ball' && p0.negative_prompt === 'lowres' && p1.prompt === p0.prompt && p1.negative_prompt === 'lowres', 'Invite et invite négative de l’image envoyées telles quelles : ' + JSON.stringify([p0.prompt, p0.negative_prompt]));
+  assert(p0.sampler_name === 'SEEDS 3' && p0.scheduler === 'Beta57' && p0.steps === 22 && p1.sampler_name === 'SEEDS 3', 'SEEDS 3 + Beta57, 22 étapes par défaut : ' + [p0.sampler_name, p0.scheduler, p0.steps]);
+  assert(p0.cfg_scale === 4 && p0.distilled_cfg_scale === 3.5, 'CFG et Shift repris de l’image : ' + [p0.cfg_scale, p0.distilled_cfg_scale]);
   assert(S.result.variants.length === 2 && S.result.variants[0].width === W, 'Deux variantes au format de l’image');
   // les pixels hors des zones repeintes sont ceux du rendu
   assert(button('Ouvrir dans Retouche') && button('Vers Transformer (img2img, inpaint)'), 'Actions du résultat présentes');

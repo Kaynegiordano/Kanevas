@@ -1169,3 +1169,4 @@ body.studio.fx-angle .fx-body { overflow: hidden; display: flex; flex-direction:
 .ag-actions { display: flex; flex-direction: column; gap: 6px; }
 .ag-actions .fx-btn2 { height: auto; min-height: 32px; padding: 7px 12px; white-space: normal; text-align: left; }
 .ag-go { width: 100%; }
+.ag-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

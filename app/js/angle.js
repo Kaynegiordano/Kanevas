@@ -10,7 +10,8 @@
   const FOV = 40; // champ de vision supposé de l'image d'origine (degrés, vertical)
 
   /* ---------------------------------------------------------------- réglages mémorisés */
-  const DEF = { v: 1, yaw: 0, pitch: 0, zoom: 1, relief: 1, edge: 0.05, strength: 1, count: 2, unify: 0.2, showMask: true, prompt: '' };
+  const DEF = { v: 1, yaw: 0, pitch: 0, zoom: 1, relief: 1, edge: 0.05, strength: 1, count: 2, unify: 0.2, showMask: true, prompt: '', negative: '',
+    sampler: 'SEEDS 3', scheduler: 'Beta57', steps: 22 };
   const P = Object.assign({}, DEF, KS.prefs.angle && KS.prefs.angle.v === 1 ? KS.prefs.angle : {});
   const save = U.debounce(() => { KS.prefs.angle = P; KS.prefs.save(); }, 400);
 
@@ -242,7 +243,14 @@
   }
 
   /* ---------------------------------------------------------------- génération (Forge) */
-  const promptOf = info => String(info || '').split(/\nNegative prompt:|\nSteps:/)[0].trim();
+  // Paramètres PNG (format A1111) : invite, invite négative, CFG et Shift de l'image
+  function parseInfo(info) {
+    const t = String(info || ''), i = t.indexOf('\nNegative prompt:'), j = t.search(/\nSteps: /);
+    const params = j >= 0 ? t.slice(j + 1) : '';
+    const get = k => { const m = params.match(new RegExp('(?:^|, )' + k + ': ([^,]+)')); return m ? +m[1] : null; };
+    return { pos: (i >= 0 ? t.slice(0, i) : j >= 0 ? t.slice(0, j) : t).trim(), neg: i >= 0 ? t.slice(i + 17, j > i ? j : undefined).trim() : '',
+      cfg: get('CFG scale'), shift: get('Shift') || get('Distilled CFG Scale') };
+  }
   async function generate() {
     if (!S.src || !S.mesh || S.busy) return;
     const prompt = (P.prompt || '').trim();
@@ -253,21 +261,25 @@
     try {
       const v = renderView();
       const W = v.color.width, H = v.color.height, B = { x: 0, y: 0, w: W, h: H };
-      const fromInfo = S.info && promptOf(S.info) === prompt;
+      // l'invite et l'invite négative partent telles quelles (celles de l'image) ; une invite tapée en français est traduite
+      const src = parseInfo(S.info);
+      let pos = prompt;
+      if (G.looksFrench(pos)) { const en = await G.toEnglish(pos); if (en) pos = en; }
       // taille de l'image (jusqu'à 2,2 Mpx) : Forge repeint au même niveau de détail que le dessin
-      const st = { ...G.settings(), strength: P.strength, count: P.count, maskBlur: 4, fill: 1, usePrefix: !fromInfo, megapixels: U.clamp(W * H / 1048576, 0.6, 2.2) };
-      const pp = await G.preparePrompt(prompt, forge, st);
+      const st = { ...G.settings(), prompt: pos, negative: (P.negative || '').trim(), sampler: P.sampler, scheduler: P.scheduler, steps: U.clamp(+P.steps || 22, 1, 150),
+        cfg: src.cfg || G.settings().cfg, extra: { distilled_cfg_scale: src.shift || +G.settings().shift || 3 },
+        strength: P.strength, count: P.count, maskBlur: 4, fill: 1, megapixels: U.clamp(W * H / 1048576, 0.6, 2.2) };
       let res = { variants: [v.color] };
-      if (v.holes > 0.0005) res = await G.forgeGenerate(pushPull(v.color, v.mask), v.mask, B, { ...st, ...pp }, true);
+      if (v.holes > 0.0005) res = await G.forgeGenerate(pushPull(v.color, v.mask), v.mask, B, st, true);
       let out = res.variants.map(g => compose(v.color, g, v.mask));
       if (P.unify > 0) {
         const all = U.canvas(W, H); const ax = all.getContext('2d'); ax.fillStyle = '#000'; ax.fillRect(0, 0, W, H);
         const again = [];
-        for (const c of out) again.push(compose(c, (await G.forgeGenerate(c, all, B, { ...st, ...pp, strength: P.unify, count: 1, maskBlur: 0 }, true)).variants[0], all));
+        for (const c of out) again.push(compose(c, (await G.forgeGenerate(c, all, B, { ...st, strength: P.unify, count: 1, maskBlur: 0 }, true)).variants[0], all));
         out = again;
       }
       S.result = { variants: out, i: 0, info: (res.infos && res.infos[0]) || S.info, holes: v.holes };
-      if (pp.shown !== prompt) KS.toast('Envoyé à Forge : « ' + pp.shown.slice(0, 120) + ' »', 'info', 4000);
+      if (pos !== prompt) KS.toast('Envoyé à Forge : « ' + pos.slice(0, 120) + ' »', 'info', 4000);
     } catch (e) { KS.toast('Génération impossible : ' + e.message, 'err', 6000); }
     S.busy = false; renderSide(); showResult();
   }
@@ -290,8 +302,7 @@
       const k = Math.min(1, 2048 / Math.max(canvas.width, canvas.height));
       S.src = k < 1 ? scaled(canvas, Math.round(canvas.width * k), Math.round(canvas.height * k)) : U.copyCanvas(canvas);
       S.name = name || 'Image'; S.info = info || '';
-      if (S.info && !P.prompt) P.prompt = promptOf(S.info);
-      else if (S.info) P.prompt = promptOf(S.info);
+      if (S.info) { const pi = parseInfo(S.info); P.prompt = pi.pos; P.negative = pi.neg; }
       S.depth = await G.task('Calcul du relief…', () => computeDepth(S.src));
       S.grid = gridOf();
       materials(); buildMesh();
@@ -388,8 +399,16 @@
       const ta = h('textarea.fx-ta.fx-small', { rows: 4, spellcheck: false, placeholder: 'Ce que montre l’image (en français ou en anglais)' });
       ta.value = P.prompt || ''; ta.addEventListener('input', () => { P.prompt = ta.value; save(); });
       ta.addEventListener('keydown', e => e.stopPropagation());
+      const neg = h('textarea.fx-ta.fx-small', { rows: 2, spellcheck: false, placeholder: 'Invite négative' });
+      neg.value = P.negative || ''; neg.addEventListener('input', () => { P.negative = neg.value; save(); });
+      neg.addEventListener('keydown', e => e.stopPropagation());
+      const cat = KS.studioApi && KS.studioApi.cat && KS.studioApi.cat();
+      const opts = (list, cur) => [...new Set([cur, ...(list || [])].filter(Boolean))];
       blocks.push(sec('Repeindre les zones découvertes',
         F().field('Invite' + (S.info ? ' (reprise de l’image)' : ''), ta),
+        F().field('Invite négative' + (S.info ? ' (reprise de l’image)' : ''), neg),
+        h('div.ag-row2', F().select('Sampler', opts(cat && cat.samplers, P.sampler), P, 'sampler', '', () => save()), F().select('Schedule type', opts(cat && cat.schedulers, P.scheduler), P, 'scheduler', '', () => save())),
+        F().slider('Sampling steps', P, 'steps', 1, 80, 1, '', () => save()),
         slider('Force', P, 'strength', 0.5, 1, 0.01, 'Proche de 1 : Forge invente librement dans les zones découvertes', () => save()),
         slider('Variantes', P, 'count', 1, 4, 1, '', () => save()),
         slider('Unifier le dessin', P, 'unify', 0, 0.5, 0.01, '0 : le reste de l’image garde ses pixels. Au-dessus : Forge repasse légèrement sur toute l’image pour effacer l’effet de relief (le visage se redessine à l’angle).', () => save()),

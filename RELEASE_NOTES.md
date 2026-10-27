@@ -1,3 +1,8 @@
+# 1.16.1 — Angle : le même prompt que l'image
+
+- L'invite ET l'invite négative de l'image sont reprises et envoyées telles quelles à Forge (plus de préfixe ni de négatif ajoutés). Elles restent modifiables.
+- Sampler SEEDS 3 + Beta57, 22 étapes par défaut (réglables dans l'onglet). CFG et Shift repris de l'image.
+
 # 1.16.0 — Studio IA : changer l'angle d'une image
 
 - L'onglet Pose 3D est remplacé par **Angle** : on envoie son image (Retouche, fichier, glisser-déposer ou dernière image créée) et on la regarde d'un autre point de vue.
