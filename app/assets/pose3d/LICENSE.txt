@@ -1,0 +1,3 @@
+Corps 3D de Pose 3D : maillage, squelette, poids et cibles de morphologie de MakeHuman 1.x
+(https://github.com/makehumancommunity/makehuman), publies sous licence CC0.
+Regenerer : python -I tools/build-human.py

@@ -2,3 +2,4 @@ node_modules/
 dist/
 *.kstmp
 __pycache__/
+tools/.mh-cache/

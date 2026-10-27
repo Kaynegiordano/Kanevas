@@ -1,3 +1,12 @@
+# 1.15.0 — Studio IA : Pose 3D
+
+- Nouvel onglet **Pose 3D** sous Transformer : un corps humain réaliste (MakeHuman), femme ou homme, muscles, poids, taille, proportions.
+- Poser : cliquer une partie du corps et tourner les anneaux ; mains et pieds se tirent avec « Déplacer » (le bras ou la jambe suit). Symétrie, miroir, annuler (Ctrl+Z).
+- 16 poses toutes faites (debout, marche, course, assis, à genoux, garde…), 7 poses de main, vos poses enregistrées.
+- Caméra : vues Face, Trois-quarts, Profil, Dos, Plongée, Contre-plongée, Buste, Visage ; focale de 12 à 200 mm. Lumière orientable, contre-jour, ombre au sol.
+- Dessin de référence derrière le mannequin (depuis Retouche ou un fichier) pour caler l'angle et la pose.
+- Envoi : calque guide dans le dessin ouvert (ombré, contours, silhouette, profondeur, normales, OpenPose), nouveau document, Transformer ou PNG.
+
 # 1.14.2 — Animation : rebouchage avec ANIMATION_INPAINT
 
 - Le rebouchage des tuiles (mode Découpes) utilise le checkpoint tout-en-un **ANIMATION_INPAINT** (créé avec Merge) quand Forge le voit ; sinon le checkpoint du Studio, comme avant.

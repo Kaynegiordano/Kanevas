@@ -524,3 +524,4 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.4.0** : img2img dans l'Édition (panneau de Forge), envoi Édition ⇄ Studio IA, Refiner retiré, fiches LoRA (🛠️) et poids, Train LoRA refait comme l'onglet de Forge.
 - **1.3.0** : le Studio IA devient la page de Forge : mêmes onglets, réglages, noms et ordre ; img2img / Sketch / Inpaint sur la toile Kanevas ; Extras, PNG Info, scripts.
 - **1.2.0** : Studio IA autonome : moteur de Forge démarré par Kanevas, espace Studio IA (Créer, Transformer, Retoucher la zone peinte, Croquis, Agrandir), hires fix, refiner, lots, graine de variation, options de retouche, soft inpainting, Never OOM, galerie et enregistrement automatique.
+- **1.15.0** : Studio IA, onglet Pose 3D : corps humain réaliste posable (MakeHuman), poses et mains toutes faites, cinématique inverse, caméra et lumière, dessin de référence en fond, calque guide (ombré, contours, silhouette, profondeur, normales, OpenPose).
