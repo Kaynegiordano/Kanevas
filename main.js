@@ -224,11 +224,13 @@ ipcMain.on('show-in-folder', (_e, p) => shell.showItemInFolder(p));
 /* ------------------------------------------------------------------ IA locale */
 // Détourage : BiRefNet (licence MIT), copies publiées par le projet rembg.
 // Suppression d'objets : LaMa (licence Apache 2.0), export ONNX 512×512 de Carve.
+// Relief (outil Angle) : Depth Anything V2 Large (licence CC-BY-NC 4.0, usage personnel), export ONNX d'onnx-community.
 // Traduction des invites : Opus-MT fr-en (Helsinki-NLP, licence CC-BY 4.0), export ONNX de Xenova.
 const MT = 'https://huggingface.co/Xenova/opus-mt-fr-en/resolve/main/';
 const MODELS = {
   'birefnet-lite': { kind: 'segment', name: 'BiRefNet léger (détourage rapide)', file: 'BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx', size: 224005088 },
   'birefnet': { kind: 'segment', name: 'BiRefNet complet (détourage, qualité maximale)', file: 'BiRefNet-general-epoch_244.onnx', size: 972666916 },
+  'depth': { kind: 'depth', name: 'Depth Anything V2 Large (relief de l’image, outil Angle)', file: 'depth_anything_v2_large.onnx', size: 1336922232, url: 'https://huggingface.co/onnx-community/depth-anything-v2-large/resolve/main/onnx/model.onnx' },
   'lama': { kind: 'inpaint', name: 'LaMa (outil Suppression, remplissage sans invite)', file: 'lama_fp32.onnx', size: 208044816, cpu: true, url: 'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx' },
   'translate-fr-en': { kind: 'translate', name: 'Opus-MT (traduction des invites français → anglais)', dir: 'opus-mt-fr-en', size: 112739047, files: [
     { file: 'encoder_model_quantized.onnx', size: 50090398, url: MT + 'onnx/encoder_model_quantized.onnx' },
@@ -349,6 +351,17 @@ ipcMain.handle('ai-inpaint', async (_e, rgba, mask) => {
     const k = mx > 2 ? 1 : 255, out = new Uint8ClampedArray(n * 4);
     for (let i = 0; i < n; i++) { out[i * 4] = d[i] * k; out[i * 4 + 1] = d[n + i] * k; out[i * 4 + 2] = d[2 * n + i] * k; out[i * 4 + 3] = 255; }
     return { ok: true, rgba: out, ep: r.ep };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+});
+
+// Relief : image normalisée NCHW 1×3×H×W (côtés multiples de 14) ; sortie : disparité H×W (plus grand = plus proche)
+ipcMain.handle('ai-depth', async (_e, input, w, h) => {
+  try {
+    const o = loadOrt(), s = await session('depth');
+    const t = new o.Tensor('float32', new Float32Array(input.buffer, input.byteOffset, input.byteLength / 4), [1, 3, h, w]);
+    const res = await s.run({ [s.inputNames[0]]: t });
+    const out = res[s.outputNames[0]];
+    return { ok: true, depth: new Float32Array(out.data), dims: out.dims, ep: s._ep };
   } catch (err) { return { ok: false, error: String(err.message || err) }; }
 });
 

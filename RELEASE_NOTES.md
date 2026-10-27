@@ -1,3 +1,11 @@
+# 1.16.0 — Studio IA : changer l'angle d'une image
+
+- L'onglet Pose 3D est remplacé par **Angle** : on envoie son image (Retouche, fichier, glisser-déposer ou dernière image créée) et on la regarde d'un autre point de vue.
+- Le relief de l'image est calculé sur votre PC (Depth Anything V2 Large, 1,3 Go téléchargé une fois, environ 1 à 3 s sur la carte graphique).
+- Tourner, incliner, rapprocher à la souris ou avec les curseurs ; vues toutes faites (¾ gauche/droite, plongée, contre-plongée). Les zones à repeindre s'affichent en direct.
+- « Générer le nouvel angle » : Forge (ANIMA) repeint les zones découvertes et les bords à la taille de l'image, avec l'invite reprise de l'image ; le reste garde ses pixels. « Unifier le dessin » (0,2 par défaut) repasse légèrement sur toute l'image pour effacer l'effet de relief.
+- Jusqu'à environ 25° le dessin reste fidèle ; au-delà, Forge invente davantage. La pose ne change pas.
+
 # 1.15.0 — Studio IA : Pose 3D
 
 - Nouvel onglet **Pose 3D** sous Transformer : un corps humain réaliste (MakeHuman), femme ou homme, muscles, poids, taille, proportions.

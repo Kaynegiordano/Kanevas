@@ -221,7 +221,7 @@
       R = U.rectIntersect(U.rectInt({ x: B.x - pad, y: B.y - pad, w: B.w + pad * 2, h: B.h + pad * 2 }), { x: 0, y: 0, w: src.width, h: src.height });
     }
     // environ 1 mégapixel, côtés multiples de 64 (taille de travail des modèles récents)
-    const k = Math.sqrt(1048576 / (R.w * R.h));
+    const k = Math.sqrt((o.megapixels || 1) * 1048576 / (R.w * R.h));
     const W = U.clamp(Math.round(R.w * k / 64) * 64, 256, 2048), H = U.clamp(Math.round(R.h * k / 64) * 64, 256, 2048);
     const init = U.canvas(W, H), ix = init.getContext('2d');
     ix.fillStyle = '#808080'; ix.fillRect(0, 0, W, H);

@@ -238,7 +238,7 @@
   const EDIT = { k: 't2i', action: () => C.editorDraw() };
   const els = {};
   let root = null;
-  const RAIL = [['txt2img', 'Créer', 'file-plus'], ['img2img', 'Transformer', 'image'], ['pose3d', 'Pose 3D', 'pose'], ['extras', 'Agrandir', 'upscale'], ['pnginfo', 'Paramètres PNG', 'info'],
+  const RAIL = [['txt2img', 'Créer', 'file-plus'], ['img2img', 'Transformer', 'image'], ['angle', 'Angle', 'angle'], ['extras', 'Agrandir', 'upscale'], ['pnginfo', 'Paramètres PNG', 'info'],
     ['train', 'Lora', 'layers'], ['merge', 'Merge', 'merge'], ['imgcut', 'Découper', 'crop'], ['settings', 'Réglages', 'settings']];
   function mountPage() {
     root = KS.$('#studio');
@@ -351,13 +351,13 @@
       case 'settings': content = settingsTab(); break;
       case 'train': content = h('div.fx-train'); break;
       case 'merge': content = h('div.fx-train.mg-page'); break;
-      case 'pose3d': content = h('div.p3-page'); break;
+      case 'angle': content = h('div.ag-page'); break;
       default: FX.tab = 'txt2img'; content = t2iTab();
     }
     els.body.replaceChildren(content);
     if (FX.tab === 'train') KS.trainTab ? KS.trainTab.render(content) : content.append(h('div.fx-note', { text: 'Atelier indisponible.' }));
-    document.body.classList.toggle('fx-pose', FX.tab === 'pose3d');
-    if (FX.tab === 'pose3d') KS.poseTab ? KS.poseTab.render(content) : content.append(h('div.fx-note', { text: 'Pose 3D indisponible.' }));
+    document.body.classList.toggle('fx-angle', FX.tab === 'angle');
+    if (FX.tab === 'angle') KS.angleTab ? KS.angleTab.render(content) : content.append(h('div.fx-note', { text: 'Angle indisponible.' }));
     if (FX.tab === 'merge') KS.mergeTab ? KS.mergeTab.render(content) : content.append(h('div.fx-note', { text: 'Merge indisponible.' }));
   }
   function t2iTab() {

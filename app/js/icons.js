@@ -168,7 +168,7 @@
     upscale: '<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M14 3h7v7M21 3l-8.5 8.5"/>',
     more: '<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/>',
     liquify: '<path d="M3 8c3-3 6 3 9 0s6 3 9 0M3 14c3-3 6 3 9 0s6 3 9 0M3 20c3-3 6 3 9 0s6 3 9 0"/>',
-    pose: '<circle cx="12" cy="4.5" r="2"/><path d="M12 7v6M12 13l-3 7M12 13l3 7M6 9.5l6-1 6 1"/><circle cx="6" cy="9.5" r=".9" fill="currentColor"/><circle cx="18" cy="9.5" r=".9" fill="currentColor"/>',
+    angle: '<path d="M12 3l7 4v10l-7 4-7-4V7z"/><path d="M5 7l7 4 7-4M12 11v10"/><path d="M2.5 12a9.5 4 0 0 0 7 3.8M21.5 12a9.5 4 0 0 1-4 3.2" opacity=".55"/>',
   };
   KS.ICONS = P;
   KS.icon = (name, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" ${extra}>${P[name] || P.dot}</svg>`;

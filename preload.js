@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('ksNative', {
   aiTranslate: text => ipcRenderer.invoke('ai-translate', text),
   aiWarm: id => ipcRenderer.invoke('ai-warm', id),
   aiInpaint: (rgba, mask) => ipcRenderer.invoke('ai-inpaint', rgba, mask),
+  aiDepth: (input, w, h) => ipcRenderer.invoke('ai-depth', input, w, h),
   onAiProgress: fn => ipcRenderer.on('ai-progress', (_e, p) => fn(p)),
   forgeStatus: base => ipcRenderer.invoke('forge-status', base),
   forgeImg2img: (base, payload, init, mask) => ipcRenderer.invoke('forge-img2img', base, payload, init, mask),
