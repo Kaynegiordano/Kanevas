@@ -827,9 +827,31 @@ function ensureEnginePatches(dir) {
   try {
     const f = path.join(dir, 'modules', 'sd_samplers_common.py');
     const src = fs.readFileSync(f, 'utf8');
-    if (src.includes('show_progress_type != "Full"')) return;
-    const out = src.replace(/(approximation = approximation_indexes\.get\(opts\.show_progress_type, 0\)(\r?\n)\s+)if approximation == 0:/, '$1if approximation == 0 and opts.show_progress_type != "Full":');
-    if (out !== src) { fs.writeFileSync(f, out); engineLog('Aperçu net (VAE complet) activé dans le moteur'); }
+    const eol = src.includes('\r\n') ? '\r\n' : '\n';
+    let out = src.replace(/(approximation = approximation_indexes\.get\(opts\.show_progress_type, 0\)(\r?\n)\s+)if approximation == 0:/, '$1if approximation == 0 and opts.show_progress_type != "Full":');
+    // Le VAE peut décharger le DiT sur les GPU 8 Go : restaurer le budget
+    // d'échantillonnage avant le pas suivant (sinon poids CPU / latent CUDA).
+    if (!out.includes('is_live_preview = approximation is None')) {
+      out = out.replace('    x_sample = None', '    x_sample = None' + eol + '    is_live_preview = approximation is None');
+    }
+    out = out.replace('        x_sample = (model or shared.sd_model).decode_first_stage(sample)', [
+      '        active_model = model or shared.sd_model',
+      '        try:',
+      '            x_sample = active_model.decode_first_stage(sample)',
+      '        finally:',
+      '            if is_live_preview:',
+      '                # Full VAE previews can evict the denoiser on smaller GPUs.',
+      '                # Restore its weights and sampling memory budget before resuming.',
+      '                sampling_prepare(active_model.forge_objects.unet, sample)',
+    ].join(eol));
+    if (out !== src) { fs.writeFileSync(f, out); engineLog('Aperçu net (VAE complet) activé avec restauration du modèle GPU'); }
+    const stateFile = path.join(dir, 'modules', 'shared_state.py');
+    const stateSource = fs.readFileSync(stateFile, 'utf8');
+    const stateEol = stateSource.includes('\r\n') ? '\r\n' : '\n';
+    const stateOutput = stateSource.replace('            if self.vae_stream is not None:',
+      '            # Full previews change model residency and must share the sampling stream.' + stateEol +
+      '            if self.vae_stream is not None and shared.opts.show_progress_type != "Full":');
+    if (stateOutput !== stateSource) fs.writeFileSync(stateFile, stateOutput);
   } catch (e) { engineLog('Aperçu net : patch impossible (' + e.message + ')'); }
 }
 const engineLog = line => { engine.log.push(line); if (engine.log.length > 400) engine.log.splice(0, engine.log.length - 400); };
