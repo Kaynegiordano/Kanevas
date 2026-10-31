@@ -309,9 +309,9 @@ Le bouton Actualiser de Studio IA > LoRA libère un entraînement bloqué et rel
   le projet et l'ouvre. Le fond sous les découpes est redessiné par **le moteur Forge de Kanevas** (WEA_FORGE_URL ;
   un relais local sur le port 8601 répond comme le lanceur Kane OS pour le démarrer au besoin). « Vidéos exportées »
   envoie les MP4 à la Vidéo.
-- **Vidéo** : KaneClip intégré (copie de C:\KaneOS\KaneClip dans kaneclip/, `node tools/sync-kaneclip.cjs` pour
-  la mettre à jour). Ses fonctions du processus principal passent par des canaux « kc:… » (kaneclip-host.cjs),
-  ffmpeg est celui de KaneClip installé, sinon winget / PATH. « Ajouter l'image du document » la pose sur la timeline ;
+- **Vidéo** : KaneClip intégré dans kaneclip/ (c'est désormais sa seule version : la version standalone et son
+  dépôt sont retirés, KaneClip évolue ici). Ses fonctions du processus principal passent par des canaux « kc:… » (kaneclip-host.cjs),
+  ffmpeg est celui des moteurs gérés par Kane App, sinon winget / PATH. « Ajouter l'image du document » la pose sur la timeline ;
   un montage non enregistré est proposé à l'enregistrement en quittant Kanevas.
 - Menu IA de l'Édition : Envoyer à ComfyUI, Animer dans Wallpaper, Ajouter à la Vidéo.
 - 1.6.1 : le relais local (port 8601) démarre aussi ComfyUI à la demande du « Geste IA » de Wallpaper.
