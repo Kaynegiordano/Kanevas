@@ -36,6 +36,7 @@
     },
     "files": [
       "main.js",
+      "onnx-sessions.cjs",
       "gpu-memory.cjs",
       "output-paths.cjs",
       "preload.js",

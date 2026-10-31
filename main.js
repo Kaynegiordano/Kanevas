@@ -244,22 +244,8 @@ const modelPath = id => path.join(modelDir(), MODELS[id].dir || MODELS[id].file)
 // Fichiers d'un modèle (un seul pour la plupart, plusieurs pour la traduction)
 const modelFiles = id => { const m = MODELS[id]; return m.files ? m.files.map(f => ({ ...f, path: path.join(modelPath(id), f.file) })) : [{ file: m.file, size: m.size, url: MODEL_URL(m), path: modelPath(id) }]; };
 let ort = null;
-const sessions = {};
 function loadOrt() { if (!ort) ort = require('onnxruntime-node'); return ort; }
-// Session ONNX (carte graphique via DirectML, sinon processeur), gardée en mémoire
-async function session(id, cpuOnly) {
-  const key = id + (cpuOnly ? ':cpu' : '');
-  if (sessions[key]) return sessions[key];
-  if (!MODELS[id]) throw new Error('Modèle inconnu');
-  const o = loadOrt();
-  let s = null;
-  // LaMa : DirectML échoue sur une multiplication de matrices de son bloc de Fourier, d'où le processeur
-  for (const ep of cpuOnly || MODELS[id].cpu ? [['cpu']] : [['dml'], ['cpu']]) {
-    try { s = await o.InferenceSession.create(modelPath(id), { executionProviders: ep, graphOptimizationLevel: 'all' }); s._ep = ep[0]; break; } catch (err) { console.warn('ORT', ep, err.message); }
-  }
-  if (!s) throw new Error('Impossible de charger le modèle');
-  return (sessions[key] = s);
-}
+const session = require('./onnx-sessions.cjs')({ loadOrt, modelPath, models: MODELS });
 
 ipcMain.handle('ai-status', () => Object.entries(MODELS).map(([id, m]) => {
   let installed = false; try { installed = modelFiles(id).every(f => fs.statSync(f.path).size === f.size); } catch { /* absent */ }
