@@ -72,7 +72,6 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     kcHost.setup(() => win, { output: () => outputPaths.directory('montage') });
     require('./suite-host.cjs')(() => win);
-    require('./animer-host.cjs')({ getWin: () => win, directory: id => outputPaths.directory(id) });
     services = require('./services.cjs')({
       getWin: () => win,
       root: () => engineDirs().root,
@@ -413,11 +412,6 @@ ipcMain.handle('forge-kane-detail', forgeHandler(async (base, payload, png) => {
 ipcMain.handle('forge-kane-zones', forgeHandler(async (base, seed) => {
   const r = await forgeCall(base, '/kane-detailer/v1/zones/' + encodeURIComponent(String(seed)), null, 20000);
   return { zones: unb64(r.zones) };
-}));
-// Kane Detailer : masques par partie (cheveux, yeux…) pour l'atelier Animer
-ipcMain.handle('forge-kane-masks', forgeHandler(async (base, payload, png) => {
-  const r = await forgeCall(base, '/kane-detailer/v1/masks', { ...payload, image: b64(png) }, 180000);
-  return { masks: Object.fromEntries(Object.entries((r && r.masks) || {}).map(([k, v]) => [k, v ? unb64(v) : null])) };
 }));
 ipcMain.handle('forge-kane-detect', forgeHandler(async (base, payload, png) => {
   const r = await forgeCall(base, '/kane-detailer/v1/detect', { ...payload, image: b64(png) }, 120000);

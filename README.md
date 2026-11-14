@@ -20,98 +20,14 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
-### Animer : sélection rapide et zones cumulées (1.40.0)
+### Animer retiré (1.41.0)
 
-- **Sélectionner** (à côté de *Peindre* sous chaque masque) ouvre les outils de sélection de Retouche directement dans
-  Animer, sans changer d'espace : **sélection rapide** (W, on glisse et la zone s'étend aux couleurs voisines, même calcul
-  que Retouche, masque mis à jour pendant le geste), **baguette magique** (Maj+W, tolérance, pixels contigus) et
-  **sélection d'objet** (O, on encadre, BiRefNet détoure ce qu'il y a dans le cadre, comme l'outil de Retouche).
-- **Zones cumulées** : une fois le masque commencé, la zone suivante (*Auto*, sélection) le **remplace**, s'y **ajoute**,
-  s'en **retire** ou le **croise** (choix sous la texture et dans la barre ; Maj = ajouter, Alt = retirer, les deux =
-  croiser, comme dans Retouche). Ex. : Sujet, puis Alt + clic sur les yeux ; Cheveux + Visage. Sans masque, retirer part
-  d'un masque plein (l'effet agissait partout).
-- Cartes de direction (Secousse…) : la zone sélectionnée prend le sens choisi une fois (bouton *Sens* de la barre) ;
-  retirer la ramène au neutre, croiser ne garde la direction que dans la zone.
-- Barre du masque sur deux lignes si la scène est étroite (elle débordait).
-- Test : `tools/test-animer.cjs` (36 vérifications : baguette, Alt + clic, sélection rapide, croiser, cadre d'objet,
-  direction, annulation).
-
-### Animer 2 : l'éditeur de Wallpaper Engine, en plus direct (1.39.0)
-
-Après un premier essai jugé trop basique (cinq mouvements maison), Animer reprend l'organisation et le contenu de
-l'éditeur de Wallpaper Engine : **Couches** (calque d'image et ses effets, ambiances) à gauche, **Propriétés** à droite.
-
-- **Tous les effets de Wallpaper Engine** (45 : Oscillation Feuillage, Secousse, Vagues d'eau, Débit d'eau, Mouvement
-  Iris, À impulsion, Défilement, Tournoyer, Rayons divins, Brillance, Flous, Teinte, Clouds, Profondeur de parallax…),
-  lus dans `assets/effects` de Wallpaper Engine : passes, tampons (`fbos`), commandes `copy`/`swap`, textures,
-  combinaisons et réglages annotés, avec ses **libellés français** (`locale/ui_fr-fr.json`). Fenêtre « Ajouter un
-  effet » par groupes (Animer, Interactif, Flou, Coloriser, Déformer, Améliorer) avec recherche et description.
-- **Aperçu = leurs propres shaders** : `animer-gl.js` traduit le dialecte de Wallpaper Engine en GLSL ES 3.00
-  (macros `texSample2D`, `frac`, `saturate`, `mul`, `CAST*`… ; entiers littéraux en flottants hors crochets, boucles et
-  déclarations `int` ; variables entières d'un calcul passées par `float()` ; `max(0, v)` inversé ; troncatures
-  `vec4 → vec3` ; mots réservés `sample`… renommés ; échantillonneurs remontés avant les en-têtes ; combinaisons non
-  fixées à 0). Les 45 effets compilent et rendent. Constantes de sommets et de pixels séparées comme en Direct3D
-  (`g_Speed` = « speed » côté sommets, « speeduv » côté pixels). Comparé à Wallpaper Engine vitesses figées : 0,3/255
-  d'écart pour Secousse, Vagues, Impulsion, Iris ; 1,9/255 pour Oscillation Feuillage, Tournoyer, Rayons divins, Teinte
-  (les effets changent l'image de 12 à 42 niveaux).
-- **Réglages comme dans l'éditeur** : seuls ceux qu'emploie la variante compilée sont montrés (en mode UV,
-  Oscillation Feuillage montre Phase, Puissance, Ratio, Échelle, Direction, Vitesse, Intensité), cadran de
-  direction, couleurs, options (`[COMBO]`), groupes.
-- **Masques** : chaque texture peignable (masque d'opacité, direction de secousse, décalage temporel, profondeur) a
-  *Peindre* (pinceau, gomme, zone en rouge), *Retouche* et *Auto*. **Retouche** : le masque devient la sélection d'un
-  document « Masque · … » (sélection rapide, baguette, Sélection › Sujet, masque rapide Q, Sélectionner et masquer),
-  bandeau « Renvoyer à Animer ». **Auto** : Sujet ou Arrière-plan (BiRefNet), parties détectées par Kane Detailer
-  (cheveux, yeux, visage, vêtements, corps, mains, poitrine ; route `/kane-detailer/v1/masks` du moteur du Studio),
-  profondeur (Depth Anything V2) ; Tout, Rien, Inverser. Pour une direction, une fenêtre demande l'angle et la force.
-- **Ambiances** : les 68 variantes de préréglages de particules de Wallpaper Engine (pluie, feu, feux d'artifice,
-  éclairs, magie, fumée, bulles…), avec sous-systèmes (`eventdeath`, `eventspawn`, `eventfollow`) et traînées approchées.
-  Placement (poignée, X, Y, échelle, angle) et `instanceoverride`.
-- **Projets** : `animer.json` version 2 (`layers` : calque d'image avec `effects` [`effect`, `values`, `combos`],
-  ambiances [`folder`, `variant`…]) ; masques `masks/<effet>_<passe>_<texture>.png`. Les projets 1.38.0 sont repris
-  (Respiration et Clignement → Secousse, Cheveux → Vagues d'eau, Lueur → À impulsion, Regard → Mouvement Iris,
-  ambiances → préréglages).
-- **Envoi** : `scene.json` avec une entrée par passe (combinaisons, textures, constantes de chaque passe), effets copiés.
-- Défauts corrigés : curseur caché sur toute la scène hors peinture, zone peinte peu visible.
-- Test : `tools/test-animer.cjs` (26 vérifications, dont les 45 effets et l'aller-retour avec Retouche).
-
-### Animer : fonds animés pour Wallpaper Engine (1.38.0)
-
-Nouvel espace **Animer** (Projet · Retouche · Studio IA · **Animer** · Vidéo IA · Montage), repensé après le retrait
-d'Animation : on peint ce qui bouge, comme dans l'éditeur de Wallpaper Engine, et l'aperçu bouge tout de suite. Pas de
-serveur Python, de modèle d'IA, de squelette ni de découpe : tout tourne dans la page (`app/js/animer.js`,
-`app/js/animer-gl.js`, `app/css/animer.css`) ; le processus principal n'écrit que les fichiers (`animer-host.cjs`,
-`wallpaper-engine.cjs`).
-
-- **Mouvements** = effets fournis avec Wallpaper Engine, peints au pinceau : *Respiration* (`shake` : on glisse dans le
-  sens du mouvement, la direction est écrite dans la carte de direction), *Cheveux et tissus* (`waterwaves`), *Lueur*
-  (`pulse`, mode addition, couleur au choix), *Regard* (`iris`), *Clignement* (`shake` en direction gauche, bornes
-  0,993–0,998 : la paupière descend brièvement sur l'œil peint ; le masque gris devient une carte vers le haut à l'envoi).
-  Réglages en unités parlantes (secondes, pixels, degrés) convertis vers les constantes des shaders.
-- **Aperçu fidèle** : les shaders de l'aperçu sont ceux de Wallpaper Engine recopiés (`shake.frag`, `waterwaves.frag`,
-  `pulse.frag`, `iris.vert`), coordonnées de texture en haut à gauche comme dans Wallpaper Engine. Vérifié en figeant
-  les vitesses à 0 : aperçu et fenêtre de rendu de Wallpaper Engine diffèrent de 0,3 sur 255 en moyenne (les mouvements
-  déplacent 12 à 19 niveaux dans leurs zones).
-- **Ambiances** : préréglages de Wallpaper Engine (braises, feuilles, sakura, brume, poussière, rayons, neige, éclats
-  magiques), placés par une poignée, réglés par `instanceoverride` (quantité, nombre, vitesse, taille, opacité, durée,
-  couleur) et une échelle d'objet (hauteur de l'image / 1080 par défaut). L'aperçu simule leurs fichiers (émetteurs,
-  initialiseurs, opérateurs, planches d'images lues dans les `.tex`). Calé sur des captures de Wallpaper Engine : un
-  sprite y fait la moitié de sa taille nominale ; le drapeau 4 met le système en perspective (champ de 50°) ; les
-  angles sont inversés (HLSL) ; la simulation se fait dans le repère de l'objet, l'échelle s'applique au dessin (vitesses
-  comprises). L'aperçu des ambiances reste une imitation ; *Tester* montre le rendu exact.
-- **Halo lumineux** : passe de bloom de Wallpaper Engine (seuil au quart, flou à 13 points, addition), réglages force et seuil.
-- **Envoyer vers Wallpaper Engine** : `projects/myprojects/<titre>` avec `scene.json`, `project.json`, aperçu, image et
-  masques compilés en `.tex` par `resourcecompiler64` (toujours dans un dossier `materials`), effets et préréglages
-  copiés comme le fait l'éditeur. Chaque mouvement, ambiance et le halo ont une case dans les réglages du fond. Un
-  dossier retouché dans l'éditeur depuis le dernier envoi n'est jamais écrasé (`kaneapp-animer.json`, la nouvelle
-  version va dans `<titre>_2`) ; l'identifiant Workshop est gardé. *Tester* ouvre une fenêtre de rendu
-  (`-playInWindow`) sans changer le fond ; *Envoyer et appliquer* le pose sur le bureau.
-- **Projets** : `output/animer/<titre>-<id>/` (`animer.json`, `image.png`, `masks/*.png`, `thumb.jpg`), enregistrés
-  1,2 s après chaque changement et à la fermeture. Ouverture depuis un fichier, le document de Retouche, la bibliothèque
-  (« Animer pour Wallpaper Engine »), le menu IA ou un glisser-déposer.
-- Raccourcis : molette zoom, Espace ou clic droit + glisser pour déplacer, Maj + molette ou [ ] taille du pinceau,
-  B pinceau, E gomme, M voir la zone, P lecture, 0 ajuster, Ctrl+Z annuler.
-- Test : `node_modules/electron/dist/electron.exe tools/test-animer.cjs` (vraie fenêtre WebGL, 23 vérifications ; avec
-  Wallpaper Engine, l'envoi et la compilation des textures sont vérifiés dans un dossier temporaire).
+- L'espace **Animer** (fonds animés façon Wallpaper Engine, versions 1.38.0 à 1.40.0) est retiré entièrement : espace et
+  navigation, étape « 03 Animer » de l'écran Projet, action de la bibliothèque, menu IA, glisser-déposer, préférences,
+  `animer.js`, `animer-gl.js`, `animer.css`, `animer-host.cjs`, `wallpaper-engine.cjs`, IPC `animer-call` et
+  `forge-kane-masks`, test `tools/test-animer.cjs`. Le code revient à celui de 1.37.0.
+- Les animations déjà créées restent sur le disque (`output\animer`, et les scènes envoyées dans `projects\myprojects`
+  de Wallpaper Engine) : rien n'est effacé.
 
 ### Animation retirée, Vidéo IA (1.37.0)
 
@@ -742,6 +658,7 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.34.0** : l’atelier d’entraînement Lora et le Merge partent dans **Lora Studio** (`C:\KaneOS\LoraStudio`, avec `lora_bridge.py` et `merge_bridge.py`). KaneApp garde `lora-training-running` (lit les `run.json` : pid vivant, pas fini) pour faire attendre ses générations, `open-lora-studio` (menu Studio) et `--kane-prompt=` (« Essayer » de Lora Studio → invite de Créer).
 - **1.34.1** : `suite-bridges.cjs` `flushAnimation` : si `enregistre()` échoue et que le projet n’est plus dans `/api/projets`, il est refermé (`P = null`) au lieu de bloquer ; `KS.beforeClose` propose « Quitter sans enregistrer » sur un vrai échec. Test : `tools/test-animation-flush.cjs`.
 - **1.36.0** : Animation 4.0, découpe dans Retouche sans SAM. `app/js/animcut.js` : IA › *Découper en calques pour l’animation* (silhouette `KS.ai.segment` BiRefNet → IPC `animation-cut` → `POST /api/decoupe-calques` d’Animation : pose, GrabCut, LaMa) ; groupes Décor / Personnage, un masque de fusion par pièce. `C.toWallpaper` envoie un document à groupe « Personnage » en PSD (`S.animate(it, psd)`, toujours une nouvelle animation). Bouton ✂ de l’atelier : `window.kaneDecoupeRetouche` → `C.cutAnimationProject` (`animation-scene`, `animation-write-document` : `calques.psd` du projet, l’ancien en « calques (précédent).psd », ouvert dans Retouche). `WX.ensure(id, { quiet })` démarre un moteur sans changer d’espace. Test : `tools/test-animation-decoupe.cjs` (vraie fenêtre, vrai BiRefNet, vrai moteur Animation ; `KANEVAS_TEST_IMAGE`).
+- **1.41.0** : Animer retiré (fichiers, IPC, navigation, test) ; retour au code de 1.37.0.
 - **1.40.0** : Animer — outils de sélection dans la barre du masque (`tool` : `quick`, `wand`, `object` ; `KS.floodMask`, `KS.maskToCanvas` et `KS.ai.segment` de Retouche, calculés à la taille des masques) et zones cumulées (`combine` : `new`/`add`/`sub`/`int`, `mixer`, `mergeZone` ; Maj/Alt). Test : `tools/test-animer.cjs`.
 - **1.39.0** : Animer 2 — tous les effets de Wallpaper Engine exécutés avec leurs propres shaders traduits (`animer-gl.js`), définitions lues par `wallpaper-engine.cjs` (`effects`, `effectDef`, `presets`, `presetVariant`), interface couches / propriétés, masques dans Retouche (`A.editInRetouche`, bandeau), masques automatiques (BiRefNet, Kane Detailer `forge-kane-masks`, Depth Anything), 68 préréglages de particules, projets version 2 et reprise des projets 1.38.0. Test : `tools/test-animer.cjs`.
 - **1.38.0** : espace **Animer** (`animer.js`, `animer-gl.js`, `animer-host.cjs`, `wallpaper-engine.cjs`) : effets natifs de Wallpaper Engine peints au pinceau, aperçu WebGL aux formules de Wallpaper Engine, ambiances (préréglages) et halo, envoi d'une scène compilée dans `projects/myprojects`, fenêtre de test. Sorties `output/animer`. Test : `tools/test-animer.cjs`.

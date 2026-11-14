@@ -1,3 +1,8 @@
+# 1.41.0 — Animer retiré
+
+- L'espace **Animer** est retiré de KaneApp : onglet, étape « Animer » de l'écran Projet, menus et glisser-déposer.
+- Vos animations déjà créées ne sont pas effacées : elles restent dans `output\animer`, et les fonds envoyés restent dans Wallpaper Engine.
+
 # 1.40.0 — Animer : sélection rapide et zones qui s'additionnent
 
 - Nouveau bouton **Sélectionner** sous chaque masque : la **sélection rapide**, la **baguette magique** et la **sélection d'objet** de Retouche, directement dans Animer. Glissez sur les cheveux, la zone s'étend toute seule ; encadrez un objet, l'IA le détoure.
