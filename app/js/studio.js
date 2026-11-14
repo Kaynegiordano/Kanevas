@@ -115,7 +115,7 @@
   // Charge le modèle en avance (première génération : 15 à 20 s de chargement des poids sinon)
   let warmed = false, warming = false;
   async function warm() {
-    if (warmed || warming || !N || !N.forgeWarm || BUSY || PREPARING || !KS.engine || !KS.engine.ready()) return;
+    if (warmed || warming || !N || !N.forgeWarm || BUSY || PREPARING || KS.animationBusy || !KS.engine || !KS.engine.ready()) return;
     if (await KS.trainingRunning()) return;
     warming = true; renderTop();
     try { const r = await N.forgeWarm(url()); warmed = !!(r && r.ok); } catch { /* sera chargé à la première génération */ }
@@ -931,6 +931,9 @@
   function renderGenButtons() {
     for (const c of [CTX.t2i, CTX.i2i, EDIT]) {
       const g = c.genbox; if (!g) continue;
+      if (KS.animationBusy && !BUSY && !PREPARING) {
+        g.replaceChildren(h('button.fx-generate', { text: 'Moteur utilisé par Animation Wallpaper Engine', disabled: true })); continue;
+      }
       if (BUSY || PREPARING) {
         const stopping = BUSY ? BUSY.stopping : PREPARING.canceled;
         const i = h('button.fx-interrupt', { text: stopping ? 'Interruption…' : 'Interrompre', title: 'Interrompre (Ctrl+Entrée ou Échap)', disabled: stopping }); i.addEventListener('click', interrupt);
@@ -1926,6 +1929,7 @@
     return [en, tags.join(' ')].filter(Boolean).join(' ');
   }
   async function payloadFor(k, st, strictPrompt = false) {
+    if (KS.animationBusy) throw new Error('Le moteur IA est réservé à Animation Wallpaper Engine. Attendez la fin de sa tâche.');
     const p = {
       prompt: await english(st.prompt, strictPrompt), negative_prompt: await english(st.negative_prompt), styles: st.styles,
       sampler_name: st.sampler_name, scheduler: st.scheduler, steps: +st.steps, width: +st.width, height: +st.height, n_iter: +st.n_iter, batch_size: +st.batch_size,
@@ -2109,6 +2113,7 @@
   }
   function renderExGen() {
     const g = els.exGen; if (!g) return;
+    if (KS.animationBusy && !BUSY && !PREPARING) { g.replaceChildren(h('button.fx-generate', { text: 'Moteur utilisé par Animation Wallpaper Engine', disabled: true })); return; }
     if (BUSY || PREPARING) { const i = h('button.fx-interrupt', { text: 'Interrompre', title: 'Interrompre (Ctrl+Entrée)' }); i.addEventListener('click', interrupt); g.replaceChildren(i); return; }
     const b = h('button.fx-generate', { text: 'Agrandir', title: 'Agrandir (Ctrl+Entrée)' }); b.addEventListener('click', runExtras); g.replaceChildren(b);
   }
@@ -2251,7 +2256,7 @@
     if (!editorRoot) return;
     const d = D(), active = BUSY || PREPARING;
     if (editorModel) { editorModel.textContent = cat ? 'Modèle : ' + (norm(cat.current.model) || 'modèle actif de Forge') : 'Modèle et réglages du Studio IA.'; editorModel.title = editorModel.textContent; }
-    if (editorStatus) editorStatus.textContent = active
+    if (editorStatus) editorStatus.textContent = KS.animationBusy ? 'Le moteur IA sera disponible à la fin de la tâche Animation Wallpaper Engine.' : active
       ? (active.stopping || active.canceled ? 'Interruption…' : active.k === 'edit' ? 'Génération du dessin…' : 'Une génération est en cours dans le Studio.')
       : !d ? 'Ouvrez un document pour ajouter un dessin.'
       : FX.editor.target === 'selection' ? (d.selection.bounds ? 'Le dessin sera ajouté dans la sélection, avec un masque modifiable.' : 'Sélectionnez la zone à dessiner avec le lasso ou le rectangle de sélection.')
@@ -2352,6 +2357,7 @@
     finally { if (PREPARING === prep) PREPARING = null; refreshEditorDraw(); renderGenButtons(); }
   };
   for (const ev of ['doc', 'selection']) KS.on(ev, refreshEditorDraw);
+  KS.on('animation-gpu', () => { renderGenButtons(); renderExGen(); refreshEditorDraw(); });
   KS.on('studio', on => { if (!on) renderEditorDraw(); });
   KS.genPanel = { render, reload: loadCat, mount() {}, unmount() {} };
   C.openStudioTab = async tab => { FX.tab = tab; save(); await C.toggleStudio(true); render(); };
@@ -2436,7 +2442,7 @@
     if (on) {
       mountPage(); render();
       loadCached();
-      if (KS.engine) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && (!cat || cat.stale)) loadCat().then(warm); else if (ok) { renderTop(); warm(); } });
+      if (KS.engine && !KS.animationBusy) KS.engine.ensure({ quiet: true }).then(ok => { if (ok && (!cat || cat.stale)) loadCat().then(warm); else if (ok) { renderTop(); warm(); } });
       else loadCat();
     } else {
       CTX.i2i.finishStroke && CTX.i2i.finishStroke();

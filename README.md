@@ -20,6 +20,18 @@ et les trois copies ICO utilisées par la fenêtre, les raccourcis et l'installa
 dix tailles de 16 à 256 pixels ; le symbole reste transparent et indépendant du thème de l'interface.
 
 ## Outils récents
+### Animation Wallpaper Engine : l'ancien atelier revient (1.42.0)
+
+- L'atelier **Animation** retiré en 1.37.0 est rétabli tel qu'il était (fonds animés de type Web pour Wallpaper Engine :
+  zones peintes, respiration, cheveux en ressorts, marionnettes le long du squelette, clignement LivePortrait, reflets,
+  boucle parfaite, export vidéo), sous le nom **Animation Wallpaper Engine**. C'est avec lui qu'avait été fait
+  « Lylian - Makeup » (`myprojects\index3`), alors qu'Animer (1.38 à 1.40, retiré en 1.41) n'a jamais donné de résultat
+  utilisable.
+- Code de 1.36.0 remis en place (espace `wallpaper`, `services.cjs` port 8780 et relais 8601, `suite-bridges.cjs`,
+  `animation-runtime.py`, `animation-web`, `animation-gpu.cjs`, `animcut.js`, IPC `wea-*`/`animation-*`, tests
+  `test-animation-*`). L'espace ComfyUI garde son nom **Vidéo IA**. Le moteur Python est celui de Kane OS
+  (`engines\animation` → `KaneAppData\runtimes\Animation`, composant `animation` de l'installateur).
+
 ### Animer retiré (1.41.0)
 
 - L'espace **Animer** (fonds animés façon Wallpaper Engine, versions 1.38.0 à 1.40.0) est retiré entièrement : espace et
@@ -658,6 +670,7 @@ Maintenir Alt + bouton droit dans la zone de travail : glisser horizontalement p
 - **1.34.0** : l’atelier d’entraînement Lora et le Merge partent dans **Lora Studio** (`C:\KaneOS\LoraStudio`, avec `lora_bridge.py` et `merge_bridge.py`). KaneApp garde `lora-training-running` (lit les `run.json` : pid vivant, pas fini) pour faire attendre ses générations, `open-lora-studio` (menu Studio) et `--kane-prompt=` (« Essayer » de Lora Studio → invite de Créer).
 - **1.34.1** : `suite-bridges.cjs` `flushAnimation` : si `enregistre()` échoue et que le projet n’est plus dans `/api/projets`, il est refermé (`P = null`) au lieu de bloquer ; `KS.beforeClose` propose « Quitter sans enregistrer » sur un vrai échec. Test : `tools/test-animation-flush.cjs`.
 - **1.36.0** : Animation 4.0, découpe dans Retouche sans SAM. `app/js/animcut.js` : IA › *Découper en calques pour l’animation* (silhouette `KS.ai.segment` BiRefNet → IPC `animation-cut` → `POST /api/decoupe-calques` d’Animation : pose, GrabCut, LaMa) ; groupes Décor / Personnage, un masque de fusion par pièce. `C.toWallpaper` envoie un document à groupe « Personnage » en PSD (`S.animate(it, psd)`, toujours une nouvelle animation). Bouton ✂ de l’atelier : `window.kaneDecoupeRetouche` → `C.cutAnimationProject` (`animation-scene`, `animation-write-document` : `calques.psd` du projet, l’ancien en « calques (précédent).psd », ouvert dans Retouche). `WX.ensure(id, { quiet })` démarre un moteur sans changer d’espace. Test : `tools/test-animation-decoupe.cjs` (vraie fenêtre, vrai BiRefNet, vrai moteur Animation ; `KANEVAS_TEST_IMAGE`).
+- **1.42.0** : Animation Wallpaper Engine — retour de l'atelier Animation de 1.36.0 (revert de 1.37.0 sauf le nom Vidéo IA), espace `wallpaper` libellé « Animation Wallpaper Engine ».
 - **1.41.0** : Animer retiré (fichiers, IPC, navigation, test) ; retour au code de 1.37.0.
 - **1.40.0** : Animer — outils de sélection dans la barre du masque (`tool` : `quick`, `wand`, `object` ; `KS.floodMask`, `KS.maskToCanvas` et `KS.ai.segment` de Retouche, calculés à la taille des masques) et zones cumulées (`combine` : `new`/`add`/`sub`/`int`, `mixer`, `mergeZone` ; Maj/Alt). Test : `tools/test-animer.cjs`.
 - **1.39.0** : Animer 2 — tous les effets de Wallpaper Engine exécutés avec leurs propres shaders traduits (`animer-gl.js`), définitions lues par `wallpaper-engine.cjs` (`effects`, `effectDef`, `presets`, `presetVariant`), interface couches / propriétés, masques dans Retouche (`A.editInRetouche`, bandeau), masques automatiques (BiRefNet, Kane Detailer `forge-kane-masks`, Depth Anything), 68 préréglages de particules, projets version 2 et reprise des projets 1.38.0. Test : `tools/test-animer.cjs`.

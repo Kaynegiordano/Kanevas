@@ -1,3 +1,10 @@
+# 1.42.0 — Animation Wallpaper Engine : l'ancien atelier revient
+
+- L'ancien atelier **Animation** revient, sous le nom **Animation Wallpaper Engine** : on peint les zones, on règle leurs mouvements (respiration, cheveux, voile, reflets, scintillement, clignement…) et on obtient une boucle ou un fond d'écran interactif pour Wallpaper Engine.
+- Il retrouve sa place : onglet, étape « Animer » de l'écran Projet, « Animer cette image » dans la bibliothèque, IA › Animer l'illustration et Découper en calques pour l'animation.
+- **Vidéo IA** (ComfyUI) garde son nom.
+- Il faut Kane OS 5.4.0 (moteur Animation Wallpaper Engine).
+
 # 1.41.0 — Animer retiré
 
 - L'espace **Animer** est retiré de KaneApp : onglet, étape « Animer » de l'écran Projet, menus et glisser-déposer.

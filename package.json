@@ -1,8 +1,8 @@
 {
   "name": "kaneapp",
   "productName": "KaneApp",
-  "version": "1.41.0",
-  "description": "KaneApp — éditeur d'images, Studio IA, Vidéo IA et Montage",
+  "version": "1.42.0",
+  "description": "KaneApp — éditeur d'images, Studio IA, Animation Wallpaper Engine, Vidéo IA et Montage",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -50,6 +50,10 @@
       "managed-runtimes.cjs",
       "runtime-migration-host.cjs",
       "runtime-migrate.py",
+      "animation-gpu.cjs",
+      "animation-runtime.py",
+      "animation_web.py",
+      "animation-web/**/*",
       "suite-store.cjs",
       "suite-host.cjs",
       "suite-bridges.cjs",
@@ -69,6 +73,9 @@
     ],
     "asarUnpack": [
       "node_modules/onnxruntime-node/**",
+      "animation-runtime.py",
+      "animation_web.py",
+      "animation-web/**/*",
       "runtime-migrate.py"
     ],
     "win": {
